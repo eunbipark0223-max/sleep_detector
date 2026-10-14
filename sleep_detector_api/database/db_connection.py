@@ -39,3 +39,11 @@ engine = create_engine(DATABASE_URL, pool_pre_ping=True, echo=os.getenv("DB_ECHO
 
 # autocommit · autoflush 를 꺼서 commit() 을 코드가 직접 부른다 (event.py 의 db.commit())
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# 수업 코드와 같은 이름 (user.py · chat.py · detect.py 를 수업 파일에서 복사하면 get_session · SessionFactory 를 부름)
+SessionFactory = SessionLocal
+
+
+def get_session():
+    with SessionFactory() as session:
+        yield session
