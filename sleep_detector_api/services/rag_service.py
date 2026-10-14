@@ -11,8 +11,9 @@
 #   - 결과를 쓰는 곳: Agent 보고서 regulation · 앱 [규정 보기] · 휴게 알림 안내문 · 규정 도우미
 #
 # [만들 것 (이름 약속 — 다른 파일이 이 이름으로 부름)]
-#   - search_regulations(summary="", vehicle=None, k=3) → [{title, source, content}]  (vehicle 안 주면 화물차)
-#   - search_by_text(query, k=4)                        → [{title, source, content}]
+#   - search_regulations(summary="", vehicle=None, k=3) → [{title, source, content, is_real}]  (vehicle 없으면 화물 · 여객 둘 다)
+#   - search_by_text(query, k=4)                        → [{title, source, content, is_real}]
+#       is_real = False 면 검색 결과가 아닌 대표 규정(가짜 / 실패) — 팀장이 보고서 is_real.rag 로 저장
 #
 # [주의]
 #   - 임베딩: gemini-embedding-001 (3072차원), OpenAI 호환 주소로 호출 (1주차 확인 완료)
@@ -57,7 +58,6 @@ COLLECTION = "sleep_regulations"
 CHUNKER_VERSION = "v3"  # 자르는 규칙을 바꾸면 올린다 → 색인 다시 만들기
 
 CORE_QUERY = "졸음운전 휴게시간 휴식 규정"
-VEHICLE_TYPE = _cfg("VEHICLE_TYPE", "freight")  # 팀 결정 (10.14): 화물차 기준
 
 # 질문 단어로 법령 / 일반 자료를 고른다 (노션 「문제 1」, 12개 질의 중 12개가 정답 유형을 놓치지 않음)
 LAW_WORDS = ("규정", "법", "조항", "의무", "위반", "허용", "금지", "되나", "근거", "보장")
@@ -253,7 +253,7 @@ def build_index(force=False):
 
 
 def _to_item(meta):
-    return {"title": meta["title"], "source": meta["source"], "content": meta["content"]}
+    return {"title": meta["title"], "source": meta["source"], "content": meta["content"], "is_real": True}
 
 
 def _pick(hits, k, per_key="file", cap=1, taken=()):
@@ -294,18 +294,20 @@ def _real_search_regulations(summary, vehicle, k):
     return [_to_item(m) for m in result + rest]
 
 
+def _mock(k):
+    return [{**m, "is_real": False} for m in MOCK_REGULATIONS[:k]]
+
+
 def _mock_search_regulations(summary="", vehicle=None, k=3):
-    return MOCK_REGULATIONS[:k]
+    return _mock(k)
 
 
 def search_regulations(summary="", vehicle=None, k=3):
     """졸음 확정 때 Agent 에게 줄 규정. 1번째는 항상 도로교통법 제45조(졸음운전의 법적 근거).
 
     summary : LLM 상황 요약 (검색어에 붙이면 '2시간 연속운전' 조문이 더 잘 모임 — 노션 「핵심 경로 테스트」)
-    vehicle : "freight" / "bus_intercity" / "bus_city" / "any"(차종 무시 → 화물 · 버스 규정을 하나씩)
-              안 주면 VEHICLE_TYPE (팀 결정 10.14: 우리 회사 = 화물 운수회사 → "freight")
+    vehicle : "freight" / "bus_intercity" / "bus_city" / None(차종 정보 없음 → 화물 · 여객 규정을 하나씩, 팀장 확인 10.14)
     """
-    vehicle = vehicle or VEHICLE_TYPE
     if not USE_REAL_AI:
         return _mock_search_regulations(summary, vehicle, k)
     try:
@@ -344,7 +346,7 @@ def _real_search_by_text(query, k):
 
 
 def _mock_search_by_text(query, k=4):
-    return MOCK_REGULATIONS[:k]
+    return _mock(k)
 
 
 def search_by_text(query, k=4):
@@ -361,13 +363,14 @@ def search_by_text(query, k=4):
 
 
 def _normalize(items):
-    """계약 보증: title · source · content 가 항상 문자열, 빈 것은 버림."""
+    """계약 보증: title · source · content 는 항상 문자열, is_real 은 항상 bool, 빈 것은 버림."""
     out = []
     for it in items or []:
         item = {key: str(it.get(key) or "").strip() for key in ("title", "source", "content")}
+        item["is_real"] = it.get("is_real") is True
         if item["content"]:
             out.append(item)
-    return out or MOCK_REGULATIONS[:3]
+    return out or _mock(3)
 
 
 # ───────────────────────────────────────────────
@@ -389,11 +392,12 @@ MOCK_REGULATIONS = [
                    "가져야 한다.",
     },
     {
-        "title": "화물자동차 운수사업법 시행규칙 제21조(운송사업자의 준수사항) 제23호",
-        "source": "국가법령정보센터, 시행 2026. 6. 30.",
-        "content": "휴게시간 없이 2시간 연속운전한 운수종사자에게 15분 이상의 휴게시간을 보장할 것. 다만, 다음 각 목의 "
-                   "어느 하나에 해당하는 경우에는 1시간까지 연장운행을 하게 할 수 있으며 운행 후 30분 이상의 휴게시간을 "
-                   "보장해야 한다.",
+        "title": "여객자동차 운수사업법 시행규칙 제44조의6(운수종사자의 휴식시간 보장) 제3항 제2호",
+        "source": "국가법령정보센터, 시행 2026. 9. 15.",
+        "content": "운수종사자가 휴식시간 없이 2시간 연속 운전한 경우에는 휴게소 등에서 15분 이상의 휴식시간을 보장할 것. "
+                   "다만, 천재지변, 교통사고, 차량고장 또는 극심한 교통정체 등의 사유로 휴게소 진입이 불가능한 경우 등 "
+                   "연장운행이 필요한 경우에는 1시간까지 연장운행을 하게 할 수 있으며, 운행 후 30분 이상의 휴식시간을 "
+                   "보장할 것",
     },
 ]
 
