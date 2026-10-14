@@ -11,7 +11,7 @@
 #   - 결과를 쓰는 곳: Agent 보고서 regulation · 앱 [규정 보기] · 휴게 알림 안내문 · 규정 도우미
 #
 # [만들 것 (이름 약속 — 다른 파일이 이 이름으로 부름)]
-#   - search_regulations(summary="", vehicle=None, k=3) → [{title, source, content}]
+#   - search_regulations(summary="", vehicle=None, k=3) → [{title, source, content}]  (vehicle 안 주면 화물차)
 #   - search_by_text(query, k=4)                        → [{title, source, content}]
 #
 # [주의]
@@ -57,6 +57,7 @@ COLLECTION = "sleep_regulations"
 CHUNKER_VERSION = "v3"  # 자르는 규칙을 바꾸면 올린다 → 색인 다시 만들기
 
 CORE_QUERY = "졸음운전 휴게시간 휴식 규정"
+VEHICLE_TYPE = _cfg("VEHICLE_TYPE", "freight")  # 팀 결정 (10.14): 화물차 기준
 
 # 질문 단어로 법령 / 일반 자료를 고른다 (노션 「문제 1」, 12개 질의 중 12개가 정답 유형을 놓치지 않음)
 LAW_WORDS = ("규정", "법", "조항", "의무", "위반", "허용", "금지", "되나", "근거", "보장")
@@ -301,8 +302,10 @@ def search_regulations(summary="", vehicle=None, k=3):
     """졸음 확정 때 Agent 에게 줄 규정. 1번째는 항상 도로교통법 제45조(졸음운전의 법적 근거).
 
     summary : LLM 상황 요약 (검색어에 붙이면 '2시간 연속운전' 조문이 더 잘 모임 — 노션 「핵심 경로 테스트」)
-    vehicle : "freight" / "bus_intercity" / "bus_city" / None(모름 → 화물 · 버스 규정을 하나씩)
+    vehicle : "freight" / "bus_intercity" / "bus_city" / "any"(차종 무시 → 화물 · 버스 규정을 하나씩)
+              안 주면 VEHICLE_TYPE (팀 결정 10.14: 우리 회사 = 화물 운수회사 → "freight")
     """
+    vehicle = vehicle or VEHICLE_TYPE
     if not USE_REAL_AI:
         return _mock_search_regulations(summary, vehicle, k)
     try:
@@ -386,12 +389,11 @@ MOCK_REGULATIONS = [
                    "가져야 한다.",
     },
     {
-        "title": "여객자동차 운수사업법 시행규칙 제44조의6(운수종사자의 휴식시간 보장) 제3항 제2호",
-        "source": "국가법령정보센터, 시행 2026. 9. 15.",
-        "content": "운수종사자가 휴식시간 없이 2시간 연속 운전한 경우에는 휴게소 등에서 15분 이상의 휴식시간을 보장할 것. "
-                   "다만, 천재지변, 교통사고, 차량고장 또는 극심한 교통정체 등의 사유로 휴게소 진입이 불가능한 경우 등 "
-                   "연장운행이 필요한 경우에는 1시간까지 연장운행을 하게 할 수 있으며, 운행 후 30분 이상의 휴식시간을 "
-                   "보장할 것",
+        "title": "화물자동차 운수사업법 시행규칙 제21조(운송사업자의 준수사항) 제23호",
+        "source": "국가법령정보센터, 시행 2026. 6. 30.",
+        "content": "휴게시간 없이 2시간 연속운전한 운수종사자에게 15분 이상의 휴게시간을 보장할 것. 다만, 다음 각 목의 "
+                   "어느 하나에 해당하는 경우에는 1시간까지 연장운행을 하게 할 수 있으며 운행 후 30분 이상의 휴게시간을 "
+                   "보장해야 한다.",
     },
 ]
 
