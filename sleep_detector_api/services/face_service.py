@@ -8,6 +8,7 @@
 #   - 앱이 보낸 의심 사진에서 MediaPipe Face Landmarker 로 눈 점 12개 → EAR 계산 (항상)
 #   -   왼눈 33·160·158·133·153·144  /  오른눈 362·385·387·263·373·380
 #   - USE_CNN 이면 눈만 잘라 흑백 64×64 → eye_cnn.pt → 감았을 확률
+#       (자르기 · 흑백 · 크기는 services/eye_preprocess.py 의 crop_eye → prep_eye 사용, 학습과 같은 함수)
 #   - 결과: 감음 / 뜸 / 얼굴 없음 + ear · eye_closed_prob · method
 #   - 확인 규칙: microsleep → 서버도 감음이면 확정 / 확실히 뜸이면 취소 / 얼굴 없음이면 앱 판단대로(method mlkit)
 #   -           perclos → 앱 숫자로 확정 (method mlkit, 사진은 기록용)
