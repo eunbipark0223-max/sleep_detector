@@ -64,6 +64,9 @@ REST_MIN = 1 if DEMO_MODE else 15           # 휴식 인정 시간
 REST_GRACE_MIN = 1 if DEMO_MODE else 15     # 휴게 알림 후 이 시간 안에 안 쉬면 rest_overdue
 PING_SEC = 30                 # 앱 /drive/ping 간격 (앱 config.dart 와 같은 값)
 
+# ── 로그인 (auth/jwt.py) ──────────────────────────────
+TOKEN_EXPIRE_MIN = 12 * 60    # 수업은 60분 → 운행(2시간 이상) 중에 토큰이 끝나면 /detect 가 401 이라 12시간
+
 # ── 기사 음성 보고 (agent_service) ────────────────────
 DRIVER_VOICE_MAX_CHARS = 90
 
