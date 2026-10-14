@@ -78,7 +78,7 @@ QUIZ_RETRY_WAIT_MIN = 5       # (부품 B) 복귀 퀴즈 실패 후 다시 시�
 # ── Gemini (LLM · RAG · Agent) ← .env ─────────────────
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL") or "https://generativelanguage.googleapis.com/v1beta/openai/"
-GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"
+GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-3.5-flash-lite"
 GEMINI_EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL") or "gemini-embedding-001"
 
 # ── 경로 ──────────────────────────────────────────────
