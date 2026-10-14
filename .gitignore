@@ -1,0 +1,16 @@
+# ── 저장소 전체 공통 ──────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+
+# 비밀 파일 (절대 올리지 않음)
+.env
+kaggle.json
+google-services.json
+GoogleService-Info.plist
+
+# 데이터 · 사진 (개인정보 · 용량)
+data/
+datasets/
+*.zip
+notebooks/.ipynb_checkpoints/

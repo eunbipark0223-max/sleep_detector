@@ -1,0 +1,18 @@
+.env
+venv/
+.venv/
+__pycache__/
+*.pyc
+.idea/
+*.log
+*.sql
+mlruns/
+# 업로드 사진은 올리지 않고, 폴더 유지용 .gitkeep 만 올림
+uploads/**
+!uploads/
+!uploads/*/
+!uploads/*/.gitkeep
+chroma_db/
+
+# 큰 모델 파일 (50MB 넘으면 Google Drive 로 공유)
+ml_models/*.pt

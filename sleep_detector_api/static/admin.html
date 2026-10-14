@@ -1,0 +1,17 @@
+<!--
+═══════════════════════════════════════════════════════════════
+static/admin.html — 관리자 웹 (졸음 경고 목록 · 조치완료)
+담당: D   |   우선: P0
+수업 원본: road_hazard_api/static/admin.html (🟡 수정)
+화면 모양: 「관리자 (2).html」 확정본 (D:\final_project_정리)
+
+[이 파일이 하는 일]
+  - 졸음 경고 목록: 사진 · 위치(도로명) · 단계 · 시각 · 처리 상태
+  - 3단계 / "음성 응답 없음"(reason no_response) 은 빨간 줄 긴급 표시
+  - 경고를 누르면 Agent 보고서 (situation · stage_reason · regulation · recommended_action · location)
+    + 운전 중 퀴즈 결과(driving_quiz) · 휴식 시각(rest) · 앱 눈 숫자(eye)
+  - [조치완료] → PATCH /events/{id}/status → 3단계 해제
+  - 휴게 미준수(rest_overdue) 표시
+  - (P2) 단계별 · 시간대별 통계
+═══════════════════════════════════════════════════════════════
+-->
