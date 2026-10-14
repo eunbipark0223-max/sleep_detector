@@ -20,7 +20,7 @@ android {
         applicationId = "com.example.road_hazard_app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 24  // ML Kit 얼굴 감지는 21 이상 필요, 시연 폰 Android 12(API 31)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
