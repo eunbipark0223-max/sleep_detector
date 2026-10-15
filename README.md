@@ -39,8 +39,9 @@ cd sleep_detector_app
 flutter pub get
 flutter run                 (에뮬레이터 Pixel_7_API_34 또는 안드로이드 실기기 — main.dart 를 작성한 뒤부터 실행됨)
 ```
-- `android/app/google-services.json` 은 GitHub 에 없습니다. 팀장에게 따로 받으세요.
-- 안드로이드 패키지 이름은 구글 로그인(Firebase) 설정 때문에 `com.example.road_hazard_app` 그대로 둡니다. 화면에 보이는 앱 이름만 “졸음 가드”.
+- `android/app/google-services.json` 은 GitHub 에 없습니다. 팀장에게 따로 받으세요 (Firebase 프로젝트 `sleep-detector`).
+- 안드로이드 패키지 이름은 `com.example.sleep_detector_app` (10/15 변경, Firebase 에 등록한 이름과 같아야 함). 화면에 보이는 앱 이름은 “졸음 가드”.
+- 구글 로그인은 Firebase 에 **내 PC 의 SHA-1** 이 등록돼 있어야 됩니다 → Android Studio 오른쪽 Gradle 탭 → `app` → `Tasks` → `android` → `signingReport` 의 `SHA1` 을 팀장에게 보내기.
 - ML Kit · STT 는 **실기기(시연용 안드로이드 폰)** 에서 꼭 다시 시험합니다.
 
 ## 🔐 절대 올리지 않는 것

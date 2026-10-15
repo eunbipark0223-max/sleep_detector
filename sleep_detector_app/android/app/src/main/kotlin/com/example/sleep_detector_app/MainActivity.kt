@@ -1,4 +1,4 @@
-package com.example.road_hazard_app
+package com.example.sleep_detector_app
 
 import io.flutter.embedding.android.FlutterActivity
 
