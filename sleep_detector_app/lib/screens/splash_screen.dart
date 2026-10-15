@@ -109,7 +109,7 @@ class _SplashScreenState extends State<SplashScreen> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Drowsy Driving Guard',
+                      'Sleepy Driving Guard',
                       style: TextStyle(
                         fontSize: 11,
                         color: Colors.white.withValues(alpha: 0.7),
