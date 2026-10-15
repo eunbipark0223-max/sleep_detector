@@ -13,5 +13,324 @@ static/admin.html — 관리자 웹 (졸음 경고 목록 · 조치완료)
   - [조치완료] → PATCH /events/{id}/status → 3단계 해제
   - 휴게 미준수(rest_overdue) 표시
   - (P2) 단계별 · 시간대별 통계
+
+[주의]
+  - 「관리자 (2).html」 확정본 파일이 이 PC 에 없어서 기획안 설명대로 만든 화면. 확정본을 받으면 <style> 과 표 모양만 맞춰 바꾼다 (JS 는 그대로)
+  - 서버가 보낸 글(LLM 요약 · 보고서)은 항상 textContent 로만 넣는다 (innerHTML 금지 — AI 가 쓴 글에 태그가 섞여도 실행되지 않게)
 ═══════════════════════════════════════════════════════════════
 -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>졸음 가드 관리자</title>
+  <style>
+    :root {
+      --navy: #1f2a5c; --purple: #6a4cc2; --bg: #f3f5fa; --line: #d9deea; --text: #222; --muted: #667;
+      --s0: #2e9e5b; --s1: #f2b01e; --s2: #f28c28; --s3: #d93025; --urgent-bg: #fdeceb;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; font-size: 14px; }
+    header { background: var(--navy); color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 16px; }
+    header h1 { margin: 0; font-size: 18px; flex: 1; }
+    header .meta { font-size: 12px; opacity: .8; }
+    header button { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.5); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+    main { max-width: 1280px; margin: 0 auto; padding: 20px 24px 48px; }
+
+    .tiles { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    .tile { background: #fff; border-radius: 10px; padding: 14px 18px; min-width: 150px; border-left: 5px solid var(--navy); }
+    .tile b { display: block; font-size: 26px; }
+    .tile span { color: var(--muted); font-size: 12px; }
+    .tile.urgent { border-left-color: var(--s3); } .tile.urgent b { color: var(--s3); }
+
+    .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    .filters .label { color: var(--muted); font-size: 12px; margin-left: 8px; }
+    .chip { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 5px 13px; cursor: pointer; font-size: 13px; }
+    .chip.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+
+    .layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); gap: 16px; align-items: start; }
+    @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+    .card { background: #fff; border-radius: 10px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: 12px; color: var(--muted); padding: 10px 12px; background: #fafbfe; border-bottom: 1px solid var(--line); }
+    td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    tr.row { cursor: pointer; }
+    tr.row:hover { background: #f7f8fd; }
+    tr.row.sel { outline: 2px solid var(--navy); outline-offset: -2px; }
+    tr.row.urgent { background: var(--urgent-bg); box-shadow: inset 4px 0 0 var(--s3); }
+    .thumb { width: 64px; height: 48px; object-fit: cover; border-radius: 6px; background: #e8ebf3; display: block; }
+    .nophoto { width: 64px; height: 48px; border-radius: 6px; background: #e8ebf3; color: var(--muted); font-size: 11px; display: flex; align-items: center; justify-content: center; }
+    .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff; white-space: nowrap; }
+    .b0 { background: var(--s0); } .b1 { background: var(--s1); color: #222; } .b2 { background: var(--s2); } .b3 { background: var(--s3); }
+    .tag { display: inline-block; margin-top: 4px; padding: 1px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+    .tag.red { background: var(--s3); color: #fff; } .tag.gray { background: #e8ebf3; color: #445; }
+    .status { font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .status.s-미확인 { color: var(--s3); } .status.s-확인 { color: var(--s2); } .status.s-조치완료, .status.s-휴식완료 { color: var(--s0); }
+    .sub { color: var(--muted); font-size: 12px; }
+    .empty { padding: 36px; text-align: center; color: var(--muted); }
+
+    .detail { padding: 18px; position: sticky; top: 12px; }
+    .detail h2 { margin: 0 0 10px; font-size: 16px; }
+    .detail img.big { width: 100%; max-height: 260px; object-fit: cover; border-radius: 8px; margin-bottom: 12px; background: #e8ebf3; }
+    .detail dl { margin: 0; }
+    .detail dt { font-size: 12px; color: var(--muted); margin-top: 10px; }
+    .detail dd { margin: 2px 0 0; line-height: 1.5; }
+    .ai { background: #f1edfb; border-left: 4px solid var(--purple); border-radius: 6px; padding: 10px 12px; margin-top: 10px; }
+    .ai dt:first-child { margin-top: 0; }
+    .quiz-ok { color: var(--s0); font-weight: 700; } .quiz-fail { color: var(--s3); font-weight: 700; }
+    .actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+    .actions button { padding: 9px 16px; border-radius: 8px; border: 1px solid var(--line); background: #fff; cursor: pointer; font-weight: 700; }
+    .actions button.primary { background: var(--s3); color: #fff; border-color: var(--s3); }
+    .actions button:disabled { opacity: .5; cursor: default; }
+    #notice { margin-top: 10px; font-size: 13px; min-height: 18px; }
+    #notice.err { color: var(--s3); } #notice.ok { color: var(--s0); }
+
+    .stats { margin-top: 20px; padding: 18px; }
+    .stats h2 { margin: 0 0 12px; font-size: 15px; }
+    .bars { display: flex; align-items: flex-end; gap: 3px; height: 110px; }
+    .bar { flex: 1; background: var(--navy); border-radius: 3px 3px 0 0; min-height: 2px; position: relative; }
+    .bar:hover::after { content: attr(data-tip); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #222; color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
+    .axis { display: flex; gap: 3px; font-size: 10px; color: var(--muted); margin-top: 4px; }
+    .axis span { flex: 1; text-align: center; }
+    .stagebars { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+    .stagebars div { min-width: 120px; }
+    .stagebars b { font-size: 22px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>졸음 가드 관리자 — 졸음 경고</h1>
+    <span class="meta" id="updated"></span>
+    <button id="refreshBtn" type="button">새로고침</button>
+    <button id="logoutBtn" type="button">로그아웃</button>
+  </header>
+
+  <main>
+    <div class="tiles">
+      <div class="tile urgent"><b id="tileUrgent">0</b><span>긴급 (미처리 3단계 · 음성 응답 없음)</span></div>
+      <div class="tile"><b id="tileNew">0</b><span>미확인 경고</span></div>
+      <div class="tile"><b id="tileTotal">0</b><span>전체 경고</span></div>
+    </div>
+
+    <div class="filters" id="filters"></div>
+
+    <div class="layout">
+      <div class="card">
+        <table>
+          <thead><tr><th>사진</th><th>기사 · 위치</th><th>단계</th><th>시각</th><th>처리 상태</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <div class="empty" id="empty" hidden>조건에 맞는 경고가 없습니다.</div>
+      </div>
+
+      <aside class="card detail" id="detail">
+        <div class="empty">왼쪽에서 경고를 누르면 Agent 보고서가 보입니다.</div>
+      </aside>
+    </div>
+
+    <section class="card stats" id="stats">
+      <h2>통계 (P2)</h2>
+      <div class="stagebars" id="stageBars"></div>
+      <div class="sub" style="margin-bottom:6px">시간대별 경고 수</div>
+      <div class="bars" id="hourBars"></div>
+      <div class="axis" id="hourAxis"></div>
+    </section>
+  </main>
+
+  <script src="js/api.js"></script>
+  <script>
+    const REASON_LABEL = { microsleep: '미세수면', perclos: '피로 누적', rest_overdue: '휴게 미준수', no_response: '음성 응답 없음' };
+    const QUIZ_LABEL = { repeat: '따라 말하기', add: '덧셈', reverse: '거꾸로 말하기' };
+    const STAGE_FILTERS = [['', '전체 단계'], ['1', '1 주의'], ['2', '2 휴식 권고'], ['3', '3 긴급']];
+    const STATUS_FILTERS = [['', '전체 상태'], ['미확인', '미확인'], ['확인', '확인'], ['조치완료', '조치완료'], ['휴식완료', '휴식완료']];
+
+    let events = [];
+    let filters = { stage: '', status: '' };
+    let selectedId = null;
+    let busy = false;
+
+    // ── 작은 도우미: 글은 전부 textContent 로만 ───────────────
+    function el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined && text !== null) node.textContent = text;
+      return node;
+    }
+    function fmtTime(iso) {
+      const d = new Date(iso);
+      if (isNaN(d)) return iso || '';
+      const p = (n) => String(n).padStart(2, '0');
+      return p(d.getMonth() + 1) + '/' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+    function stageBadge(stage, label) { return el('span', 'badge b' + stage, stage ? stage + '단계 ' + (label || '') : '표시 없음'); }
+    function isOpenUrgent(e) { return e.urgent && e.status !== '조치완료'; }
+
+    // ── 필터 칩 ──────────────────────────────────────────────
+    function renderFilters() {
+      const box = document.getElementById('filters');
+      box.replaceChildren();
+      const groups = [['stage', STAGE_FILTERS], ['status', STATUS_FILTERS]];
+      groups.forEach(([key, items], i) => {
+        if (i) box.appendChild(el('span', 'label', '|'));
+        items.forEach(([value, label]) => {
+          const chip = el('button', 'chip' + (filters[key] === value ? ' on' : ''), label);
+          chip.type = 'button';
+          chip.addEventListener('click', () => { filters[key] = value; renderFilters(); load(); });
+          box.appendChild(chip);
+        });
+      });
+    }
+
+    // ── 경고 목록 ────────────────────────────────────────────
+    function renderRows() {
+      const body = document.getElementById('rows');
+      body.replaceChildren();
+      document.getElementById('empty').hidden = events.length > 0;
+      events.forEach((e) => {
+        const tr = el('tr', 'row' + (e.urgent ? ' urgent' : '') + (e.id === selectedId ? ' sel' : ''));
+        tr.addEventListener('click', () => { selectedId = e.id; renderRows(); renderDetail(); });
+
+        const photoCell = el('td');
+        if (e.photo_url) {
+          const img = el('img', 'thumb'); img.src = e.photo_url; img.alt = '졸음 순간 사진'; img.loading = 'lazy';
+          img.addEventListener('error', () => img.replaceWith(el('div', 'nophoto', '사진 없음')));  // 30일 뒤 삭제 등으로 파일이 없을 때
+          photoCell.appendChild(img);
+        } else photoCell.appendChild(el('div', 'nophoto', '사진 없음'));
+
+        const whereCell = el('td');
+        whereCell.appendChild(el('div', '', e.user_name || ('기사 ' + e.user_id)));
+        whereCell.appendChild(el('div', 'sub', e.address || (e.latitude != null ? e.latitude.toFixed(4) + ', ' + e.longitude.toFixed(4) : '위치 없음')));
+        if (e.reason === 'no_response') whereCell.appendChild(el('span', 'tag red', '음성 응답 없음 — 긴급'));
+        else if (e.reason === 'rest_overdue') whereCell.appendChild(el('span', 'tag gray', '휴게 미준수'));
+        else whereCell.appendChild(el('span', 'tag gray', REASON_LABEL[e.reason] || e.reason));
+
+        const stageCell = el('td'); stageCell.appendChild(stageBadge(e.stage, e.stage_label));
+        const timeCell = el('td', '', fmtTime(e.created_at));
+        const statusCell = el('td'); statusCell.appendChild(el('span', 'status s-' + e.status, e.status));
+
+        tr.append(photoCell, whereCell, stageCell, timeCell, statusCell);
+        body.appendChild(tr);
+      });
+      document.getElementById('tileUrgent').textContent = events.filter(isOpenUrgent).length;
+      document.getElementById('tileNew').textContent = events.filter((e) => e.status === '미확인').length;
+      document.getElementById('tileTotal').textContent = events.length;
+    }
+
+    // ── 상세: Agent 보고서 · 운전 중 퀴즈 · 휴식 · 눈 숫자 ─────
+    function addRow(dl, term, value, cls) {
+      if (value === undefined || value === null || value === '') return;
+      dl.appendChild(el('dt', '', term));
+      dl.appendChild(el('dd', cls || '', value));
+    }
+    function renderDetail() {
+      const box = document.getElementById('detail');
+      const e = events.find((x) => x.id === selectedId);
+      box.replaceChildren();
+      if (!e) { box.appendChild(el('div', 'empty', '왼쪽에서 경고를 누르면 Agent 보고서가 보입니다.')); return; }
+      const r = e.report || {};
+
+      const title = el('h2', '', '경고 #' + e.id + ' · ' + (e.user_name || '기사 ' + e.user_id));
+      box.appendChild(title);
+      if (e.photo_url) { const img = el('img', 'big'); img.src = e.photo_url; img.alt = '졸음 순간 사진'; img.addEventListener('error', () => img.remove()); box.appendChild(img); }
+      const head = el('div'); head.append(stageBadge(e.stage, e.stage_label), document.createTextNode(' '), el('span', 'tag ' + (e.urgent ? 'red' : 'gray'), REASON_LABEL[e.reason] || e.reason));
+      box.appendChild(head);
+
+      const ai = el('dl', 'ai');
+      addRow(ai, '상황', r.situation || e.summary);
+      addRow(ai, '왜 이 단계인가', r.stage_reason);
+      addRow(ai, '근거 규정', r.regulation);
+      addRow(ai, '권장 조치', r.recommended_action);
+      addRow(ai, '위치', (e.address ? e.address + ' · ' : '') + (r.location || ''));
+      box.appendChild(ai);
+
+      const dl = el('dl');
+      addRow(dl, '기사 안내문', e.guidance);
+      const eye = r.eye || {};
+      const eyeParts = [];
+      if (eye.closed_sec != null) eyeParts.push('눈 감김 ' + eye.closed_sec + '초');
+      if (eye.perclos != null) eyeParts.push('PERCLOS ' + Math.round(eye.perclos * 100) + '%');
+      if (eye.eye_open_prob != null) eyeParts.push('눈 뜸 확률 ' + eye.eye_open_prob);
+      if (eye.ear != null || e.ear != null) eyeParts.push('EAR ' + (eye.ear != null ? eye.ear : e.ear));
+      addRow(dl, '앱 눈 숫자', eyeParts.join(' · '));
+
+      const quiz = Array.isArray(r.driving_quiz) ? r.driving_quiz : [];
+      if (quiz.length) {
+        dl.appendChild(el('dt', '', '운전 중 퀴즈'));
+        quiz.forEach((q) => {
+          const heard = q.heard ? '“' + q.heard + '”' : '무응답';
+          const sec = q.answer_sec != null ? ' (' + q.answer_sec + '초)' : '';
+          dl.appendChild(el('dd', q.passed ? 'quiz-ok' : 'quiz-fail',
+            (QUIZ_LABEL[q.type] || q.type) + ' ' + q.asked + ' → ' + heard + ' ' + (q.passed ? '통과' : '실패') + sec));
+        });
+      }
+      const rest = r.rest;
+      if (rest && rest.started) addRow(dl, '휴식', rest.minutes + '분 휴식 (' + rest.started + ' → ' + (rest.resumed || '진행 중') + ')' + (rest.resumed ? ' · ' + rest.resumed + ' 운행 재개' : ''));
+      addRow(dl, '발생 시각', fmtTime(e.created_at));
+      addRow(dl, '처리 상태', e.status);
+      box.appendChild(dl);
+
+      const actions = el('div', 'actions');
+      [['확인', ''], ['조치완료', 'primary']].forEach(([status, cls]) => {
+        const b = el('button', cls, status === '조치완료' ? '조치완료' + (e.stage === 3 ? ' (3단계 해제)' : '') : '확인');
+        b.type = 'button';
+        b.disabled = e.status === status;
+        b.addEventListener('click', () => changeStatus(e, status));
+        actions.appendChild(b);
+      });
+      box.appendChild(actions);
+      box.appendChild(Object.assign(el('div'), { id: 'notice' }));
+    }
+
+    async function changeStatus(e, status) {
+      if (busy) return;
+      if (status === '조치완료' && !confirm('#' + e.id + ' 경고를 조치완료로 바꿀까요?' + (e.stage === 3 ? '\n기사 앱의 3단계가 해제됩니다.' : ''))) return;
+      busy = true;
+      const notice = document.getElementById('notice');
+      try {
+        const res = await updateEventStatus(e.id, status);
+        await load();
+        const n = document.getElementById('notice');
+        if (n) { n.className = 'ok'; n.textContent = res.stage_reset ? '조치완료 — 기사 앱은 다음 ping 에서 0단계가 됩니다.' : '“' + status + '” 로 바꿨습니다.'; }
+      } catch (err) {
+        if (notice) { notice.className = 'err'; notice.textContent = err.message; }
+      } finally { busy = false; }
+    }
+
+    // ── 통계 (P2) ────────────────────────────────────────────
+    async function loadStats() {
+      try {
+        const [stages, hours] = await Promise.all([fetchStageStats(), fetchHourlyStats()]);
+        const sb = document.getElementById('stageBars'); sb.replaceChildren();
+        stages.forEach((s) => { const d = el('div'); d.append(stageBadge(s.stage, s.label), el('div'), el('b', '', s.count + '건')); sb.appendChild(d); });
+        const bars = document.getElementById('hourBars'); const axis = document.getElementById('hourAxis');
+        bars.replaceChildren(); axis.replaceChildren();
+        const max = Math.max(1, ...hours.map((h) => h.count));
+        hours.forEach((h) => {
+          const bar = el('div', 'bar'); bar.style.height = Math.max(2, (h.count / max) * 100) + '%'; bar.dataset.tip = h.hour + '시 ' + h.count + '건';
+          bars.appendChild(bar);
+          axis.appendChild(el('span', '', h.hour % 3 === 0 ? String(h.hour) : ''));
+        });
+      } catch (err) { /* 통계가 안 와도 목록은 계속 */ }
+    }
+
+    // ── 불러오기 (10초마다) ───────────────────────────────────
+    async function load() {
+      try {
+        events = await fetchAdminEvents(filters);
+        if (selectedId !== null && !events.some((e) => e.id === selectedId)) selectedId = null;
+        renderRows(); renderDetail();
+        document.getElementById('updated').textContent = '갱신 ' + new Date().toLocaleTimeString('ko-KR');
+      } catch (err) {
+        document.getElementById('updated').textContent = err.message;
+      }
+    }
+
+    if (!getToken()) location.href = 'admin_login.html';
+    document.getElementById('refreshBtn').addEventListener('click', () => { load(); loadStats(); });
+    document.getElementById('logoutBtn').addEventListener('click', () => { clearToken(); location.href = 'admin_login.html'; });
+    renderFilters(); load(); loadStats();
+    setInterval(() => { if (!busy) { load(); loadStats(); } }, 10000);
+  </script>
+</body>
+</html>

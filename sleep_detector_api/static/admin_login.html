@@ -3,5 +3,62 @@
 static/admin_login.html — 관리자 로그인 화면
 담당: D   |   우선: P0
 수업 원본: road_hazard_api/static/admin_login.html (🟢 그대로 복사, 제목 문구만 바꾸기)
+
+[이 파일이 하는 일]
+  - 이메일 · 비밀번호로 POST /users/login → 관리자(role admin)면 토큰 저장 후 admin.html 로 이동
+  - 기사 계정이면 "관리자 계정이 아닙니다"
 ═══════════════════════════════════════════════════════════════
 -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>졸음 가드 관리자 로그인</title>
+  <style>
+    :root { --navy: #1f2a5c; --line: #d9deea; --bg: #f3f5fa; --red: #d93025; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg);
+           font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; color: #222; }
+    form { width: min(360px, 90vw); background: #fff; border-radius: 12px; padding: 32px 28px; box-shadow: 0 6px 24px rgba(31, 42, 92, .12); }
+    h1 { margin: 0 0 4px; font-size: 22px; color: var(--navy); }
+    p.sub { margin: 0 0 24px; font-size: 13px; color: #667; }
+    label { display: block; margin: 14px 0 6px; font-size: 13px; font-weight: 600; }
+    input { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
+    input:focus { outline: 2px solid var(--navy); border-color: transparent; }
+    button { width: 100%; margin-top: 22px; padding: 12px; border: 0; border-radius: 8px; background: var(--navy); color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: default; }
+    #msg { min-height: 20px; margin-top: 12px; font-size: 13px; color: var(--red); }
+  </style>
+</head>
+<body>
+  <form id="loginForm">
+    <h1>졸음 가드 관리자</h1>
+    <p class="sub">졸음 경고 확인 · 조치완료</p>
+    <label for="email">이메일</label>
+    <input id="email" type="email" autocomplete="username" required>
+    <label for="password">비밀번호</label>
+    <input id="password" type="password" autocomplete="current-password" required>
+    <button id="submit" type="submit">로그인</button>
+    <div id="msg" role="alert"></div>
+  </form>
+
+  <script src="js/api.js"></script>
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const button = document.getElementById('submit');
+      const msg = document.getElementById('msg');
+      button.disabled = true;
+      msg.textContent = '';
+      try {
+        await adminLogin(document.getElementById('email').value.trim(), document.getElementById('password').value);
+        location.href = 'admin.html';
+      } catch (err) {
+        msg.textContent = err.message;
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

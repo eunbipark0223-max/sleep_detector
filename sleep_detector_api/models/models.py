@@ -13,6 +13,148 @@
 #
 # [주의]
 #   - 칸을 새로 추가하지 않는다. 새 정보는 report JSON 안에 넣는다 (파일 구조 3장)
+#   - 칸 이름은 schema/response.py 의 SleepEventResponse (D) 와 같다 — 바꾸면 앱 · 관리자 웹까지 바뀜
+#   - 표는 서버가 시작할 때 자동으로 만든다 (main.py). 칸을 바꿨으면 MySQL 에서 표를 지우고 다시 시작
 #
 # 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 # ═══════════════════════════════════════════════════════════════
+
+from datetime import datetime
+
+from sqlalchemy import (
+    Integer, String, Float, Text,
+    ForeignKey, DateTime, Numeric, func,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from database.orm import Base
+
+
+class SleepEvent(Base):
+    __tablename__ = "sleep_events"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )
+    stage: Mapped[int] = mapped_column(          # 1~3 단계 (수업 severity 자리)
+        Integer,
+        nullable=False,
+        index=True,
+    )
+    ear: Mapped[float | None] = mapped_column(   # 서버가 계산한 EAR (수업 confidence 자리, 얼굴 없으면 null)
+        Float,
+        nullable=True,
+    )
+    eye_closed_prob: Mapped[float | None] = mapped_column(  # CNN 감김 확률 (USE_CNN 일 때)
+        Float,
+        nullable=True,
+    )
+    method: Mapped[str | None] = mapped_column(  # ear / cnn / mlkit
+        String(10),
+        nullable=True,
+    )
+    reason: Mapped[str] = mapped_column(         # microsleep / perclos / rest_overdue / no_response
+        String(20),
+        nullable=False,
+        index=True,
+    )
+    perclos: Mapped[float | None] = mapped_column(  # 앱이 계산한 PERCLOS (0~1)
+        Float,
+        nullable=True,
+    )
+    summary: Mapped[str | None] = mapped_column(  # LLM 상황 요약 (수업 memo 자리)
+        String(255),
+        nullable=True,
+    )
+    guidance: Mapped[str | None] = mapped_column(  # Agent 안내문
+        String(255),
+        nullable=True,
+    )
+    report: Mapped[str | None] = mapped_column(  # Agent 관리자 보고서 JSON 문자열 (eye · driving_quiz · rest · is_real …)
+        Text,
+        nullable=True,
+    )
+    photo_path: Mapped[str | None] = mapped_column(  # 졸음 확정 사진 (uploads/events/…)
+        String(255),
+        nullable=True,
+    )
+    latitude: Mapped[float | None] = mapped_column(
+        Numeric(10, 7),
+        nullable=True,
+    )
+    longitude: Mapped[float | None] = mapped_column(
+        Numeric(10, 7),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(         # 미확인 / 확인 / 조치완료 / 휴식완료
+        String(20),
+        nullable=False,
+        default="미확인",
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+    )
+
+    user: Mapped["User | None"] = relationship(
+        back_populates="sleep_events",
+    )
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    email: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        index=True,
+        nullable=False,
+    )
+    hashed_password: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    name: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+        default="user",
+    )
+    provider: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="email",
+    )
+    firebase_uid: Mapped[str | None] = mapped_column(
+        String(128),
+        nullable=True,
+        unique=True,
+    )
+    photo_url: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    sleep_events: Mapped[list["SleepEvent"]] = relationship(
+        back_populates="user",
+    )
