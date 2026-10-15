@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.road_hazard_app"
+    namespace = "com.example.sleep_detector_app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -17,7 +17,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.road_hazard_app"
+        applicationId = "com.example.sleep_detector_app"  // Firebase sleep-detector 에 등록한 이름과 같아야 함
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 24  // ML Kit 얼굴 감지는 21 이상 필요, 시연 폰 Android 12(API 31)
