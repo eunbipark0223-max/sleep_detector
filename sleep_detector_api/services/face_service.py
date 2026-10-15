@@ -24,3 +24,326 @@
 #
 # 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 # ═══════════════════════════════════════════════════════════════
+
+import os
+import sys
+import statistics
+import urllib.request
+import cv2
+import numpy as np
+import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+
+# 프로젝트 루트(sleep_detector_api) 경로 추가 (단독 실행 시 config import 에러 방지)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+try:
+    import config
+except ImportError:
+    config = None
+
+# ─── 설정값 로드 (config.py에 값이 없어도 기본값으로 안전하게 동작) ───
+EAR_THRESHOLD = getattr(config, "EAR_THRESHOLD", 0.20)
+CONFIRM_OPEN_MARGIN = getattr(config, "CONFIRM_OPEN_MARGIN", 0.03)
+USE_CNN = getattr(config, "USE_CNN", False)
+CNN_CLOSED_PROB = getattr(config, "CNN_CLOSED_PROB", 0.5)
+CNN_INPUT_SIZE = getattr(config, "CNN_INPUT_SIZE", 64)
+USE_REAL_AI = getattr(config, "USE_REAL_AI", True)
+FALLBACK_ON_ERROR = getattr(config, "FALLBACK_ON_ERROR", True)
+
+CALIB_MIN_FACES = getattr(config, "CALIB_MIN_FACES", 3)
+CALIB_RATIO = getattr(config, "CALIB_RATIO", 0.7)
+CALIB_MIN = getattr(config, "CALIB_MIN", 0.15)
+CALIB_MAX = getattr(config, "CALIB_MAX", 0.25)
+
+DEFAULT_MODEL_PATH = os.path.join(BASE_DIR, "ml_models", "face_landmarker.task")
+FACE_LANDMARKER_PATH = getattr(config, "FACE_LANDMARKER_PATH", DEFAULT_MODEL_PATH)
+if not os.path.isabs(FACE_LANDMARKER_PATH):
+    FACE_LANDMARKER_PATH = os.path.join(BASE_DIR, FACE_LANDMARKER_PATH)
+
+MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/"
+    "face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+)
+
+# MediaPipe Face Landmarker 눈 랜드마크 인덱스 (12개)
+LEFT_EYE = [33, 160, 158, 133, 153, 144]
+RIGHT_EYE = [362, 385, 387, 263, 373, 380]
+
+_detector = None
+
+
+def ensure_model_exists() -> str:
+    """face_landmarker.task 파일이 없으면 공식 경로에서 자동 다운로드합니다."""
+    os.makedirs(os.path.dirname(FACE_LANDMARKER_PATH), exist_ok=True)
+    if not os.path.exists(FACE_LANDMARKER_PATH):
+        print(f"📥 모델 파일 다운로드 중... ({FACE_LANDMARKER_PATH})")
+        urllib.request.urlretrieve(MODEL_URL, FACE_LANDMARKER_PATH)
+        print("✅ face_landmarker.task 다운로드 완료!")
+    return FACE_LANDMARKER_PATH
+
+
+def _get_detector():
+    """FaceLandmarker 인스턴스를 싱글톤으로 생성해 재사용합니다."""
+    global _detector
+    if _detector is None:
+        model_path = ensure_model_exists()
+        base_options = python.BaseOptions(model_asset_path=model_path)
+        options = vision.FaceLandmarkerOptions(
+            base_options=base_options,
+            output_face_blendshapes=False,
+            output_facial_transformation_matrixes=False,
+            num_faces=1,
+        )
+        _detector = vision.FaceLandmarker.create_from_options(options)
+    return _detector
+
+
+def _read_image_bgr(image_path: str):
+    """한글 경로 및 윈도우 파일 잠금 문제를 방지하여 이미지를 읽습니다."""
+    if not os.path.exists(image_path):
+        return None
+    data = np.fromfile(image_path, dtype=np.uint8)
+    return cv2.imdecode(data, cv2.IMREAD_COLOR)
+
+
+def calculate_ear(eye_points: list[int], landmarks) -> float:
+    """눈 랜드마크 6개 좌표로 EAR(눈 종횡비)을 계산합니다."""
+    pts = [np.array([landmarks[pt].x, landmarks[pt].y]) for pt in eye_points]
+    vertical_1 = np.linalg.norm(pts[1] - pts[5])
+    vertical_2 = np.linalg.norm(pts[2] - pts[4])
+    horizontal = np.linalg.norm(pts[0] - pts[3])
+    return float((vertical_1 + vertical_2) / (2.0 * horizontal)) if horizontal != 0 else 0.0
+
+
+def _get_user_threshold(user_id=None) -> float:
+    """sleep_state에 저장된 기사의 개인 기준 EAR을 조회하고, 없으면 기본값(0.20)을 반환합니다."""
+    if user_id is not None:
+        try:
+            from services import sleep_state
+            if hasattr(sleep_state, "get_ear_threshold"):
+                val = sleep_state.get_ear_threshold(user_id)
+                if val is not None:
+                    return float(val)
+        except Exception:
+            pass
+    return float(EAR_THRESHOLD)
+
+
+def _mock(image_path: str, threshold: float) -> dict:
+    """가짜(_mock) 판정: 파일 이름에 closed -> 감음, noface -> 얼굴 없음"""
+    filename = os.path.basename(str(image_path)).lower()
+    if "noface" in filename:
+        return {
+            "face_found": False,
+            "ear": None,
+            "eye_closed_prob": None,
+            "method": "mlkit",
+            "ear_threshold": threshold,
+            "result": "얼굴 없음",
+        }
+    elif "closed" in filename:
+        return {
+            "face_found": True,
+            "ear": round(max(0.05, threshold - 0.06), 3),
+            "eye_closed_prob": 0.90 if USE_CNN else None,
+            "method": "cnn" if USE_CNN else "ear",
+            "ear_threshold": threshold,
+            "result": "감음",
+        }
+    else:
+        return {
+            "face_found": True,
+            "ear": round(threshold + 0.06, 3),
+            "eye_closed_prob": 0.10 if USE_CNN else None,
+            "method": "cnn" if USE_CNN else "ear",
+            "ear_threshold": threshold,
+            "result": "뜸",
+        }
+
+
+def _real(image_path: str, threshold: float) -> dict:
+    """진짜(_real) 판정: MediaPipe Face Landmarker로 눈 12개 점 추출 -> EAR 계산"""
+    image_bgr = _read_image_bgr(image_path)
+    if image_bgr is None:
+        raise FileNotFoundError(f"이미지를 읽을 수 없습니다: {image_path}")
+
+    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
+
+    detector = _get_detector()
+    detection_result = detector.detect(mp_image)
+
+    if not detection_result.face_landmarks:
+        return {
+            "face_found": False,
+            "ear": None,
+            "eye_closed_prob": None,
+            "method": "mlkit",
+            "ear_threshold": threshold,
+            "result": "얼굴 없음",
+        }
+
+    landmarks = detection_result.face_landmarks[0]
+    left_ear = calculate_ear(LEFT_EYE, landmarks)
+    right_ear = calculate_ear(RIGHT_EYE, landmarks)
+    avg_ear = round((left_ear + right_ear) / 2.0, 3)
+
+    is_closed = avg_ear < threshold
+    return {
+        "face_found": True,
+        "ear": avg_ear,
+        "left_ear": round(left_ear, 3),
+        "right_ear": round(right_ear, 3),
+        "eye_closed_prob": None,
+        "method": "cnn" if USE_CNN else "ear",
+        "ear_threshold": threshold,
+        "result": "감음" if is_closed else "뜸",
+    }
+
+
+def _normalize(raw: dict, threshold: float, reason: str | None = None) -> dict:
+    """판정 결과를 기획안 9-3 / 5-2 확인 규칙에 맞게 정리합니다."""
+    face_found = bool(raw.get("face_found", False))
+    ear = raw.get("ear", None)
+    eye_closed_prob = raw.get("eye_closed_prob", None)
+    method = raw.get("method", "ear" if face_found else "mlkit")
+
+    if not face_found or ear is None:
+        result_str = "얼굴 없음"
+        is_closed = False
+        is_definitely_open = False
+    else:
+        ear = round(float(ear), 3)
+        is_closed = ear < threshold
+        is_definitely_open = ear >= (threshold + CONFIRM_OPEN_MARGIN)
+        result_str = "감음" if is_closed else "뜸"
+
+    if reason == "perclos":
+        method = "mlkit"
+        is_sleep = True
+    elif reason == "microsleep":
+        if not face_found:
+            method = "mlkit"
+            is_sleep = True
+        elif is_definitely_open:
+            is_sleep = False
+        else:
+            is_sleep = True
+    else:
+        is_sleep = is_closed if face_found else False
+
+    return {
+        "face_found": face_found,
+        "ear": ear,
+        "left_ear": raw.get("left_ear"),
+        "right_ear": raw.get("right_ear"),
+        "eye_closed_prob": eye_closed_prob,
+        "method": method,
+        "ear_threshold": round(threshold, 3),
+        "result": result_str,
+        "is_closed": is_closed,
+        "is_definitely_open": is_definitely_open,
+        "is_sleep": is_sleep,
+    }
+
+
+def check_eyes(image_path: str, user_id=None, reason: str | None = None, **kwargs) -> dict:
+    """앱이 보낸 의심 사진의 눈 감김 여부를 판정합니다."""
+    threshold = _get_user_threshold(user_id)
+
+    if not USE_REAL_AI:
+        raw = _mock(image_path, threshold)
+    else:
+        try:
+            raw = _real(image_path, threshold)
+        except Exception as e:
+            if FALLBACK_ON_ERROR:
+                raw = _mock(image_path, threshold)
+            else:
+                raise
+
+    return _normalize(raw, threshold, reason=reason)
+
+
+def calibrate(image_paths: list[str], user_id=None, **kwargs) -> float:
+    """정면 사진 5장의 평소 EAR 중간값 × 0.7을 계산하여 개인 기준을 반환합니다."""
+    ears = []
+    for path in image_paths:
+        try:
+            raw = _real(path, EAR_THRESHOLD) if USE_REAL_AI else _mock(path, EAR_THRESHOLD)
+            if raw.get("face_found") and raw.get("ear") is not None:
+                ears.append(float(raw["ear"]))
+        except Exception:
+            continue
+
+    if len(ears) < CALIB_MIN_FACES:
+        return round(float(EAR_THRESHOLD), 3)
+
+    median_ear = statistics.median(ears)
+    personal_threshold = median_ear * CALIB_RATIO
+    clamped = max(CALIB_MIN, min(CALIB_MAX, personal_threshold))
+    return round(float(clamped), 3)
+
+
+def process_all_images(image_dir: str, output_dir: str):
+    if not os.path.exists(image_dir):
+        print(f"❌ '{image_dir}' 폴더를 찾을 수 없습니다.")
+        return
+
+    os.makedirs(output_dir, exist_ok=True)
+    valid_exts = (".jpg", ".jpeg", ".png")
+    image_files = sorted([f for f in os.listdir(image_dir) if f.lower().endswith(valid_exts)])
+
+    if not image_files:
+        print(f"❌ '{image_dir}' 폴더 안에 이미지가 없습니다.")
+        return
+
+    detector = _get_detector()
+    print(f"📁 총 {len(image_files)}장의 사진을 발견했습니다. 분석을 시작합니다...\n")
+
+    for filename in image_files:
+        img_path = os.path.join(image_dir, filename)
+        res = check_eyes(img_path, user_id=1)
+
+        if not res["face_found"]:
+            print(f"⚠️ [{filename}] 얼굴 없음")
+            continue
+
+        image_bgr = _read_image_bgr(img_path)
+        image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
+        det = detector.detect(mp_image)
+
+        if det.face_landmarks:
+            h, w, _ = image_bgr.shape
+            landmarks = det.face_landmarks[0]
+            for idx in LEFT_EYE + RIGHT_EYE:
+                pt = landmarks[idx]
+                x, y = int(pt.x * w), int(pt.y * h)
+                cv2.circle(image_bgr, (x, y), 2, (0, 255, 0), -1)
+
+        out_path = os.path.join(output_dir, f"result_{filename}")
+        ok, buf = cv2.imencode(".png", image_bgr)
+        if ok:
+            buf.tofile(out_path)
+
+        print(f"✅ [{filename}] 판정: {res['result']} (is_sleep={res['is_sleep']})")
+        print(f"   - 좌안 EAR: {res['left_ear']:.3f} | 우안 EAR: {res['right_ear']:.3f} | 평균: {res['ear']:.3f}")
+        print(f"   - 저장 위치: {out_path}\n")
+
+    print("🎉 모든 사진 분석 및 눈 점(12개) 표시 저장이 끝났습니다!")
+
+
+if __name__ == "__main__":
+    candidates = [
+        os.path.join(BASE_DIR, "images"),
+        os.path.join(os.path.dirname(BASE_DIR), "images"),
+    ]
+    target_image_dir = next((p for p in candidates if os.path.exists(p)), candidates[0])
+    target_output_dir = os.path.join(BASE_DIR, "result_images")
+
+    process_all_images(target_image_dir, target_output_dir)
