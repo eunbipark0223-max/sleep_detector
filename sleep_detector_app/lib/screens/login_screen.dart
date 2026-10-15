@@ -12,8 +12,6 @@
 // ═══════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart'; // 안드로이드,ios 스타일의 기본 디자인 UI 요소가 들어있는 Flutter 공식 핵심 라이브러리
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import '../theme.dart'; // 앱 전체에 적용할 디자인 시스템
 import '../services/auth_service.dart';
 import 'main_screen.dart';
@@ -111,27 +109,11 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
   Future<void> _signInWithGoogle() async {
     setState(() {_isLoading = true; _error = null;});
     try {
-      // 구글 로그인 3단계
-
-      // 1. 구글 계정 선택창 : 구글에게 물어본다 - 계정 선택 창이 뜬다 - 사용자가 계정을 고르면 그 정보가 googleUser에 담긴다
-      final googleUser = await GoogleSignIn.instance.authenticate();
-      final idToken = googleUser.authentication.idToken; // idToken 꺼내기
-      // 2. Firebase에 등록한다 - idToken(구글이 발급한 신분증) - Firebase가 이걸 구글에 확인해서 진짜인지 검증
-      final credential = GoogleAuthProvider.credential(idToken: idToken); // Firebase 자격 증명 : 구글 신분증을 Firebase 형식으로 바꾼다
-      final userCred = await FirebaseAuth.instance.signInWithCredential(credential); // Firebase 로그인
-      final fbUser = userCred.user!;
-      // 3. 우리 서버에 보낸다 - 서버 JWT를 받아 저장
-      await AuthService.loginWithGoogle(
-        email: fbUser.email ?? googleUser.email,
-        name: fbUser.displayName ?? '구글 사용자',
-        firebaseUid: fbUser.uid,
-      );
+      // 구글 로그인 3단계 (구글 계정 선택 → Firebase 확인 → 서버 JWT 저장)는
+      // D 의 AuthService.loginWithGoogle() 이 한 번에 처리한다 (google_sign_in 7 의 initialize 포함) — 10/15 팀장
+      await AuthService.loginWithGoogle();
       if (mounted) _goHome();
-    } on GoogleSignInException catch (e) {
-      if (e.code != GoogleSignInExceptionCode.canceled) { // 취소는 오류가 아님
-        if (mounted) setState(() => _error = '구글 로그인 실패: ${e.code.name}');
-      }
-    } catch (e) {
+    } catch (e) { // 취소 · 실패 메시지는 AuthService 가 한국어로 만들어 준다
       if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _isLoading = false);
