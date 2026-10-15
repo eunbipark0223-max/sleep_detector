@@ -26,6 +26,9 @@
 # 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 # ═══════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════
+# services/face_service.py — 서버 확인 판정 (MediaPipe EAR · CNN)  ⭐ 핵심
+# ═══════════════════════════════════════════════════════════════
 import os
 import sys
 import statistics
@@ -36,7 +39,7 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-# 프로젝트 루트(sleep_detector_api) 경로 추가 (단독 실행 시 config import 에러 방지)
+# 프로젝트 루트 경로 추가
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
@@ -46,7 +49,6 @@ try:
 except ImportError:
     config = None
 
-# ─── 설정값 로드 (config.py에 값이 없어도 기본값으로 안전하게 동작) ───
 EAR_THRESHOLD = getattr(config, "EAR_THRESHOLD", 0.20)
 CONFIRM_OPEN_MARGIN = getattr(config, "CONFIRM_OPEN_MARGIN", 0.03)
 USE_CNN = getattr(config, "USE_CNN", False)
@@ -70,7 +72,6 @@ MODEL_URL = (
     "face_landmarker/face_landmarker/float16/1/face_landmarker.task"
 )
 
-# MediaPipe Face Landmarker 눈 랜드마크 인덱스 (12개)
 LEFT_EYE = [33, 160, 158, 133, 153, 144]
 RIGHT_EYE = [362, 385, 387, 263, 373, 380]
 
@@ -78,7 +79,6 @@ _detector = None
 
 
 def ensure_model_exists() -> str:
-    """face_landmarker.task 파일이 없으면 공식 경로에서 자동 다운로드합니다."""
     os.makedirs(os.path.dirname(FACE_LANDMARKER_PATH), exist_ok=True)
     if not os.path.exists(FACE_LANDMARKER_PATH):
         print(f"📥 모델 파일 다운로드 중... ({FACE_LANDMARKER_PATH})")
@@ -88,7 +88,6 @@ def ensure_model_exists() -> str:
 
 
 def _get_detector():
-    """FaceLandmarker 인스턴스를 싱글톤으로 생성해 재사용합니다."""
     global _detector
     if _detector is None:
         model_path = ensure_model_exists()
@@ -104,16 +103,15 @@ def _get_detector():
 
 
 def _read_image_bgr(image_path: str):
-    """한글 경로 및 윈도우 파일 잠금 문제를 방지하여 이미지를 읽습니다."""
     if not os.path.exists(image_path):
         return None
     data = np.fromfile(image_path, dtype=np.uint8)
     return cv2.imdecode(data, cv2.IMREAD_COLOR)
 
 
-def calculate_ear(eye_points: list[int], landmarks) -> float:
-    """눈 랜드마크 6개 좌표로 EAR(눈 종횡비)을 계산합니다."""
-    pts = [np.array([landmarks[pt].x, landmarks[pt].y]) for pt in eye_points]
+def calculate_ear(eye_points: list[int], landmarks, width: int, height: int) -> float:
+    """눈 랜드마크 6개 좌표로 EAR(눈 종횡비)을 계산합니다. (실제 픽셀 좌표 변환 적용)"""
+    pts = [np.array([landmarks[pt].x * width, landmarks[pt].y * height]) for pt in eye_points]
     vertical_1 = np.linalg.norm(pts[1] - pts[5])
     vertical_2 = np.linalg.norm(pts[2] - pts[4])
     horizontal = np.linalg.norm(pts[0] - pts[3])
@@ -121,7 +119,6 @@ def calculate_ear(eye_points: list[int], landmarks) -> float:
 
 
 def _get_user_threshold(user_id=None) -> float:
-    """sleep_state에 저장된 기사의 개인 기준 EAR을 조회하고, 없으면 기본값(0.20)을 반환합니다."""
     if user_id is not None:
         try:
             from services import sleep_state
@@ -135,7 +132,6 @@ def _get_user_threshold(user_id=None) -> float:
 
 
 def _mock(image_path: str, threshold: float) -> dict:
-    """가짜(_mock) 판정: 파일 이름에 closed -> 감음, noface -> 얼굴 없음"""
     filename = os.path.basename(str(image_path)).lower()
     if "noface" in filename:
         return {
@@ -167,11 +163,11 @@ def _mock(image_path: str, threshold: float) -> dict:
 
 
 def _real(image_path: str, threshold: float) -> dict:
-    """진짜(_real) 판정: MediaPipe Face Landmarker로 눈 12개 점 추출 -> EAR 계산"""
     image_bgr = _read_image_bgr(image_path)
     if image_bgr is None:
         raise FileNotFoundError(f"이미지를 읽을 수 없습니다: {image_path}")
 
+    h, w, _ = image_bgr.shape
     image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
 
@@ -189,8 +185,10 @@ def _real(image_path: str, threshold: float) -> dict:
         }
 
     landmarks = detection_result.face_landmarks[0]
-    left_ear = calculate_ear(LEFT_EYE, landmarks)
-    right_ear = calculate_ear(RIGHT_EYE, landmarks)
+
+    # 픽셀 변환을 위해 가로(w), 세로(h) 값을 전달
+    left_ear = calculate_ear(LEFT_EYE, landmarks, w, h)
+    right_ear = calculate_ear(RIGHT_EYE, landmarks, w, h)
     avg_ear = round((left_ear + right_ear) / 2.0, 3)
 
     is_closed = avg_ear < threshold
@@ -207,7 +205,6 @@ def _real(image_path: str, threshold: float) -> dict:
 
 
 def _normalize(raw: dict, threshold: float, reason: str | None = None) -> dict:
-    """판정 결과를 기획안 9-3 / 5-2 확인 규칙에 맞게 정리합니다."""
     face_found = bool(raw.get("face_found", False))
     ear = raw.get("ear", None)
     eye_closed_prob = raw.get("eye_closed_prob", None)
@@ -253,7 +250,6 @@ def _normalize(raw: dict, threshold: float, reason: str | None = None) -> dict:
 
 
 def check_eyes(image_path: str, user_id=None, reason: str | None = None, **kwargs) -> dict:
-    """앱이 보낸 의심 사진의 눈 감김 여부를 판정합니다."""
     threshold = _get_user_threshold(user_id)
 
     if not USE_REAL_AI:
@@ -263,7 +259,15 @@ def check_eyes(image_path: str, user_id=None, reason: str | None = None, **kwarg
             raw = _real(image_path, threshold)
         except Exception as e:
             if FALLBACK_ON_ERROR:
-                raw = _mock(image_path, threshold)
+                # 오류 발생 시 앱(ML Kit)의 "졸음 의심" 판단을 우선시하도록 얼굴 없음과 동일하게 처리
+                raw = {
+                    "face_found": False,
+                    "ear": None,
+                    "eye_closed_prob": None,
+                    "method": "mlkit",
+                    "ear_threshold": threshold,
+                    "result": "얼굴 없음"
+                }
             else:
                 raise
 
@@ -271,7 +275,6 @@ def check_eyes(image_path: str, user_id=None, reason: str | None = None, **kwarg
 
 
 def calibrate(image_paths: list[str], user_id=None, **kwargs) -> float:
-    """정면 사진 5장의 평소 EAR 중간값 × 0.7을 계산하여 개인 기준을 반환합니다."""
     ears = []
     for path in image_paths:
         try:
@@ -286,6 +289,7 @@ def calibrate(image_paths: list[str], user_id=None, **kwargs) -> float:
 
     median_ear = statistics.median(ears)
     personal_threshold = median_ear * CALIB_RATIO
+
     clamped = max(CALIB_MIN, min(CALIB_MAX, personal_threshold))
     return round(float(clamped), 3)
 
