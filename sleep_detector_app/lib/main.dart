@@ -18,22 +18,18 @@
 // ═══════════════════════════════════════════════════════════════
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // 🔴 화면 방향 고정을 위해 추가
+import 'package:flutter/services.dart';
 
 import 'screens/splash_screen.dart';
 import 'theme.dart';
 
 Future<void> main() async {
-  // 1. 프레임워크 초기화 보장
   WidgetsFlutterBinding.ensureInitialized();
-
-  // 2. Firebase 초기화 (아까 추가한 google-services.json 필요)
   await Firebase.initializeApp();
 
-  // 3. 🔴 화면 세로 모드 완전 고정 (기획안 요구사항)
+  // 🔴 화면 세로 모드 완전 고정
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  // 4. 앱 실행
   runApp(const SleepDetectorApp());
 }
 
@@ -46,8 +42,8 @@ class SleepDetectorApp extends StatelessWidget {
       title: '졸음 가드',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
-      // ⚠️ 만약 아직 SplashScreen 화면 코드가 없다면 여기서 튕길 수 있습니다.
-      home:  SplashScreen(),
+      // 🔴 에러를 일으키던 const 제거 완료
+      home: SplashScreen(),
     );
   }
 }

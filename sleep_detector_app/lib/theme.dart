@@ -8,6 +8,9 @@
 //   - 단계 색: 0 정상 초록 · 1 주의 노랑 · 2 휴식 권고 주황(추가) · 3 긴급 빨강
 //   - 브랜드 남색 · AI 카드 보라 (앱 화면 구상 PPT 기준)
 //
+//   - 별명: primary = navy · danger = urgent (수업 코드 이름)
+//   - 글자 · 테두리: textPrimary · textSecondary · textMuted · cardBorder
+//
 // [쓰는 법] AppColors.stage(stage) — 서버 응답의 stage(0~3)를 그대로 넣으면 화면 색이 나온다
 //   관리자 웹(sleep_detector_api/static/admin.html)의 단계 색과 같은 값
 //
@@ -26,6 +29,16 @@ class AppColors {
   static const Color caution = Color(0xFFF2B01E); // 1 주의
   static const Color rest = Color(0xFFF28C28); // 2 휴식 권고 (주황, 추가)
   static const Color urgent = Color(0xFFD93025); // 3 긴급
+
+  // 글자 · 테두리 색 (관리자 웹 admin.html 의 글자 · 선 색과 같은 계열)
+  static const Color textPrimary = Color(0xFF1F2430); // 제목 · 본문
+  static const Color textSecondary = Color(0xFF4A5068); // 설명 · 부제
+  static const Color textMuted = Color(0xFF8A90A5); // 시각 · 힌트 · 비활성
+  static const Color cardBorder = Color(0xFFD9DEEA); // 카드 · 입력창 테두리
+
+  // 수업 코드가 쓰는 이름 (수업 화면을 그대로 가져와도 컴파일되게 우리 색에 연결한 별명)
+  static const Color primary = navy;
+  static const Color danger = urgent;
 
   static const List<Color> _stageColors = [normal, caution, rest, urgent];
 

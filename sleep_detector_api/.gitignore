@@ -16,3 +16,10 @@ chroma_db/
 
 # 큰 모델 파일 (50MB 넘으면 Google Drive 로 공유)
 ml_models/*.pt
+
+# MediaPipe 모델 (face_service 가 처음 실행 때 자동으로 받음)
+ml_models/*.task
+
+# 얼굴 사진 테스트 폴더 (face_service.py 단독 실행용) — 얼굴 사진은 절대 올리지 않음
+images/
+result_images/
