@@ -12,6 +12,7 @@
 //   - POST /users/login   {email, password}                      → {success, access_token, token_type, user}
 //   - POST /users/google  {email, name, firebase_uid}            → 로그인과 같은 응답 (구글 로그인 뒤 서버 JWT 로 통일)
 //   - GET  /users/me      Authorization: Bearer 토큰              → 내 정보 (토큰이 틀리면 401)
+//   - POST · GET · DELETE /users/me/photo                        → 프로필 사진 올리기(멀티파트 file) · 받기(토큰 필요) · 지우기
 //
 // [쓰는 법]
 //   - 실패는 AuthException(message) 으로 던진다 — message 는 화면에 그대로 보여 줘도 되는 글 (서버 detail · 422 메시지)
@@ -23,11 +24,13 @@
 // ═══════════════════════════════════════════════════════════════
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import '../config.dart';
 
@@ -125,6 +128,43 @@ class AuthService {
       return null;
     }
     throw _error(res);
+  }
+
+  // ── 프로필 사진 (서버: POST · GET · DELETE /users/me/photo) ──────────────
+  /// 내 프로필 사진 바이트. 사진이 없으면(404) null.
+  /// 사진은 로그인 토큰이 있어야 받을 수 있어서(주소만으로는 안 열림) Image.network 대신 바이트로 받아 Image.memory 로 그린다.
+  static Future<Uint8List?> fetchPhoto() async {
+    final res = await _send(() async => http.get(_uri('/users/me/photo'), headers: await authHeaders()));
+    if (res.statusCode == 200) return res.bodyBytes;
+    if (res.statusCode == 404) return null;
+    throw _error(res);
+  }
+
+  /// 프로필 사진 올리기. 서버가 정한 확장자(jpg · jpeg · png · webp · heic) · 5MB 를 어기면 서버 문구가 AuthException 으로 온다.
+  static Future<void> uploadPhoto(Uint8List bytes, String filename) async {
+    final headers = await authHeaders()
+      ..remove('Content-Type'); // 멀티파트의 Content-Type 은 http 가 경계값과 함께 직접 붙인다
+    final res = await _send(() async {
+      final request = http.MultipartRequest('POST', _uri('/users/me/photo'))
+        ..headers.addAll(headers)
+        ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: _imageType(filename)));
+      return http.Response.fromStream(await request.send());
+    });
+    if (res.statusCode != 200) throw _error(res);
+  }
+
+  /// 프로필 사진 지우기 (서버도 파일을 지운다).
+  static Future<void> deletePhoto() async {
+    final res = await _send(() async => http.delete(_uri('/users/me/photo'), headers: await authHeaders()));
+    if (res.statusCode != 200) throw _error(res);
+  }
+
+  static MediaType _imageType(String filename) {
+    final lower = filename.toLowerCase();
+    if (lower.endsWith('.png')) return MediaType('image', 'png');
+    if (lower.endsWith('.webp')) return MediaType('image', 'webp');
+    if (lower.endsWith('.heic')) return MediaType('image', 'heic');
+    return MediaType('image', 'jpeg');
   }
 
   /// 로그아웃 — 토큰을 지우고 Firebase · 구글 로그인도 푼다 (둘 중 하나가 실패해도 토큰은 이미 지워진다).
