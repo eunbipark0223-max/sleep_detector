@@ -10,3 +10,29 @@
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
+
+class DriveStatus {
+  final int stage;
+  final String status;
+  final int driveMin;
+  final bool restDue;
+  final String restMessage;
+
+  DriveStatus({
+    required this.stage,
+    required this.status,
+    required this.driveMin,
+    required this.restDue,
+    required this.restMessage,
+  });
+
+  factory DriveStatus.fromJson(Map<String, dynamic> json) {
+    return DriveStatus(
+      stage: (json['stage'] as num?)?.toInt() ?? 0,
+      status: json['status'] as String? ?? '',
+      driveMin: (json['drive_min'] as num?)?.toInt() ?? 0,
+      restDue: json['rest_due'] as bool? ?? false,
+      restMessage: json['rest_message'] as String? ?? '',
+    );
+  }
+}
