@@ -48,7 +48,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Literal, Optional
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -82,6 +82,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # 서버 메모리 (진짜 서버: MySQL users · sleep_events + sleep_state)
 # ═══════════════════════════════════════════════════════════════
 USERS: dict = {}          # user_id → {id, email, name, role}
+PHOTOS: dict = {}         # user_id → {"name", "bytes"}  프로필 사진 (메모리에만 보관)
 EVENTS: list = []         # 경고 목록 (sleep_events 한 줄 = dict 하나)
 STATES: dict = {}         # user_id → 기사별 졸음 상태 (sleep_state)
 QUIZZES: dict = {}        # quiz_id → {user_id, type, answer, asked, event_id}
@@ -384,7 +385,7 @@ def seed() -> None:
 
 
 def reset_all() -> None:
-    USERS.clear(); EVENTS.clear(); STATES.clear(); QUIZZES.clear()
+    USERS.clear(); EVENTS.clear(); STATES.clear(); QUIZZES.clear(); PHOTOS.clear()
     _next.update({"user": 1, "event": 1})
     SCENARIO["name"] = "auto"
     add_user("driver@test.com", "김기사")
@@ -481,7 +482,43 @@ async def login_google(request: Request):
 
 @app.get("/users/me")
 def me(user: dict = Depends(current_user)):
-    return user
+    photo = PHOTOS.get(user["id"])
+    return {**user, "provider": "email", "photo_url": photo["name"] if photo else None}
+
+
+# 프로필 사진 — 진짜 서버(routers/user.py)와 같은 규칙: 확장자 · 5MB · 사진 받기는 로그인 토큰이 있어야 함 (메모리에만 보관)
+PROFILE_ALLOWED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".heic"}
+PROFILE_MAX_BYTES = 5 * 1024 * 1024
+_MEDIA ={".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".heic": "image/heic"}
+
+
+@app.post("/users/me/photo")
+async def upload_my_photo(file: UploadFile = File(...), user: dict = Depends(current_user)):
+    ext = os.path.splitext(file.filename or "photo.jpg")[1].lower() or ".jpg"
+    if ext not in PROFILE_ALLOWED_EXTS:
+        raise HTTPException(status_code=400, detail=f"이미지 파일만 올릴 수 있습니다 ({', '.join(sorted(PROFILE_ALLOWED_EXTS))})")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="빈 파일입니다")
+    if len(content) > PROFILE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail=f"사진이 너무 큽니다 (최대 {PROFILE_MAX_BYTES // (1024 * 1024)}MB)")
+    name = f"u{user['id']}_{uuid.uuid4().hex[:12]}{ext}"
+    PHOTOS[user["id"]] = {"name": name, "bytes": content}
+    return {"success": True, "photo_url": name}
+
+
+@app.get("/users/me/photo")
+def get_my_photo(user: dict = Depends(current_user)):
+    photo = PHOTOS.get(user["id"])
+    if not photo:
+        raise HTTPException(status_code=404, detail="프로필 사진이 없습니다")
+    return Response(content=photo["bytes"], media_type=_MEDIA.get(os.path.splitext(photo["name"])[1], "application/octet-stream"))
+
+
+@app.delete("/users/me/photo")
+def delete_my_photo(user: dict = Depends(current_user)):
+    PHOTOS.pop(user["id"], None)
+    return {"success": True}
 
 
 # ═══════════════════════════════════════════════════════════════
