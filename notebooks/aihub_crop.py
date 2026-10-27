@@ -57,7 +57,8 @@ FILEKEYS = {
 }
 
 FACE_TASK_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
-EYE_IDX = {"L": [33, 160, 158, 133, 153, 144], "R": [362, 385, 387, 263, 373, 380]}  # face_service.py LEFT_EYE / RIGHT_EYE
+# face_service.py LEFT_EYE / RIGHT_EYE 와 같은 번호. "L" = 사진 왼쪽 눈 (= 본인 오른눈, 33번 묶음) = AI-Hub JSON Leye (99.98% 사진 왼쪽)
+EYE_IDX = {"L": [33, 160, 158, 133, 153, 144], "R": [362, 385, 387, 263, 373, 380]}
 STORE = 96            # 저장 크기 (학습 때 augment → prep_eye 가 64×64 로)
 CHUNK = 5000          # 사진 이만큼마다 .npz 하나 (끊겨도 이어서)
 MAX_PER_DRIVER = 200  # Training 실제도로만: 운전자마다 최대 사진 수 (이웃 프레임이 거의 같음)
@@ -226,10 +227,10 @@ def crop_one(path):
     out = {}
     for side, idx in EYE_IDX.items():
         pts = [(lm[i].x * w, lm[i].y * h) for i in idx]
-        try:
-            eye = cv2.cvtColor(crop_eye(bgr, pts), cv2.COLOR_BGR2GRAY)
-        except (cv2.error, ValueError):  # 눈 폭이 0 · 자르기 범위가 사진 밖 (crop_eye 의 np.pad 오류) → 이 눈은 버림
+        eye = crop_eye(bgr, pts)
+        if eye is None:  # 눈이 너무 작거나 사진 밖 (crop_eye 가 None, 10.27 팀장 수정) → 이 눈은 버림
             continue
+        eye = cv2.cvtColor(eye, cv2.COLOR_BGR2GRAY)
         interp = cv2.INTER_AREA if min(eye.shape) >= STORE else cv2.INTER_LINEAR
         out[side] = (cv2.resize(eye, (STORE, STORE), interpolation=interp),
                      (pts[0][0] + pts[3][0]) / 2, (pts[0][1] + pts[3][1]) / 2)
