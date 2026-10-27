@@ -358,10 +358,17 @@ def calibrate(image_paths: list[str], user_id=None, **kwargs) -> float:
     return round(float(clamped), 3)
 
 
+def _label_of(filename: str) -> str:
+    name = filename.lower()
+    return next((l for l in ("closed", "half", "open") if l in name), "")
+
+
 def process_all_images(image_dir: str, output_dir: str):
     """폴더 안 사진 전부 → 눈 점 12개를 그린 사진 + result.csv (시연 폰 사진 시험 · KPI ① 서버 EAR 열)
 
-    result.csv 칸: file, face_found, left_ear, right_ear, ear, eye_width_px, result
+    result.csv 칸: file, label, face_found, left_ear, right_ear, ear, eye_closed_prob, method, eye_width_px, result
+      eye_closed_prob = CNN 감음 확률 (config.USE_CNN = True 이고 eye_cnn.pt 가 있을 때만, 아니면 빈칸)
+      label = 파일 이름 속 closed / half / open (사람_상태_번호.jpg, 앱 tools/eye_measure_main.dart 와 같은 규칙)
       eye_width_px = 두 눈 평균 눈꼬리 사이 거리 (작으면 EAR 이 흔들림 — 앱 폰 EAR 과 비교할 때 참고)
     """
     import csv
@@ -387,7 +394,7 @@ def process_all_images(image_dir: str, output_dir: str):
 
         if not res["face_found"]:
             print(f"⚠️ [{filename}] 얼굴 없음")
-            rows.append({"file": filename, "face_found": False, "result": "얼굴 없음"})
+            rows.append({"file": filename, "label": _label_of(filename), "face_found": False, "result": "얼굴 없음"})
             continue
 
         image_bgr = _read_image_bgr(img_path)
@@ -416,12 +423,13 @@ def process_all_images(image_dir: str, output_dir: str):
         print(f"   - 좌안 EAR: {res['left_ear']:.3f} | 우안 EAR: {res['right_ear']:.3f} | 평균: {res['ear']:.3f}"
               f" | 눈 폭 {eye_width}px")
         print(f"   - 저장 위치: {out_path}\n")
-        rows.append({"file": filename, "face_found": True, "left_ear": res["left_ear"], "right_ear": res["right_ear"],
-                     "ear": res["ear"], "eye_width_px": eye_width, "result": res["result"]})
+        rows.append({"file": filename, "label": _label_of(filename), "face_found": True, "left_ear": res["left_ear"], "right_ear": res["right_ear"],
+                     "ear": res["ear"], "eye_closed_prob": res["eye_closed_prob"], "method": res["method"], "eye_width_px": eye_width, "result": res["result"]})
 
     csv_path = os.path.join(output_dir, "result.csv")
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:  # utf-8-sig: 엑셀에서 한글 안 깨짐
-        writer = csv.DictWriter(f, fieldnames=["file", "face_found", "left_ear", "right_ear", "ear",
+        writer = csv.DictWriter(f, fieldnames=["file", "label", "face_found", "left_ear", "right_ear", "ear",
+                                               "eye_closed_prob", "method",
                                                "eye_width_px", "result"])
         writer.writeheader()
         writer.writerows(rows)
