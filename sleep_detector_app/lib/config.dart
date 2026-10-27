@@ -13,6 +13,7 @@
 //   - unknownSec = 3           얼굴 없음 · 모름이 이만큼 이어지면 '카메라를 확인하세요'
 //   - minFaceSize = 0.15       ML Kit 최소 얼굴 크기 (조수석 · 뒷좌석 무시)
 //   - calibSec = 5 · calibRatio = 0.5 · calibMin = 0.2 · calibMax = 0.4   개인 기준
+//   - contourEarOn · useContourEar · earClosed   (🆕 10/27) ML Kit 눈 윤곽 점으로 폰에서 EAR — 반쯤 감은 눈용
 //   - pingSec = 30             서버 config.PING_SEC 과 같은 값
 //   - baseUrl                  서버 주소 (에뮬레이터는 http://10.0.2.2:8000)
 //
@@ -43,6 +44,18 @@ class AppConfig {
   static const double calibRatio = 0.5;
   static const double calibMin = 0.2;
   static const double calibMax = 0.4;
+
+  // 🆕 폰 EAR (ML Kit 눈 윤곽 점 16개) — 반쯤 감긴 눈은 뜸 확률이 높게 나와 사진이 안 가는 문제 보완
+  //   contourEarOn  : 윤곽 점을 받아 EAR 계산 (측정 · 화면 표시). 켜면 ML Kit 이 느려짐 → 처리 시간(ms) 측정
+  //   useContourEar : EAR 을 '감김' 판정에도 씀 (뜸 확률 < 기준 또는 EAR < earClosed)
+  //                   🔴 시연 폰에서 ① 처리 속도 ② 반쯤 감은 눈 EAR 이 뜬 눈보다 확실히 낮은지 확인한 뒤에만 true
+  //   earClosed     : 출발점. ML Kit 윤곽 EAR 은 서버 MediaPipe EAR 과 숫자 크기가 다를 수 있음 → 측정 후 확정
+  static const bool contourEarOn = true;
+  static const bool useContourEar = false;
+  static const double earClosed = 0.2;
+  // 눈 폭(눈꼬리 사이)이 이보다 작으면 폰 EAR 을 안 씀 — 윤곽 점이 정수 픽셀이라 작은 눈은 뜸/감음 구분이 안 됨
+  //   (모의 시험: 폭 30px 은 뜸 0.33 · 반쯤 0.13 · 감음 0.07, 폭 12px 은 0.41 · 0.37 · 0.33)
+  static const double minEyeWidthPx = 20;
 
   // 서버 ping 간격 (초)
   static const int pingSec = 30;

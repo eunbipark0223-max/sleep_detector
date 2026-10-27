@@ -359,6 +359,12 @@ def calibrate(image_paths: list[str], user_id=None, **kwargs) -> float:
 
 
 def process_all_images(image_dir: str, output_dir: str):
+    """폴더 안 사진 전부 → 눈 점 12개를 그린 사진 + result.csv (시연 폰 사진 시험 · KPI ① 서버 EAR 열)
+
+    result.csv 칸: file, face_found, left_ear, right_ear, ear, eye_width_px, result
+      eye_width_px = 두 눈 평균 눈꼬리 사이 거리 (작으면 EAR 이 흔들림 — 앱 폰 EAR 과 비교할 때 참고)
+    """
+    import csv
     if not os.path.exists(image_dir):
         print(f"❌ '{image_dir}' 폴더를 찾을 수 없습니다.")
         return
@@ -374,12 +380,14 @@ def process_all_images(image_dir: str, output_dir: str):
     detector = _get_detector()
     print(f"📁 총 {len(image_files)}장의 사진을 발견했습니다. 분석을 시작합니다...\n")
 
+    rows = []
     for filename in image_files:
         img_path = os.path.join(image_dir, filename)
         res = check_eyes(img_path, user_id=1)
 
         if not res["face_found"]:
             print(f"⚠️ [{filename}] 얼굴 없음")
+            rows.append({"file": filename, "face_found": False, "result": "얼굴 없음"})
             continue
 
         image_bgr = _read_image_bgr(img_path)
@@ -387,9 +395,13 @@ def process_all_images(image_dir: str, output_dir: str):
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
         det = detector.detect(mp_image)
 
+        eye_width = None
         if det.face_landmarks:
             h, w, _ = image_bgr.shape
             landmarks = det.face_landmarks[0]
+            widths = [np.hypot((landmarks[a].x - landmarks[b].x) * w, (landmarks[a].y - landmarks[b].y) * h)
+                      for a, b in ((LEFT_EYE[0], LEFT_EYE[3]), (RIGHT_EYE[0], RIGHT_EYE[3]))]
+            eye_width = round(float(np.mean(widths)), 1)
             for idx in LEFT_EYE + RIGHT_EYE:
                 pt = landmarks[idx]
                 x, y = int(pt.x * w), int(pt.y * h)
@@ -401,13 +413,27 @@ def process_all_images(image_dir: str, output_dir: str):
             buf.tofile(out_path)
 
         print(f"✅ [{filename}] 판정: {res['result']} (is_sleep={res['is_sleep']})")
-        print(f"   - 좌안 EAR: {res['left_ear']:.3f} | 우안 EAR: {res['right_ear']:.3f} | 평균: {res['ear']:.3f}")
+        print(f"   - 좌안 EAR: {res['left_ear']:.3f} | 우안 EAR: {res['right_ear']:.3f} | 평균: {res['ear']:.3f}"
+              f" | 눈 폭 {eye_width}px")
         print(f"   - 저장 위치: {out_path}\n")
+        rows.append({"file": filename, "face_found": True, "left_ear": res["left_ear"], "right_ear": res["right_ear"],
+                     "ear": res["ear"], "eye_width_px": eye_width, "result": res["result"]})
 
-    print("🎉 모든 사진 분석 및 눈 점(12개) 표시 저장이 끝났습니다!")
+    csv_path = os.path.join(output_dir, "result.csv")
+    with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:  # utf-8-sig: 엑셀에서 한글 안 깨짐
+        writer = csv.DictWriter(f, fieldnames=["file", "face_found", "left_ear", "right_ear", "ear",
+                                               "eye_width_px", "result"])
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"🎉 모든 사진 분석 및 눈 점(12개) 표시 저장이 끝났습니다! 표: {csv_path}")
 
 
 if __name__ == "__main__":
+    # (sleep_detector_api 폴더에서) python services/face_service.py [사진 폴더]
+    #   폴더를 안 주면 sleep_detector_api/images → ../images 순서로 찾음. 결과는 result_images/
+    if len(sys.argv) > 1:
+        process_all_images(sys.argv[1], os.path.join(BASE_DIR, "result_images"))
+        sys.exit()
     candidates = [
         os.path.join(BASE_DIR, "images"),
         os.path.join(os.path.dirname(BASE_DIR), "images"),
