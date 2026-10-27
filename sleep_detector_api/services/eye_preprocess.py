@@ -34,6 +34,7 @@ CROP_SHIFT_UP = 0.03  # 자르기 중심을 눈 중심보다 한 변의 3% 위�
 #   MRL 은 적외선 흑백, 우리 폰은 컬러 → 전체 밝기 차이가 커서 사진마다 맞추는 쪽이 안전 (노트북 1-13)
 #   참고: MRL 64×64 전체 평균 0.3426 · 표준편차 0.1024 (데이터 전체 값으로 바꾸려면 여기만 고친다)
 MIN_STD = 1e-3  # 거의 단색인 사진에서 0 으로 나누지 않게
+MIN_EYE_PX = 8  # 잘라낸 눈이 이보다 작으면 None (CNN 에 넣을 만한 눈이 아님)
 
 
 def crop_eye(image, eye_points):
@@ -44,12 +45,13 @@ def crop_eye(image, eye_points):
                  (오른눈 33 · 160 · 158 · 133 · 153 · 144 / 왼눈 362 · 385 · 387 · 263 · 373 · 380),
                  p1 · p4 = 눈꼬리
     반환       : 눈 부분 사진 (image 와 같은 채널, 정사각형). 사진 밖으로 나가는 부분은 가장자리 색으로 채운다
+                 눈이 너무 작거나(MIN_EYE_PX 미만) 상자가 통째로 사진 밖이면 None → 부르는 쪽은 CNN 없이 EAR 만 쓴다
 
     자르는 범위 (MRL 측정값):
         W = |p1 − p4| (눈꼬리 사이 거리),  눈 중심 = (p1 + p4) / 2
         한 변 S = W × CROP_SCALE,  자르기 중심 = 눈 중심에서 위로 S × CROP_SHIFT_UP
     """
-    h, w, _ = image.shape
+    h, w = image.shape[:2]          # 흑백(H×W) 사진이 와도 멈추지 않게 (10/27 팀장)
 
     # 1. 픽셀 좌표 리스트 추출 (eye_points는 이전 face_service.py에서 이미 x*w, y*h 계산을 거친 픽셀 좌표가 들어옵니다)
     px_points = np.array([[int(pt[0]), int(pt[1])] for pt in eye_points])
@@ -62,6 +64,8 @@ def crop_eye(image, eye_points):
 
     # 3. 정사각형 한 변의 길이(S) 및 중심 이동
     box_size = int(eye_width * CROP_SCALE)
+    if box_size < MIN_EYE_PX:       # 눈 점이 한곳에 몰림 (얼굴이 너무 작거나 옆을 봄)
+        return None
     center_y = int(center_y - (box_size * CROP_SHIFT_UP))
 
     # 4. 자를 영역 좌표 및 가장자리 패딩(범위 초과 시) 처리
@@ -80,11 +84,14 @@ def crop_eye(image, eye_points):
     # 넘어가지 않는 유효 영역만 잘라내기
     valid_y1, valid_y2 = max(0, y1), min(h, y2)
     valid_x1, valid_x2 = max(0, x1), min(w, x2)
+    if valid_y2 - valid_y1 < MIN_EYE_PX or valid_x2 - valid_x1 < MIN_EYE_PX:
+        return None                 # 눈이 사진 밖으로 나감 — 남은 부분이 없어 채울 수도 없음 (B 학습이 멈췄던 경우)
     eye_crop = image[valid_y1:valid_y2, valid_x1:valid_x2]
 
     # 사진 밖으로 나갔다면 np.pad를 이용해 가장자리 픽셀(edge) 값으로 연장 채우기
     if pad_y1 > 0 or pad_y2 > 0 or pad_x1 > 0 or pad_x2 > 0:
-        eye_crop = np.pad(eye_crop, ((pad_y1, pad_y2), (pad_x1, pad_x2), (0, 0)), mode='edge')
+        pad = ((pad_y1, pad_y2), (pad_x1, pad_x2)) + (((0, 0),) if eye_crop.ndim == 3 else ())
+        eye_crop = np.pad(eye_crop, pad, mode='edge')
 
     return eye_crop
 
