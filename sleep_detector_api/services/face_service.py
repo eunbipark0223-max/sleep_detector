@@ -21,7 +21,6 @@
 # [주의]
 #   - mediapipe 1.1.0 에는 예전 mp.solutions.face_mesh 가 없음 → ml_models/face_landmarker.task 로 Face Landmarker 사용
 #   - 가짜(_mock): 파일 이름에 closed → 감음, noface → 얼굴 없음
-#   - 먼저 사진 위에 점을 그려서 눈에 찍히는지 확인
 #
 # 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 # ═══════════════════════════════════════════════════════════════
@@ -186,6 +185,20 @@ def _real(image_path: str, threshold: float) -> dict:
 
     landmarks = detection_result.face_landmarks[0]
 
+    # 수정사항 2: 눈 영역(랜드마크 기반 Bounding Box) 크기가 가로/세로 8px 미만인지 확인
+    left_pts = np.array([(landmarks[pt].x * w, landmarks[pt].y * h) for pt in LEFT_EYE])
+    right_pts = np.array([(landmarks[pt].x * w, landmarks[pt].y * h) for pt in RIGHT_EYE])
+    all_eye_pts = np.vstack([left_pts, right_pts])
+    x_min, y_min = np.min(all_eye_pts, axis=0)
+    x_max, y_max = np.max(all_eye_pts, axis=0)
+    box_w = x_max - x_min
+    box_h = y_max - y_min
+
+    use_cnn_local = USE_CNN
+    if box_w < 8 or box_h < 8:
+        # 눈 영역이 너무 작으면 CNN 없이 EAR만 사용하도록 강제 전환
+        use_cnn_local = False
+
     # 픽셀 변환을 위해 가로(w), 세로(h) 값을 전달
     left_ear = calculate_ear(LEFT_EYE, landmarks, w, h)
     right_ear = calculate_ear(RIGHT_EYE, landmarks, w, h)
@@ -198,7 +211,7 @@ def _real(image_path: str, threshold: float) -> dict:
         "left_ear": round(left_ear, 3),
         "right_ear": round(right_ear, 3),
         "eye_closed_prob": None,
-        "method": "cnn" if USE_CNN else "ear",
+        "method": "cnn" if use_cnn_local else "ear",
         "ear_threshold": threshold,
         "result": "감음" if is_closed else "뜸",
     }
@@ -258,6 +271,8 @@ def check_eyes(image_path: str, user_id=None, reason: str | None = None, **kwarg
         try:
             raw = _real(image_path, threshold)
         except Exception as e:
+            # 수정사항 1: 예외 발생 시 원인 출력을 위해 print문 추가
+            print(f"[face_service] 진짜 판정 실패: {e}")
             if FALLBACK_ON_ERROR:
                 # 오류 발생 시 앱(ML Kit)의 "졸음 의심" 판단을 우선시하도록 얼굴 없음과 동일하게 처리
                 raw = {
