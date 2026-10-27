@@ -21,3 +21,11 @@ notebooks/.ipynb_checkpoints/
 # 얼굴 사진 테스트 폴더 (저장소 맨 위에 만든 경우)
 images/
 result_images/
+
+# 파이썬 가상환경 · 캐시 (저장소 어디에 만들어도 올라가지 않게 — 10/27 A 브랜치 venv 사고 뒤)
+venv/
+.venv/
+__pycache__/
+
+# 자른 눈 묶음 (AI-Hub · MRL 전처리 결과) — 재배포 금지, 저장소 밖에만
+*.npz

@@ -6,7 +6,7 @@
 #
 # [이 파일이 하는 일]
 #   - 앱이 보낸 의심 사진에서 MediaPipe Face Landmarker 로 눈 점 12개 → EAR 계산 (항상)
-#   -   왼눈 33·160·158·133·153·144  /  오른눈 362·385·387·263·373·380
+#   -   사진 왼쪽 눈(= 본인 오른눈) 33·160·158·133·153·144  /  사진 오른쪽 눈(= 본인 왼눈) 362·385·387·263·373·380
 #   - USE_CNN 이면 눈만 잘라 흑백 64×64 → eye_cnn.pt → 감았을 확률
 #       (자르기 · 흑백 · 크기는 services/eye_preprocess.py 의 crop_eye → prep_eye 사용, 학습과 같은 함수)
 #   - 결과: 감음 / 뜸 / 얼굴 없음 + ear · eye_closed_prob · method
@@ -22,12 +22,9 @@
 #   - mediapipe 1.1.0 에는 예전 mp.solutions.face_mesh 가 없음 → ml_models/face_landmarker.task 로 Face Landmarker 사용
 #   - 가짜(_mock): 파일 이름에 closed → 감음, noface → 얼굴 없음
 #   - 먼저 사진 위에 점을 그려서 눈에 찍히는지 확인
+#   - 진짜 판정이 실패하면 얼굴 없음과 같이 처리(앱 판단대로 경고)하고, 원인은 터미널에 [face_service] 로 남긴다
 #
 # 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
-# ═══════════════════════════════════════════════════════════════
-
-# ═══════════════════════════════════════════════════════════════
-# services/face_service.py — 서버 확인 판정 (MediaPipe EAR · CNN)  ⭐ 핵심
 # ═══════════════════════════════════════════════════════════════
 import os
 import sys
@@ -72,6 +69,9 @@ MODEL_URL = (
     "face_landmarker/face_landmarker/float16/1/face_landmarker.task"
 )
 
+# MediaPipe 눈 점 (EAR 순서 p1~p6). 이름은 '사진에서 보이는 쪽' 기준 — 본인 기준으로는 반대
+#   LEFT_EYE  = 사진 왼쪽 눈 = 본인 오른눈 (AI-Hub JSON 의 Leye 와 같은 눈, B 확인 10/27)
+#   RIGHT_EYE = 사진 오른쪽 눈 = 본인 왼눈
 LEFT_EYE = [33, 160, 158, 133, 153, 144]
 RIGHT_EYE = [362, 385, 387, 263, 373, 380]
 
@@ -258,6 +258,7 @@ def check_eyes(image_path: str, user_id=None, reason: str | None = None, **kwarg
         try:
             raw = _real(image_path, threshold)
         except Exception as e:
+            print(f"[face_service] 진짜 판정 실패 → 앱 판단대로: {type(e).__name__} {e}")   # A 수정 (10/27)
             if FALLBACK_ON_ERROR:
                 # 오류 발생 시 앱(ML Kit)의 "졸음 의심" 판단을 우선시하도록 얼굴 없음과 동일하게 처리
                 raw = {
@@ -281,7 +282,8 @@ def calibrate(image_paths: list[str], user_id=None, **kwargs) -> float:
             raw = _real(path, EAR_THRESHOLD) if USE_REAL_AI else _mock(path, EAR_THRESHOLD)
             if raw.get("face_found") and raw.get("ear") is not None:
                 ears.append(float(raw["ear"]))
-        except Exception:
+        except Exception as e:
+            print(f"[face_service] 개인 기준 사진 1장 건너뜀: {type(e).__name__} {e}")
             continue
 
     if len(ears) < CALIB_MIN_FACES:
