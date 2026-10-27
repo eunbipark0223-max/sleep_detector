@@ -16,8 +16,8 @@
 // [쓰는 법]
 //   - 실패는 AuthException(message) 으로 던진다 — message 는 화면에 그대로 보여 줘도 되는 글 (서버 detail · 422 메시지)
 //   - 다른 서비스(api_service)는 await AuthService.authHeaders() 로 토큰 헤더를 받아 쓴다
-//   - 서버 주소: 기본 http://10.0.2.2:8000 (에뮬레이터). 실기기는 flutter run --dart-define=API_BASE_URL=http://PC주소:8000
-//     (A 의 config.dart baseUrl 이 생기면 아래 _baseUrl 한 줄만 그쪽 값으로 바꾼다)
+//   - 서버 주소: config.dart 의 AppConfig.baseUrl 한 곳만 쓴다 (모든 서비스가 같은 값)
+//     기본 http://10.0.2.2:8000 (에뮬레이터). 실기기는 flutter run --dart-define=API_BASE_URL=http://PC주소:8000
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
@@ -28,6 +28,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
+
+import '../config.dart';
 
 /// 화면에 그대로 보여 줘도 되는 오류 글을 담는다.
 class AuthException implements Exception {
@@ -42,7 +44,6 @@ class AuthException implements Exception {
 class AuthService {
   AuthService._();
 
-  static const String _baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://10.0.2.2:8000');
   static const String _tokenKey = 'access_token';
   static const Duration _timeout = Duration(seconds: 15);
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
@@ -140,7 +141,7 @@ class AuthService {
   // ── 안쪽 도우미 ──────────────────────────────────────────────
   static const Map<String, String> _json = {'Content-Type': 'application/json'};
 
-  static Uri _uri(String path) => Uri.parse('$_baseUrl$path');
+  static Uri _uri(String path) => Uri.parse('${AppConfig.baseUrl}$path');
 
   static Future<http.Response> _send(Future<http.Response> Function() request) async {
     try {
