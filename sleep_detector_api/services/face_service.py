@@ -22,11 +22,9 @@
 #   - mediapipe 1.1.0 에는 예전 mp.solutions.face_mesh 가 없음 → ml_models/face_landmarker.task 로 Face Landmarker 사용
 #   - 가짜(_mock): 파일 이름에 closed → 감음, noface → 얼굴 없음
 #
+#   - CNN: torch 가 없거나 eye_cnn.pt 가 없으면 자동으로 EAR 만 씀 (method = ear)
+#
 # 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
-# ═══════════════════════════════════════════════════════════════
-
-# ═══════════════════════════════════════════════════════════════
-# services/face_service.py — 서버 확인 판정 (MediaPipe EAR · CNN)  ⭐ 핵심
 # ═══════════════════════════════════════════════════════════════
 import os
 import sys
@@ -53,6 +51,9 @@ CONFIRM_OPEN_MARGIN = getattr(config, "CONFIRM_OPEN_MARGIN", 0.03)
 USE_CNN = getattr(config, "USE_CNN", False)
 CNN_CLOSED_PROB = getattr(config, "CNN_CLOSED_PROB", 0.5)
 CNN_INPUT_SIZE = getattr(config, "CNN_INPUT_SIZE", 64)
+CNN_MODEL_PATH = getattr(config, "CNN_MODEL_PATH", os.path.join(BASE_DIR, "ml_models", "eye_cnn.pt"))
+# 감음 확률이 CNN_CLOSED_PROB - 이 값 보다 낮아야 '확실히 뜸' → 취소 (0.4~0.6 은 애매 → 경고 쪽, eye_cnn.ipynb 2-6)
+CNN_OPEN_MARGIN = getattr(config, "CNN_OPEN_MARGIN", 0.1)
 USE_REAL_AI = getattr(config, "USE_REAL_AI", True)
 FALLBACK_ON_ERROR = getattr(config, "FALLBACK_ON_ERROR", True)
 
@@ -75,6 +76,39 @@ LEFT_EYE = [33, 160, 158, 133, 153, 144]
 RIGHT_EYE = [362, 385, 387, 263, 373, 380]
 
 _detector = None
+_cnn = None          # eye_cnn.pt 로 만든 모델 (처음 쓸 때 1번 읽음)
+_cnn_failed = False  # 한 번 못 읽으면 다시 시도하지 않고 EAR 만 씀
+
+
+def _get_cnn():
+    """eye_cnn.pt → resnet18 (eye_cnn.ipynb 2-9 방식). torch · 파일이 없으면 None"""
+    global _cnn, _cnn_failed
+    if _cnn is None and not _cnn_failed:
+        try:
+            import torch
+            import torchvision
+            ck = torch.load(CNN_MODEL_PATH, map_location="cpu", weights_only=True)
+            m = torchvision.models.resnet18(weights=None)
+            m.fc = torch.nn.Linear(m.fc.in_features, 1)
+            m.load_state_dict(ck["state_dict"])
+            _cnn = m.eval()
+        except Exception as e:
+            _cnn_failed = True
+            print(f"[face_service] CNN 을 못 읽어 EAR 만 씀: {e}")
+    return _cnn
+
+
+def _cnn_closed_prob(image_bgr, eyes_px) -> float | None:
+    """얼굴 사진 + 두 눈의 눈 점(픽셀) → 두 눈 평균 감음 확률. 실패하면 None (EAR 로 판정)"""
+    model = _get_cnn()
+    if model is None:
+        return None
+    import torch
+    from services.eye_preprocess import crop_eye, prep_eye
+    x = np.stack([prep_eye(crop_eye(image_bgr, pts), CNN_INPUT_SIZE) for pts in eyes_px])  # (2, size, size)
+    with torch.no_grad():
+        logits = model(torch.from_numpy(x)[:, None].expand(-1, 3, -1, -1)).squeeze(1)
+    return float(torch.sigmoid(logits).mean())
 
 
 def ensure_model_exists() -> str:
@@ -204,14 +238,22 @@ def _real(image_path: str, threshold: float) -> dict:
     right_ear = calculate_ear(RIGHT_EYE, landmarks, w, h)
     avg_ear = round((left_ear + right_ear) / 2.0, 3)
 
-    is_closed = avg_ear < threshold
+    closed_prob = None
+    if use_cnn_local:
+        try:
+            closed_prob = _cnn_closed_prob(image_bgr, [left_pts, right_pts])
+        except Exception as e:
+            print(f"[face_service] CNN 판정 실패 → EAR 사용: {e}")
+    method = "cnn" if closed_prob is not None else "ear"
+
+    is_closed = closed_prob >= CNN_CLOSED_PROB if method == "cnn" else avg_ear < threshold
     return {
         "face_found": True,
         "ear": avg_ear,
         "left_ear": round(left_ear, 3),
         "right_ear": round(right_ear, 3),
-        "eye_closed_prob": None,
-        "method": "cnn" if use_cnn_local else "ear",
+        "eye_closed_prob": round(closed_prob, 3) if closed_prob is not None else None,
+        "method": method,
         "ear_threshold": threshold,
         "result": "감음" if is_closed else "뜸",
     }
@@ -227,7 +269,14 @@ def _normalize(raw: dict, threshold: float, reason: str | None = None) -> dict:
         result_str = "얼굴 없음"
         is_closed = False
         is_definitely_open = False
+    elif method == "cnn" and eye_closed_prob is not None:
+        # CNN 채택 시: 감음 확률로 판정, 애매한 구간(0.4~0.6)은 취소하지 않음
+        ear = round(float(ear), 3)
+        is_closed = eye_closed_prob >= CNN_CLOSED_PROB
+        is_definitely_open = eye_closed_prob < (CNN_CLOSED_PROB - CNN_OPEN_MARGIN)
+        result_str = "감음" if is_closed else "뜸"
     else:
+        method = "ear" if method == "cnn" else method  # CNN 값이 없으면 EAR 로 판정한 것
         ear = round(float(ear), 3)
         is_closed = ear < threshold
         is_definitely_open = ear >= (threshold + CONFIRM_OPEN_MARGIN)

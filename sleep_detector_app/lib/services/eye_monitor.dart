@@ -16,8 +16,11 @@
 //
 // [만들 것 (이름 약속 — 다른 파일이 이 이름으로 부름)]
 //   - processFrame(CameraImage image, CameraDescription camera)
-//   - onSuspect(reason, closedSec, perclos, eyeOpenProb, CameraImage frame)  ← drive_screen 이 받는 콜백
+//   - onSuspect(reason, closedSec, perclos, eyeOpenProb, Uint8List? jpg)  ← drive_screen 이 받는 콜백
+//       jpg = 눈 감긴 순간의 프레임을 eye_monitor 가 이미 jpg 로 바꾼 것 → drive_screen 은 그대로 sendDetect
+//       (null 이면 변환 실패 — 사진 없이 보내거나 다음 의심을 기다림)
 //   - onCheckCamera()  ← drive_screen 이 받는 콜백
+//   - onFrameResult(eyeOpenProb, perclos)  ← (선택) 0단계 화면에 눈 뜸 확률 표시용, 모름이면 eyeOpenProb = null
 //   - analyzeFile(String path) → 눈 뜸 확률
 //   - calibrate(List<String> paths) → 개인 기준
 //   - currentPerclos (ping 에 실어 보낼 값) · close()
@@ -29,8 +32,8 @@
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
-import 'dart:typed_data';
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import '../config.dart';
 import '../utils/camera_image_utils.dart';
@@ -92,6 +95,9 @@ class EyeMonitor {
     );
   }
 
+  /// 최근 30초 PERCLOS (drive_screen 이 30초마다 sendPing 에 실어 보냄)
+  double get currentPerclos => _calculatePerclos();
+
   /// 실시간 카메라 프레임 분석 (분석 중이면 프레임 버림)
   Future<void> processFrame(CameraImage image, [CameraDescription? camera]) async {
     if (_busy) return;
@@ -139,8 +145,8 @@ class EyeMonitor {
       now.subtract(const Duration(seconds: AppConfig.perclosWindowSec));
       _history.removeWhere((r) => r.time.isBefore(cutoff));
 
-      final double currentPerclos = _calculatePerclos();
-      onFrameResult?.call(avgProb, currentPerclos);
+      final double perclos = _calculatePerclos();
+      onFrameResult?.call(avgProb, perclos);
 
       // 3. 연속 감김 (미세수면: 1.5초 이상) 체크
       double currentClosedSec = 0.0;
@@ -156,12 +162,14 @@ class EyeMonitor {
 
         if (currentClosedSec >= AppConfig.closedSec && !_microsleepTriggered) {
           _microsleepTriggered = true; // 눈을 다시 떠야 다음 미세수면을 셈
+          // 같은 감김이 눈 뜬 직후 PERCLOS 로 한 번 더 잡히지 않게 — PERCLOS 도 기준 아래로 내려갔다 다시 넘어야 셈
+          _perclosTriggered = true;
           final jpg = CameraImageUtils.toJpg(
             _lastClosedFrame!,
             rotation: _lastCamera?.sensorOrientation ?? 270,
           );
           onSuspect?.call(
-              'microsleep', currentClosedSec, currentPerclos, avgProb, jpg);
+              'microsleep', currentClosedSec, perclos, avgProb, jpg);
         }
       } else {
         // 눈을 다시 뜨면 미세수면 플래그 및 타이머 리셋
@@ -173,7 +181,7 @@ class EyeMonitor {
       final bool hasEnoughWindow = _history.isNotEmpty &&
           now.difference(_history.first.time).inSeconds >= 10;
 
-      if (hasEnoughWindow && currentPerclos >= AppConfig.perclosThreshold) {
+      if (hasEnoughWindow && perclos >= AppConfig.perclosThreshold) {
         if (!_perclosTriggered && !_microsleepTriggered) {
           _perclosTriggered = true; // 기준 아래로 내려갔다 다시 넘어야 셈
           final targetFrame = _lastClosedFrame ?? image;
@@ -181,14 +189,15 @@ class EyeMonitor {
             targetFrame,
             rotation: cam.sensorOrientation,
           );
-          onSuspect?.call('perclos', currentClosedSec, currentPerclos,
+          onSuspect?.call('perclos', currentClosedSec, perclos,
               _lastEyeOpenProb, jpg);
         }
-      } else if (currentPerclos < AppConfig.perclosThreshold) {
+      } else if (perclos < AppConfig.perclosThreshold) {
         _perclosTriggered = false;
       }
     } catch (e) {
-      // 프레임 오류 무시
+      // 프레임 하나가 실패해도 다음 프레임은 계속 분석 (원인은 디버그 콘솔에만)
+      debugPrint('[eye_monitor] 프레임 분석 실패: $e');
     } finally {
       _busy = false;
     }
