@@ -20,7 +20,6 @@
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
 
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -29,6 +28,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
 import '../config.dart';
+import '../models/drive_status.dart';
 import '../models/sleep_event.dart';
 import '../models/sleep_response.dart';
 import 'auth_service.dart';
@@ -160,33 +160,6 @@ class ApiService {
 
   // sendChat (AI 규정 도우미에게 질문 보내고 답 받기)
   static Future<Map<String, dynamic>> sendChat(String message) => _postJson('/chat', {'message': message});
-}
-
-// sendPing 의 답장 (현재 단계 · 운전 시간 · 휴식 알림)
-class DriveStatus {
-  final int stage;
-  final String status;
-  final int driveMin;
-  final bool restDue;
-  final String restMessage;
-
-  DriveStatus({
-    required this.stage,
-    required this.status,
-    required this.driveMin,
-    required this.restDue,
-    required this.restMessage,
-  });
-
-  factory DriveStatus.fromJson(Map<String, dynamic> json) {
-    return DriveStatus(
-      stage: (json['stage'] as num?)?.toInt() ?? 0,
-      status: json['status'] as String? ?? '',
-      driveMin: (json['drive_min'] as num?)?.toInt() ?? 0,
-      restDue: json['rest_due'] as bool? ?? false,
-      restMessage: json['rest_message'] as String? ?? '',
-    );
-  }
 }
 
 // submitAnswer 의 답장 (통과 여부 · 다음 문제 · 단계 · 안내 글)
