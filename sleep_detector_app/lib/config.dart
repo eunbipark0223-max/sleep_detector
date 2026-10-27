@@ -6,7 +6,7 @@
 //
 // [이 파일이 하는 일]
 //   - 눈 판정을 앱이 하므로 판정 숫자는 여기 한곳에만 둔다
-//   - eyeClosedProb = 0.3      두 눈 평균 눈 뜸 확률이 이보다 작으면 '감김' (개인 기준이 없을 때)
+//   - eyeClosedProb = 0.2      두 눈 평균 눈 뜸 확률이 이보다 작으면 '감김' (개인 기준이 없을 때, 10/27 팀 결정 0.3 → 0.2)
 //   - closedSec = 1.5          감김이 이만큼 이어지면 미세수면 의심
 //   - perclosWindowSec = 30    PERCLOS 계산 구간
 //   - perclosThreshold = 0.15  감김 비율이 이 이상이면 피로 누적 의심
@@ -24,7 +24,8 @@
 // ═══════════════════════════════════════════════════════════════
 class AppConfig {
   // 눈 감김 판정 기본 기준 (개인 기준 측정 전/실패 시 기본값)
-  static const double eyeClosedProb = 0.3;
+  //   ML Kit 뜸 확률은 완전히 감음(≈0.01) · 뜸(≈0.99) 양 끝으로 갈려서 0.2 · 0.3 결과가 거의 같음 (ML Kit 동작 확인, 예비 시험)
+  static const double eyeClosedProb = 0.2;
 
   // 미세수면: 연속 감김 시간 기준 (초)
   static const double closedSec = 1.5;
