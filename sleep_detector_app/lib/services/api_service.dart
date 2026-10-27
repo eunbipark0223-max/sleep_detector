@@ -20,11 +20,11 @@
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
 
-// sendDetect (서버에 사진전송, 졸음판정 결과 서버에서 받아오기)
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
-
+import '../config.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import '../models/sleep_event.dart';
@@ -32,11 +32,9 @@ import '../models/sleep_response.dart';
 import 'auth_service.dart';
 
 class ApiService {
-  static const String _baseUrl = String.fromEnvironment(
-      'API_BASE_URL', defaultValue: 'http://10.0.2.2:8000');
+  static Uri _uri(String path) => Uri.parse('${AppConfig.baseUrl}$path');
 
-  static Uri _uri(String path) => Uri.parse('$_baseUrl$path');
-
+// sendDetect (서버에 사진전송, 졸음판정 결과 서버에서 받아오기)
   static Future<SleepResponse> sendDetect(Uint8List jpgBytes, {
     String reason = '',
     double? closedSec,
