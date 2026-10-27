@@ -18,6 +18,7 @@
 // ═══════════════════════════════════════════════════════════════
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'screens/splash_screen.dart';
 import 'theme.dart';
@@ -25,6 +26,10 @@ import 'theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
+  // 🔴 화면 세로 모드 완전 고정
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+
   runApp(const SleepDetectorApp());
 }
 
@@ -37,7 +42,8 @@ class SleepDetectorApp extends StatelessWidget {
       title: '졸음 가드',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
-      home: const SplashScreen(),
+      // 🔴 에러를 일으키던 const 제거 완료
+      home: SplashScreen(),
     );
   }
 }
