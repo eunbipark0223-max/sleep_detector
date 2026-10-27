@@ -12,6 +12,8 @@ static/admin.html — 관리자 웹 (졸음 경고 목록 · 조치완료)
     + 운전 중 퀴즈 결과(driving_quiz) · 휴식 시각(rest) · 앱 눈 숫자(eye)
   - [조치완료] → PATCH /events/{id}/status → 3단계 해제
   - 휴게 미준수(rest_overdue) 표시
+  - AI 처리 표시: 보고서의 report.is_real(llm · rag · agent · driver_voice)로 '모의'로 대체된 단계를 알려 줌
+    (상세: 단계별 태그 / 목록: '모의 포함' 태그. is_real 이 없는 경고는 아무것도 표시하지 않음)
   - (P2) 단계별 · 시간대별 통계
 
 [주의]
@@ -66,6 +68,8 @@ static/admin.html — 관리자 웹 (졸음 경고 목록 · 조치완료)
     .b0 { background: var(--s0); } .b1 { background: var(--s1); color: #222; } .b2 { background: var(--s2); } .b3 { background: var(--s3); }
     .tag { display: inline-block; margin-top: 4px; padding: 1px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
     .tag.red { background: var(--s3); color: #fff; } .tag.gray { background: #e8ebf3; color: #445; }
+    .tag.green { background: var(--s0); color: #fff; } .tag.orange { background: var(--s2); color: #fff; }
+    .tag + .tag { margin-left: 4px; }
     .status { font-size: 12px; font-weight: 700; white-space: nowrap; }
     .status.s-미확인 { color: var(--s3); } .status.s-확인 { color: var(--s2); } .status.s-조치완료, .status.s-휴식완료 { color: var(--s0); }
     .sub { color: var(--muted); font-size: 12px; }
@@ -205,6 +209,7 @@ static/admin.html — 관리자 웹 (졸음 경고 목록 · 조치완료)
         if (e.reason === 'no_response') whereCell.appendChild(el('span', 'tag red', '음성 응답 없음 — 긴급'));
         else if (e.reason === 'rest_overdue') whereCell.appendChild(el('span', 'tag gray', '휴게 미준수'));
         else whereCell.appendChild(el('span', 'tag gray', REASON_LABEL[e.reason] || e.reason));
+        if (hasMock(e.report)) whereCell.appendChild(el('span', 'tag orange', '모의 포함'));
 
         const stageCell = el('td'); stageCell.appendChild(stageBadge(e.stage, e.stage_label));
         const timeCell = el('td', '', fmtTime(e.created_at));
@@ -217,6 +222,17 @@ static/admin.html — 관리자 웹 (졸음 경고 목록 · 조치완료)
       document.getElementById('tileNew').textContent = events.filter((e) => e.status === '미확인').length;
       document.getElementById('tileTotal').textContent = events.length;
     }
+
+    // ── AI 처리가 진짜였는지 (서버가 report.is_real 로 알려 줌: 가짜로 대체되면 false) ─────
+    const AI_PARTS = [['llm', '상황 요약'], ['rag', '규정 검색'], ['agent', '단계 판단'], ['driver_voice', '음성 보고']];
+    // is_real 칸이 없는 경고(휴게 미준수 · 음성 응답 없음 · 옛 기록)는 null — '모의'로 오해하지 않게 아무것도 표시하지 않는다
+    function aiParts(report) {
+      const real = report && report.is_real;
+      if (!real || typeof real !== 'object') return null;
+      const parts = AI_PARTS.filter(([key]) => key in real).map(([key, label]) => ({ label, real: real[key] === true }));
+      return parts.length ? parts : null;
+    }
+    function hasMock(report) { const parts = aiParts(report); return !!parts && parts.some((p) => !p.real); }
 
     // ── 상세: Agent 보고서 · 운전 중 퀴즈 · 휴식 · 눈 숫자 ─────
     function addRow(dl, term, value, cls) {
@@ -243,6 +259,13 @@ static/admin.html — 관리자 웹 (졸음 경고 목록 · 조치완료)
       addRow(ai, '근거 규정', r.regulation);
       addRow(ai, '권장 조치', r.recommended_action);
       addRow(ai, '위치', (e.address ? e.address + ' · ' : '') + (r.location || ''));
+      const parts = aiParts(r);
+      if (parts) {
+        ai.appendChild(el('dt', '', 'AI 처리'));
+        const dd = el('dd', 'ai-parts');
+        parts.forEach((p) => dd.appendChild(el('span', 'tag ' + (p.real ? 'green' : 'orange'), p.label + (p.real ? ' · AI' : ' · 모의'))));
+        ai.appendChild(dd);
+      }
       box.appendChild(ai);
 
       const dl = el('dl');
