@@ -7,18 +7,19 @@
 // [이 파일이 하는 일]
 //   - GET /events/my 목록 · 단계 필터 칩 · 상태 배지 (미확인 · 확인 · 조치완료 · 휴식완료)
 //
-// [연결 대기 — 'TODO(연결)' 로 찾을 수 있다]
-//   - C 의 api_service.fetchMyEvents() 가 생기면 _defaultLoad 한 줄만 바꾼다 (지금 api_service.dart 는 주석뿐)
+// [연결]
+//   - 목록은 C 의 ApiService.fetchMyEvents() (GET /events/my) 로 받는다. 실패하면 '불러오지 못했어요 + 다시 시도'
 //
 // [쓰는 법]
-//   - main_screen 은 const HistoryScreen() 으로 부른다 (loadEvents 를 비우면 _defaultLoad)
-//   - loadEvents 는 테스트 · 미리보기에서 목록을 바꿔 끼우는 입구다
+//   - main_screen 은 const HistoryScreen() 으로 부른다 (loadEvents 를 비우면 fetchMyEvents)
+//   - loadEvents 는 테스트 · 미리보기에서 목록을 바꿔 끼우는 입구다 (null 을 돌려주면 '준비 중' 안내)
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
 import 'package:flutter/material.dart';
 
 import '../models/sleep_event.dart';
+import '../services/api_service.dart';
 import '../theme.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -37,9 +38,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   late Future<List<SleepEvent>?> _events = _fetch();
   int? _stage; // null = 전체
 
-  // TODO(연결): C 의 fetchMyEvents 가 생기면 이 본문을 `ApiService.fetchMyEvents()` 한 줄로 바꾼다
-  //            (import '../services/api_service.dart';)
-  static Future<List<SleepEvent>?> _defaultLoad() async => null;
+  static Future<List<SleepEvent>?> _defaultLoad() => ApiService.fetchMyEvents();
 
   // 화면(FutureBuilder)이 받기 전에 요청이 먼저 실패해도 '처리 안 된 오류'로 새지 않게 ignore() 를 붙인다
   Future<List<SleepEvent>?> _fetch() {
