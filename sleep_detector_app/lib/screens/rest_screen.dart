@@ -24,11 +24,13 @@
 //   - POST /drive/resume → {success, stage, status, message}   정차 기록이 없으면 400 · 시간이 덜 지났으면 409('N초 남음')
 //   - 카운트다운 시간(rest_sec)은 서버 값을 쓴다 (앱에 15분을 박아 두지 않는다)
 //
+// [연결됨]
+//   - C 의 ApiService.startRest() · resumeDrive()  → 서버 JSON(Map)을 그대로 돌려주고, 실패하면 서버 detail 을 담은
+//     Exception 을 던진다 (409 의 'N초 남음' 문구가 그대로 화면에 나온다)
+//
 // [연결 대기 — 'TODO(연결)' 로 찾을 수 있다]
-//   - C 의 api_service.startRest() · resumeDrive()  (지금 api_service.dart 에는 없음)
-//       · 서버 JSON(Map<String, dynamic>)을 그대로 돌려주고, 실패하면 화면에 보여 줄 글을 담은 예외를 던지면 된다
-//         (409 의 'N초 남음' 같은 서버 detail 을 예외 메시지로)
-//   - C 의 voice_service.speak()  (지금 voice_service.dart 는 주석뿐)
+//   - C 의 voice_service.speak()  (지금 voice_service.dart 는 주석뿐 — 안내 문구가 소리로 나오지 않는다)
+//   - 이 화면을 여는 warning_screen 의 [정차했어요] (C, 지금 warning_screen.dart 는 주석뿐)
 //   - 아래 생성자의 startRest · resumeDrive · speak · now 는 테스트 · 미리보기에서 바꿔 끼우는 입구다 (비우면 기본)
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
@@ -37,6 +39,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../services/api_service.dart';
 import '../theme.dart';
 
 class RestScreen extends StatefulWidget {
@@ -69,9 +72,8 @@ class _RestScreenState extends State<RestScreen> {
   Duration _left = Duration.zero;
   Timer? _timer;
 
-  // TODO(연결): C 의 api_service 가 생기면 아래 두 줄을 `ApiService.startRest` · `ApiService.resumeDrive` 로 바꾼다
-  static Future<Map<String, dynamic>> _defaultStartRest() async => throw Exception('휴식 기능은 아직 서버와 연결되지 않았어요');
-  static Future<Map<String, dynamic>> _defaultResumeDrive() async => throw Exception('운행 재개는 아직 서버와 연결되지 않았어요');
+  static Future<Map<String, dynamic>> _defaultStartRest() => ApiService.startRest();
+  static Future<Map<String, dynamic>> _defaultResumeDrive() => ApiService.resumeDrive();
 
   // TODO(연결): C 의 voice_service 가 생기면 `VoiceService.speak` 로 바꾼다 (지금은 소리 없이 넘어간다)
   static Future<void> _defaultSpeak(String text) async {}
