@@ -21,3 +21,33 @@
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
+class AppConfig {
+  // 눈 감김 판정 기본 기준 (개인 기준 측정 전/실패 시 기본값)
+  static const double eyeClosedProb = 0.3;
+
+  // 미세수면: 연속 감김 시간 기준 (초)
+  static const double closedSec = 1.5;
+
+  // 피로 누적(PERCLOS): 최근 30초 창 및 15% 임계값
+  static const int perclosWindowSec = 30;
+  static const double perclosThreshold = 0.15;
+
+  // 얼굴 없음 / 모름(null) 연속 허용 시간 (초)
+  static const double unknownSec = 3.0;
+
+  // ML Kit 얼굴 최소 크기
+  static const double minFaceSize = 0.15;
+
+  // 개인 기준 캘리브레이션 설정 (5초, 중간값 * 0.5, 범위 0.2 ~ 0.4)
+  static const int calibSec = 5;
+  static const double calibRatio = 0.5;
+  static const double calibMin = 0.2;
+  static const double calibMax = 0.4;
+
+  // 서버 ping 간격 (초)
+  static const int pingSec = 30;
+
+  // 서버 주소 — 에뮬레이터 기본값. 시연 폰은 flutter run --dart-define=API_BASE_URL=http://PC주소:8000
+  // (10/27 팀장 추가: 머리말에 약속된 값. 앱의 모든 서비스가 이 값 하나를 쓰도록 맞출 예정)
+  static const String baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://10.0.2.2:8000');
+}
