@@ -21,3 +21,6 @@ notebooks/.ipynb_checkpoints/
 # 얼굴 사진 테스트 폴더 (저장소 맨 위에 만든 경우)
 images/
 result_images/
+
+venv/
+__pycache__/
