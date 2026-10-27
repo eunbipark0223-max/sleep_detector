@@ -76,6 +76,8 @@ class EyeMonitor {
 
   // 최근 30초 PERCLOS 계산용 큐 ("모름" 제외)
   final List<_FrameRecord> _history = [];
+  // 지금 PERCLOS 창을 채우기 시작한 시각 — 30초가 다 차야 PERCLOS 를 판정 (출발 직후 몇 초로 '15%' 를 내지 않게)
+  DateTime? _windowStart;
 
   // 감긴 순간의 프레임 임시 보관
   CameraImage? _lastClosedFrame;
@@ -215,10 +217,12 @@ class EyeMonitor {
           (AppConfig.useContourEar && ear != null && ear < AppConfig.earClosed);
 
       // 2. PERCLOS 30초 윈도우 갱신 ("모름" 제외)
-      _history.add(_FrameRecord(now, isClosed));
       final cutoff =
       now.subtract(const Duration(seconds: AppConfig.perclosWindowSec));
       _history.removeWhere((r) => r.time.isBefore(cutoff));
+      // 창이 비어 있었으면 (처음 · 얼굴을 30초 넘게 놓침) 여기서부터 다시 30초를 채움
+      if (_history.isEmpty) _windowStart = now;
+      _history.add(_FrameRecord(now, isClosed));
 
       final double perclos = _calculatePerclos();
       onFrameResult?.call(avgProb, perclos, ear);
@@ -253,8 +257,9 @@ class EyeMonitor {
       }
 
       // 4. 피로 누적 (PERCLOS: 30초 중 15% 이상) 체크
-      final bool hasEnoughWindow = _history.isNotEmpty &&
-          now.difference(_history.first.time).inSeconds >= 10;
+      //   창이 30초 다 찼을 때만 판정 — 가장 오래된 기록으로 재면 30초가 넘은 기록은 지워져서 영영 30초가 안 됨
+      final bool hasEnoughWindow = _windowStart != null &&
+          now.difference(_windowStart!).inSeconds >= AppConfig.perclosWindowSec;
 
       if (hasEnoughWindow && perclos >= AppConfig.perclosThreshold) {
         if (!_perclosTriggered && !_microsleepTriggered) {

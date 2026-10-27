@@ -109,7 +109,10 @@ def _cnn_closed_prob(image_bgr, eyes_px) -> float | None:
         return None
     import torch
     from services.eye_preprocess import crop_eye, prep_eye
-    x = np.stack([prep_eye(crop_eye(image_bgr, pts), CNN_INPUT_SIZE) for pts in eyes_px])  # (2, size, size)
+    crops = [crop_eye(image_bgr, pts) for pts in eyes_px]
+    if any(c is None for c in crops):  # 눈이 너무 작거나 사진 밖 (crop_eye 가 None) → EAR 로 판정
+        return None
+    x = np.stack([prep_eye(c, CNN_INPUT_SIZE) for c in crops])  # (2, size, size)
     with torch.no_grad():
         logits = model(torch.from_numpy(x)[:, None].expand(-1, 3, -1, -1)).squeeze(1)
     return float(torch.sigmoid(logits).mean())
