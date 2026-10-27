@@ -227,6 +227,8 @@ def make_ai_text(stage: int, reason: str, count: int, closed_sec: float, perclos
             "situation": summary, "stage_reason": STAGE_REASON[stage],
             "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[stage],
             "location": f"{lat}, {lng}" if lat is not None and lng is not None else "",
+            # 진짜 서버(detect.py)와 같은 칸 — 모의 서버의 AI 는 전부 가짜라서 모두 False
+            "is_real": {"llm": False, "rag": False, "agent": False, "driver_voice": False},
         },
     }
 
@@ -359,13 +361,15 @@ def seed() -> None:
                  {"type": "add", "asked": "31+52", "heard": "", "passed": False, "answer_sec": None}]
     add_event(1, 1, "microsleep", {"situation": "10분 안 첫 졸음, 눈 감김 약 2초", "stage_reason": STAGE_REASON[1],
               "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[1], "location": "37.4021, 127.1088",
-              "eye": {"closed_sec": 2.1, "perclos": 0.12, "eye_open_prob": 0.18}, "driving_quiz": quiz_ok},
+              "eye": {"closed_sec": 2.1, "perclos": 0.12, "eye_open_prob": 0.18}, "driving_quiz": quiz_ok,
+              "is_real": {"llm": True, "rag": True, "agent": True, "driver_voice": True}},  # 시험용: 전부 진짜인 경고
               summary="눈을 약 2초간 감고 있었습니다. 10분 안에 1번째 졸음입니다.", guidance=GUIDANCE[1], ear=0.17, method="ear",
               perclos=0.12, eye_closed_prob=0.82, lat=37.4021, lng=127.1088, status="확인", created_at=_now_text(now - timedelta(hours=3)))
     add_event(1, 2, "perclos", {"situation": "10분 안 두 번째 졸음, PERCLOS 33%", "stage_reason": STAGE_REASON[2],
               "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[2], "location": "37.4105, 127.1190",
               "eye": {"closed_sec": 0.8, "perclos": 0.33, "eye_open_prob": 0.4}, "driving_quiz": quiz_ok,
-              "rest": {"started": "03:20", "resumed": "03:38", "minutes": 18}},
+              "rest": {"started": "03:20", "resumed": "03:38", "minutes": 18},
+              "is_real": {"llm": True, "rag": False, "agent": True, "driver_voice": True}},  # 시험용: 규정 검색만 가짜로 대체된 경고
               summary="눈 감김 비율(PERCLOS)이 33%로 피로가 누적된 상태입니다. 10분 안에 2번째 졸음입니다.", guidance=GUIDANCE[2],
               ear=0.19, method="ear", perclos=0.33, eye_closed_prob=0.6, lat=37.4105, lng=127.1190, status="휴식완료",
               created_at=_now_text(now - timedelta(hours=2)))
