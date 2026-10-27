@@ -39,7 +39,11 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+import shutil
+import time
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -48,7 +52,8 @@ from auth.jwt import get_current_user
 from database.db_connection import get_session
 from models.models import SleepEvent, User
 from schema.request import DrivePing
-from services import drive_timer, face_service, sleep_state
+from services import (agent_service, drive_timer, face_service, llm_service, rag_service, sleep_state,
+                      voice_quiz_service)
 
 router = APIRouter(tags=["운행 · 감지"])
 
@@ -59,7 +64,21 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 _calib_photos = {}       # user_id → [임시 사진 경로, ...]
 # [정차했어요] 때 휴식완료로 바꿀 2단계 경고 번호
 _rest_event = {}         # user_id → event_id
+# 운전 중 음성 퀴즈 최소 간격 (VOICE_QUIZ_GAP_SEC) — 마지막으로 낸 시각
+_last_quiz_at = {}       # user_id → time.time()
 _lock = threading.Lock()
+
+
+def _num(v):
+    """Form 으로 온 숫자 글자 → float (비었거나 이상하면 None)"""
+    try:
+        return None if v in (None, "") else float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _r(v, n=3):
+    return None if v is None else round(float(v), n)
 
 
 def _label(stage):
@@ -77,7 +96,9 @@ async def _save_upload(file: UploadFile, folder: str, prefix: str) -> str:
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "사진이 너무 큽니다 (최대 10MB)")
     os.makedirs(folder, exist_ok=True)
-    path = os.path.join(folder, f"{prefix}_{uuid.uuid4().hex[:12]}{ext}")
+    # 원래 이름 일부를 뒤에 남긴다 — face_service 가짜 모드가 파일 이름의 closed / noface 로 판정하기 때문
+    stem = "".join(ch for ch in os.path.splitext(os.path.basename(file.filename or ""))[0] if ch.isalnum() or ch in "-_")[:20]
+    path = os.path.join(folder, f"{prefix}_{uuid.uuid4().hex[:12]}{'_' + stem if stem else ''}{ext}")
     with open(path, "wb") as f:
         f.write(content)
     return path
@@ -207,3 +228,99 @@ def drive_resume_handler(session: Session = Depends(get_session), user: User = D
     message = {0: "운행을 재개합니다", 1: "주의 단계로 다시 출발합니다",
                3: "긴급 단계는 관리자가 조치완료를 누르기 전까지 해제되지 않습니다"}.get(stage, "운행을 재개합니다")
     return {"success": True, "stage": stage, "status": _label(stage), "message": message}
+
+
+# ───────────────────────────────────────────────
+# POST /detect — 졸음 의심 사진 1장 확인 (기획안 9장)
+# ───────────────────────────────────────────────
+@router.post("/detect")
+async def detect_handler(
+    file: UploadFile = File(...),
+    reason: str = Form(""),                # microsleep / perclos / "" (사진 1장 테스트)
+    closed_sec: str = Form(""),
+    perclos: str = Form(""),
+    eye_open_prob: str = Form(""),
+    latitude: str = Form(""),
+    longitude: str = Form(""),
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    # ① 로그인 · 사진 확인 (검사하는 동안만 임시 보관)
+    tmp_path = await _save_upload(file, config.UPLOAD_TMP_DIR, f"u{user.id}")
+    reason = reason if reason in ("microsleep", "perclos") else ""
+    closed, pc, open_prob = _num(closed_sec), _num(perclos), _num(eye_open_prob)
+    lat, lng = _num(latitude), _num(longitude)
+
+    # ② 확인 판정 (MediaPipe EAR / CNN)
+    eye = await run_in_threadpool(face_service.check_eyes, tmp_path, user.id, reason or None)
+    base = {
+        "success": True, "face_found": bool(eye.get("face_found")), "ear": _r(eye.get("ear")),
+        "eye_closed_prob": _r(eye.get("eye_closed_prob")), "eye_open_prob": _r(open_prob),
+        "method": eye.get("method") or "ear", "perclos": _r(pc), "ear_threshold": _r(eye.get("ear_threshold")),
+    }
+    if not eye.get("is_sleep"):              # 취소 → AI 를 부르지 않고 바로 응답, 사진은 지움 (개인정보)
+        _remove(tmp_path)
+        stage = int(sleep_state.get_stage(user.id))
+        return {**base, "is_sleep": False, "reason": "", "stage": stage, "status": _label(stage),
+                "summary": "", "guidance": "", "driver_voice": "",
+                "sleep_count_10min": int(sleep_state.facts(user.id)["sleep_count_10min"]),
+                "voice_quiz": None, "regulations": [], "event_id": None}
+
+    # ③ 졸음 기록 → 규칙 단계 (사진 1장 테스트에서 감음이면 미세수면으로 기록)
+    reason = reason or "microsleep"
+    rule_stage = int(sleep_state.add_sleep(user.id, reason, closed or 0.0))
+    f = sleep_state.facts(user.id)
+    facts = {"sleep_count_10min": int(f["sleep_count_10min"]), "last_closed_sec": float(f["last_closed_sec"] or 0),
+             "drive_min": drive_timer.drive_min(user.id)}
+    eye_info = {"reason": reason, "closed_sec": closed, "perclos": pc, "eye_open_prob": open_prob,
+                "ear": eye.get("ear"), "method": base["method"], "sleep_count_10min": facts["sleep_count_10min"]}
+
+    # ④ LLM 요약  ⑤ RAG 규정  ⑥ Agent (모두 실패하면 가짜로 — 각 서비스가 is_real 로 알려 줌)
+    analysis = await run_in_threadpool(llm_service.interpret_situation, tmp_path, eye_info)
+    regulations = await run_in_threadpool(rag_service.search_regulations, analysis.get("summary", ""))
+    location = f"{lat:.5f}, {lng:.5f}" if lat is not None and lng is not None else ""
+    agent = await run_in_threadpool(agent_service.generate_response, eye_info, analysis, regulations, facts,
+                                    rule_stage, location, user.id)
+    stage = int(sleep_state.set_stage(user.id, agent["stage"]))   # 올리기만 (sleep_state 가 보증)
+
+    # ⑦ 저장 — 확정 사진만 uploads/events/ 로, DB 1줄
+    os.makedirs(config.UPLOAD_EVENT_DIR, exist_ok=True)
+    photo_name = os.path.basename(tmp_path)
+    shutil.move(tmp_path, os.path.join(config.UPLOAD_EVENT_DIR, photo_name))
+    report = {
+        **agent["report"],
+        "eye": {"closed_sec": closed, "perclos": pc, "eye_open_prob": open_prob, "ear": eye.get("ear")},
+        "driving_quiz": [],
+        "facts": facts,
+        "is_real": {"llm": bool(analysis.get("is_real")), "rag": any(r.get("is_real") for r in regulations),
+                    "agent": bool(agent["is_real"]), "driver_voice": bool(agent["voice_is_real"])},
+    }
+    event = SleepEvent(
+        user_id=user.id, stage=stage, ear=eye.get("ear"), eye_closed_prob=eye.get("eye_closed_prob"),
+        method=base["method"], reason=reason, perclos=pc,
+        summary=(analysis.get("summary") or "")[:255], guidance=agent["guidance"][:255],
+        report=json.dumps(report, ensure_ascii=False), photo_path=f"uploads/events/{photo_name}",
+        latitude=lat, longitude=lng, status="미확인",
+    )
+    session.add(event)
+    session.commit()
+    session.refresh(event)
+
+    # ⑧ 운전 중 음성 퀴즈 (경고를 저장한 뒤 → event_id 를 함께 기억, 최소 간격 VOICE_QUIZ_GAP_SEC)
+    voice_quiz = None
+    if config.QUIZ_MODE == "voice":
+        now = time.time()
+        with _lock:
+            due = now - _last_quiz_at.get(user.id, 0) >= config.VOICE_QUIZ_GAP_SEC
+            if due:
+                _last_quiz_at[user.id] = now
+        if due:
+            voice_quiz = voice_quiz_service.make_quiz(user.id, event_id=event.id)
+
+    return {
+        **base, "is_sleep": True, "reason": reason, "stage": stage, "status": _label(stage),
+        "summary": event.summary or "", "guidance": agent["guidance"], "driver_voice": agent["driver_voice"],
+        "sleep_count_10min": facts["sleep_count_10min"], "voice_quiz": voice_quiz,
+        "regulations": [{"title": r["title"], "source": r["source"], "content": r["content"]} for r in regulations],
+        "event_id": event.id,
+    }
