@@ -62,7 +62,20 @@ ROTATE = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_C
 def _files(folder, exts):
     if not os.path.isdir(folder):
         sys.exit(f"폴더가 없습니다: {folder}")
-    return sorted(f for f in os.listdir(folder) if f.lower().endswith(exts))
+    return sorted((f for f in os.listdir(folder) if f.lower().endswith(exts)), key=_shot_order)
+
+
+def _shot_order(name):
+    """촬영 순서 정렬 키: 삼성은 같은 초 두 번째 장을 '…(0).jpg', 세 번째를 '…(1).jpg' 로 저장
+    → 이름 순서로는 '(0)' 이 '.jpg' 앞에 와서 라벨 경계가 한 장 어긋남 (10/28 실제 촬영에서 31곳)
+    → '20261028_174347.jpg' < '…(0).jpg' < '…(1).jpg' 로 정렬"""
+    stem, ext = os.path.splitext(name)
+    n = 0
+    if stem.endswith(")") and "(" in stem:
+        base, num = stem[:-1].rsplit("(", 1)
+        if num.isdigit():
+            stem, n = base, int(num) + 1
+    return stem, n, ext.lower()
 
 
 def _check_count(files, slots, what, need_text):

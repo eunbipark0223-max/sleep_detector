@@ -12,6 +12,9 @@
 //   - 최근 30초 PERCLOS 15% 이상 → 피로 누적 의심 (모름은 빼고 계산, 내려갔다 다시 넘어야 셈)
 //   - 감긴 프레임을 잠깐 들고 있다가 의심이 확정되면 그 프레임을 넘김 (이미 눈을 뜬 뒤 찍지 않게)
 //   - 모름이 3초 이어지면 카메라 확인 신호
+//   - 🆕 (AppConfig.headRuleOn) 고개 숙임 → 감김과 같이 셈 (미세수면 · PERCLOS 그대로, reason 도 그대로)
+//       평소 각도 = 최근 60초 '눈 뜨고 숙이지 않은' 프레임의 ML Kit headEulerAngleX 중간값, 그보다 6° 이상 숙이면 숙임
+//       숙인 채 얼굴을 놓치면 (화면 밖으로 떨굼) 모름이 아니라 감김으로 계속 셈 — 얼굴이 다시 잡힐 때까지
 //   - 사진 파일 1장 분석 (사진 1장 테스트 · KPI ① 측정) · 개인 기준 측정 (평소 확률 중간값 × 0.5, 0.2~0.4, 실패 시 기본값 + 예외)
 //   - 🆕 (AppConfig.contourEarOn) 눈 윤곽 점 16개로 폰 EAR 계산 — 반쯤 감은 눈은 뜸 확률이 높게 나와서 보완용
 //       AppConfig.useContourEar 를 켜면 "뜸 확률 < 기준 또는 EAR < earClosed" 를 감김으로 봄 (시연 폰 확인 뒤에만)
@@ -30,7 +33,8 @@
 //   - currentPerclos (ping 에 실어 보낼 값) · close()
 //
 // [주의]
-//   - 눈만 판단 — 고개 각도 · 미소 확률 · 하품은 쓰지 않는다
+//   - 눈 + 고개 숙임만 판단 — 미소 확률 · 하품은 쓰지 않는다
+//       (10/28 CNN 채택 회의: 고개 숙임은 CNN 으로 해결 안 됨 → 앱 고개 규칙. 고개 좌우 각도는 쓰지 않음)
 //   - C 의 drive_screen 과는 위 함수 이름만 약속하고 서로 파일을 고치지 않는다
 //   - 실제 fps 는 폰마다 다름 → 시연 폰에서 측정, 판정은 프레임 수가 아니라 시간(초) 기준
 //
@@ -49,15 +53,24 @@ class _FrameRecord {
   _FrameRecord(this.time, this.isClosed);
 }
 
+class _HeadRecord {
+  final DateTime time;
+  final double x; // ML Kit headEulerAngleX
+  _HeadRecord(this.time, this.x);
+}
+
 /// 사진 1장 분석 결과 (analyzeFileDetail)
 class EyeReading {
   final double? eyeOpenProb; // 두 눈 평균 눈 뜸 확률 (얼굴 없음 · 모름이면 null)
   final double? ear;         // 폰 EAR (윤곽 꺼짐 · 윤곽 없음이면 null)
   final int ms;              // ML Kit 처리 시간
-  EyeReading(this.eyeOpenProb, this.ear, this.ms);
+  final double? headX;       // 고개 위아래 각도 (ML Kit headEulerAngleX, 얼굴 없음이면 null) — 고개 숙임 기준 측정용
+  final double? headY;       // 고개 좌우 각도 (headEulerAngleY)
+  EyeReading(this.eyeOpenProb, this.ear, this.ms, [this.headX, this.headY]);
 
   @override
-  String toString() => 'prob=${eyeOpenProb?.toStringAsFixed(3)} ear=${ear?.toStringAsFixed(3)} ${ms}ms';
+  String toString() => 'prob=${eyeOpenProb?.toStringAsFixed(3)} ear=${ear?.toStringAsFixed(3)} '
+      'x=${headX?.toStringAsFixed(1)} y=${headY?.toStringAsFixed(1)} ${ms}ms';
 }
 
 class EyeMonitor {
@@ -79,9 +92,14 @@ class EyeMonitor {
   // 지금 PERCLOS 창을 채우기 시작한 시각 — 30초가 다 차야 PERCLOS 를 판정 (출발 직후 몇 초로 '15%' 를 내지 않게)
   DateTime? _windowStart;
 
+  // 고개 규칙: 평소 고개 각도 계산용 (눈 뜨고 숙이지 않은 프레임만) · 바로 전 프레임이 숙임이었는지
+  final List<_HeadRecord> _headHistory = [];
+  bool _headDown = false;
+
   // 감긴 순간의 프레임 임시 보관
   CameraImage? _lastClosedFrame;
   CameraDescription? _lastCamera;
+  bool _frameInStreak = false; // _lastClosedFrame 이 지금 이어지는 감김 동안 찍은 것인지 (미세수면 사진용)
   double _lastEyeOpenProb = 1.0;
 
   // C의 drive_screen.dart와 약속된 콜백 인터페이스
@@ -192,8 +210,13 @@ class EyeMonitor {
       _recordTime(watch.elapsedMilliseconds, now);
 
       // 1. 얼굴 없음 또는 눈 확률 null -> "모름" 처리
+      //    (고개 규칙) 바로 전 프레임에서 고개를 숙이고 있었으면 → 숙여서 얼굴을 놓친 것 → 감김으로 계속 셈
       if (faces.isEmpty) {
-        _handleUnknown(now);
+        if (AppConfig.headRuleOn && _headDown) {
+          _judge(now, true, null, cam, null, null);
+        } else {
+          _handleUnknown(now);
+        }
         return;
       }
 
@@ -202,84 +225,132 @@ class EyeMonitor {
       final rightProb = face.rightEyeOpenProbability;
 
       if (leftProb == null || rightProb == null) {
-        _handleUnknown(now);
+        // 눈 확률은 없어도 고개 각도는 나올 수 있음 → 숙였으면 감김 (각도도 없으면 바로 전 프레임대로)
+        //   눈 상태를 모르니 평소 각도 기록에는 넣지 않음 (eyesClosed: true)
+        final headX = face.headEulerAngleX;
+        _headDown = AppConfig.headRuleOn && (headX != null ? _isHeadDown(headX, now, true) : _headDown);
+        if (_headDown) {
+          _judge(now, true, image, cam, null, null);
+        } else {
+          _handleUnknown(now);
+        }
         return;
       }
-
-      // 정상 인식 시 "모름" 타이머 초기화
-      _unknownStartTime = null;
-      _cameraWarnTriggered = false;
 
       final double avgProb = (leftProb + rightProb) / 2.0;
       final double? ear = AppConfig.contourEarOn ? contourEar(face) : null;
       // 완전히 감음 = 뜸 확률, (useContourEar 켜면) 반쯤 감음 = 폰 EAR
-      final bool isClosed = avgProb < threshold ||
+      final bool eyesClosed = avgProb < threshold ||
           (AppConfig.useContourEar && ear != null && ear < AppConfig.earClosed);
+      // 고개를 푹 숙임 = 감김과 같이 셈 (서버 reason 은 그대로 microsleep · perclos)
+      _headDown = AppConfig.headRuleOn && _isHeadDown(face.headEulerAngleX, now, eyesClosed);
 
-      // 2. PERCLOS 30초 윈도우 갱신 ("모름" 제외)
-      final cutoff =
-      now.subtract(const Duration(seconds: AppConfig.perclosWindowSec));
-      _history.removeWhere((r) => r.time.isBefore(cutoff));
-      // 창이 비어 있었으면 (처음 · 얼굴을 30초 넘게 놓침) 여기서부터 다시 30초를 채움
-      if (_history.isEmpty) _windowStart = now;
-      _history.add(_FrameRecord(now, isClosed));
-
-      final double perclos = _calculatePerclos();
-      onFrameResult?.call(avgProb, perclos, ear);
-
-      // 3. 연속 감김 (미세수면: 1.5초 이상) 체크
-      double currentClosedSec = 0.0;
-      if (isClosed) {
-        _closedStartTime ??= now;
-        currentClosedSec =
-            now.difference(_closedStartTime!).inMilliseconds / 1000.0;
-
-        // 감긴 순간의 프레임 보관
-        _lastClosedFrame = image;
-        _lastCamera = cam;
-        _lastEyeOpenProb = avgProb;
-
-        if (currentClosedSec >= AppConfig.closedSec && !_microsleepTriggered) {
-          _microsleepTriggered = true; // 눈을 다시 떠야 다음 미세수면을 셈
-          // 같은 감김이 눈 뜬 직후 PERCLOS 로 한 번 더 잡히지 않게 — PERCLOS 도 기준 아래로 내려갔다 다시 넘어야 셈
-          _perclosTriggered = true;
-          final jpg = CameraImageUtils.toJpg(
-            _lastClosedFrame!,
-            rotation: _lastCamera?.sensorOrientation ?? 270,
-          );
-          onSuspect?.call(
-              'microsleep', currentClosedSec, perclos, avgProb, jpg);
-        }
-      } else {
-        // 눈을 다시 뜨면 미세수면 플래그 및 타이머 리셋
-        _closedStartTime = null;
-        _microsleepTriggered = false;
-      }
-
-      // 4. 피로 누적 (PERCLOS: 30초 중 15% 이상) 체크
-      //   창이 30초 다 찼을 때만 판정 — 가장 오래된 기록으로 재면 30초가 넘은 기록은 지워져서 영영 30초가 안 됨
-      final bool hasEnoughWindow = _windowStart != null &&
-          now.difference(_windowStart!).inSeconds >= AppConfig.perclosWindowSec;
-
-      if (hasEnoughWindow && perclos >= AppConfig.perclosThreshold) {
-        if (!_perclosTriggered && !_microsleepTriggered) {
-          _perclosTriggered = true; // 기준 아래로 내려갔다 다시 넘어야 셈
-          final targetFrame = _lastClosedFrame ?? image;
-          final jpg = CameraImageUtils.toJpg(
-            targetFrame,
-            rotation: cam.sensorOrientation,
-          );
-          onSuspect?.call('perclos', currentClosedSec, perclos,
-              _lastEyeOpenProb, jpg);
-        }
-      } else if (perclos < AppConfig.perclosThreshold) {
-        _perclosTriggered = false;
-      }
+      _judge(now, eyesClosed || _headDown, image, cam, avgProb, ear);
     } catch (e) {
       // 프레임 하나가 실패해도 다음 프레임은 계속 분석 (원인은 디버그 콘솔에만)
       debugPrint('[eye_monitor] 프레임 분석 실패: $e');
     } finally {
       _busy = false;
+    }
+  }
+
+  /// 고개 숙임인지 — 평소 각도(최근 headBaseSec 동안 눈 뜨고 숙이지 않은 프레임의 중간값)보다 headDownDeg 이상 숙임
+  ///   ML Kit headEulerAngleX 는 숙이면 내려감. 평소 각도를 아직 못 냈으면 (출발 직후) 숙임으로 보지 않음
+  bool _isHeadDown(double? headX, DateTime now, bool eyesClosed) {
+    if (headX == null) return false;
+    final cutoff = now.subtract(const Duration(seconds: AppConfig.headBaseSec));
+    _headHistory.removeWhere((r) => r.time.isBefore(cutoff));
+
+    double? base;
+    if (_headHistory.length >= AppConfig.headBaseMinFrames) {
+      final xs = _headHistory.map((r) => r.x).toList()..sort();
+      base = xs[xs.length ~/ 2];
+    }
+    final down = base != null && base - headX >= AppConfig.headDownDeg;
+    // 숙인 프레임 · 감은 프레임은 평소 각도에 넣지 않음 (졸면서 숙인 각도가 평소가 되지 않게)
+    //   자세를 아예 바꾸면 headBaseSec 뒤 기록이 비고 → 새 자세로 평소 각도를 다시 냄
+    if (!down && !eyesClosed) _headHistory.add(_HeadRecord(now, headX));
+    return down;
+  }
+
+  /// 감김 / 뜸 1프레임 판정 → PERCLOS 창 · 미세수면 · PERCLOS 의심
+  ///   frame == null : 얼굴을 놓친 프레임 (고개 숙임으로 감김) → 서버로 보낼 사진은 마지막 감긴 프레임 그대로
+  ///   avgProb == null : 눈 확률 없음 (고개 숙임으로 감김) → onFrameResult 에는 null, 서버에는 마지막 확률
+  void _judge(DateTime now, bool isClosed, CameraImage? frame, CameraDescription cam,
+      double? avgProb, double? ear) {
+    // 감김 · 뜸이 판정되면 "모름" 타이머 초기화
+    _unknownStartTime = null;
+    _cameraWarnTriggered = false;
+
+    // 2. PERCLOS 30초 윈도우 갱신 ("모름" 제외)
+    final cutoff =
+    now.subtract(const Duration(seconds: AppConfig.perclosWindowSec));
+    _history.removeWhere((r) => r.time.isBefore(cutoff));
+    // 창이 비어 있었으면 (처음 · 얼굴을 30초 넘게 놓침) 여기서부터 다시 30초를 채움
+    if (_history.isEmpty) _windowStart = now;
+    _history.add(_FrameRecord(now, isClosed));
+
+    final double perclos = _calculatePerclos();
+    onFrameResult?.call(avgProb, perclos, ear);
+
+    // 3. 연속 감김 (미세수면: 1.5초 이상) 체크
+    double currentClosedSec = 0.0;
+    if (isClosed) {
+      _closedStartTime ??= now;
+      currentClosedSec =
+          now.difference(_closedStartTime!).inMilliseconds / 1000.0;
+
+      // 감긴 순간의 프레임 보관 (얼굴을 놓친 프레임은 보관하지 않음 — 서버가 볼 얼굴이 없음)
+      if (frame != null) {
+        _lastClosedFrame = frame;
+        _lastCamera = cam;
+        _frameInStreak = true;
+      }
+      if (avgProb != null) _lastEyeOpenProb = avgProb;
+
+      if (currentClosedSec >= AppConfig.closedSec && !_microsleepTriggered) {
+        _microsleepTriggered = true; // 눈을 다시 떠야 다음 미세수면을 셈
+        // 같은 감김이 눈 뜬 직후 PERCLOS 로 한 번 더 잡히지 않게 — PERCLOS 도 기준 아래로 내려갔다 다시 넘어야 셈
+        _perclosTriggered = true;
+        // 이번 감김 동안 찍은 프레임만 보냄 — 얼굴을 놓친 채 시작된 감김이면 몇 분 전 사진이 갈 수 있어서 (10/28 팀장 확인)
+        final target = _frameInStreak ? _lastClosedFrame : null;
+        final jpg = target == null
+            ? null
+            : CameraImageUtils.toJpg(
+                target,
+                rotation: _lastCamera?.sensorOrientation ?? 270,
+              );
+        onSuspect?.call(
+            'microsleep', currentClosedSec, perclos, avgProb ?? _lastEyeOpenProb, jpg);
+      }
+    } else {
+      // 눈을 다시 뜨면 미세수면 플래그 및 타이머 리셋
+      //   (_lastClosedFrame 은 PERCLOS 사진용으로 남김 — PERCLOS 15% 면 최근 30초 안의 감긴 프레임이라 오래된 사진이 아님)
+      _closedStartTime = null;
+      _frameInStreak = false;
+      _microsleepTriggered = false;
+    }
+
+    // 4. 피로 누적 (PERCLOS: 30초 중 15% 이상) 체크
+    //   창이 30초 다 찼을 때만 판정 — 가장 오래된 기록으로 재면 30초가 넘은 기록은 지워져서 영영 30초가 안 됨
+    final bool hasEnoughWindow = _windowStart != null &&
+        now.difference(_windowStart!).inSeconds >= AppConfig.perclosWindowSec;
+
+    if (hasEnoughWindow && perclos >= AppConfig.perclosThreshold) {
+      if (!_perclosTriggered && !_microsleepTriggered) {
+        _perclosTriggered = true; // 기준 아래로 내려갔다 다시 넘어야 셈
+        final targetFrame = _lastClosedFrame ?? frame;
+        final jpg = targetFrame == null
+            ? null
+            : CameraImageUtils.toJpg(
+                targetFrame,
+                rotation: cam.sensorOrientation,
+              );
+        onSuspect?.call('perclos', currentClosedSec, perclos,
+            _lastEyeOpenProb, jpg);
+      }
+    } else if (perclos < AppConfig.perclosThreshold) {
+      _perclosTriggered = false;
     }
   }
 
@@ -329,7 +400,8 @@ class EyeMonitor {
       final face = faces.first;
       final l = face.leftEyeOpenProbability, r = face.rightEyeOpenProbability;
       final prob = (l == null || r == null) ? null : (l + r) / 2.0;
-      return EyeReading(prob, AppConfig.contourEarOn ? contourEar(face) : null, ms);
+      return EyeReading(prob, AppConfig.contourEarOn ? contourEar(face) : null, ms,
+          face.headEulerAngleX, face.headEulerAngleY);
     } catch (e) {
       debugPrint('[eye_monitor] 사진 분석 실패: $e');
       return EyeReading(null, null, watch.elapsedMilliseconds);

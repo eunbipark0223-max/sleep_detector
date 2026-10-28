@@ -23,6 +23,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/sleep_response.dart';
 import '../services/api_service.dart';
 import '../theme.dart';
+import 'warning_screen.dart';
 
 class UploadScreen extends StatefulWidget {
   const UploadScreen({super.key});
@@ -139,6 +140,16 @@ class _UploadScreenState extends State<UploadScreen> {
             if (_result != null) ...[
               const SizedBox(height: 16),
               _resultCard(_result!),
+              if (_result!.stage >= 1) ...[
+                const SizedBox(height: 12),
+                FilledButton(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => WarningScreen(response: _result!)),
+                  ),
+                  child: const Text('경고 화면 보기'),
+                ),
+              ],
             ],
           ],
         ),

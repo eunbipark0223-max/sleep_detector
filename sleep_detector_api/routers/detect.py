@@ -12,6 +12,8 @@
 #   -   ⑥ Agent 단계 · 안내문 · 보고서 · driver_voice → 바닥 · 천장 검사 + 음성 보고 숫자 검사
 #   -   ⑦ 저장 (사진 uploads/events/ + DB 1줄)   ⑧ 음성 퀴즈 1문제 (경고 저장 뒤, quiz_id ↔ event_id 기억)
 #   -   reason 이 비어 있으면 '사진 1장 테스트' → 서버 EAR 만으로 판정
+#   -   사진 없이 오면 (고개를 떨궈 얼굴을 놓친 채 감김, 10/28) → '얼굴 없음' 과 같이 앱 판단대로 확정 (method mlkit, photo_path 없음)
+#       사진 1장 테스트(reason 없음)는 사진이 꼭 있어야 함 → 400
 #   - POST /drive/start — 운행 시작: 졸음 기록 · 단계 0, 연속 운전 시간 시작
 #   - POST /drive/calibrate — 개인 기준 측정 사진 1장씩, 5장 모이면 서버 개인 기준 EAR 완성
 #   - POST /drive/ping — 30초마다 (사진 없음). 응답: stage · status · drive_min · rest_due · rest_message
@@ -235,7 +237,7 @@ def drive_resume_handler(session: Session = Depends(get_session), user: User = D
 # ───────────────────────────────────────────────
 @router.post("/detect")
 async def detect_handler(
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),  # 없으면 = 고개를 떨궈 얼굴을 놓친 채 감김 (eye_monitor) → 앱 판단대로
     reason: str = Form(""),                # microsleep / perclos / "" (사진 1장 테스트)
     closed_sec: str = Form(""),
     perclos: str = Form(""),
@@ -246,13 +248,20 @@ async def detect_handler(
     user: User = Depends(get_current_user),
 ):
     # ① 로그인 · 사진 확인 (검사하는 동안만 임시 보관)
-    tmp_path = await _save_upload(file, config.UPLOAD_TMP_DIR, f"u{user.id}")
     reason = reason if reason in ("microsleep", "perclos") else ""
+    if file is None and not reason:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "사진이 필요합니다 (사진 없이는 운행 중 졸음 의심만 보낼 수 있음)")
+    tmp_path = await _save_upload(file, config.UPLOAD_TMP_DIR, f"u{user.id}") if file is not None else None
     closed, pc, open_prob = _num(closed_sec), _num(perclos), _num(eye_open_prob)
     lat, lng = _num(latitude), _num(longitude)
 
     # ② 확인 판정 (MediaPipe EAR / CNN)
-    eye = await run_in_threadpool(face_service.check_eyes, tmp_path, user.id, reason or None)
+    #   사진 없음 = 서버가 볼 얼굴이 없음 → '얼굴 없음' 과 같이 앱 판단대로 확정 (method mlkit, 기획안 5-2)
+    if tmp_path is None:
+        eye = {"face_found": False, "ear": None, "eye_closed_prob": None, "method": "mlkit",
+               "ear_threshold": None, "is_sleep": True}
+    else:
+        eye = await run_in_threadpool(face_service.check_eyes, tmp_path, user.id, reason or None)
     base = {
         "success": True, "face_found": bool(eye.get("face_found")), "ear": _r(eye.get("ear")),
         "eye_closed_prob": _r(eye.get("eye_closed_prob")), "eye_open_prob": _r(open_prob),
@@ -283,13 +292,17 @@ async def detect_handler(
                                     rule_stage, location, user.id)
     stage = int(sleep_state.set_stage(user.id, agent["stage"]))   # 올리기만 (sleep_state 가 보증)
 
-    # ⑦ 저장 — 확정 사진만 uploads/events/ 로, DB 1줄
-    os.makedirs(config.UPLOAD_EVENT_DIR, exist_ok=True)
-    photo_name = os.path.basename(tmp_path)
-    shutil.move(tmp_path, os.path.join(config.UPLOAD_EVENT_DIR, photo_name))
+    # ⑦ 저장 — 확정 사진만 uploads/events/ 로, DB 1줄 (사진 없이 온 경고는 photo_path 없음 → 관리자 웹 '사진 없음')
+    photo_path = None
+    if tmp_path is not None:
+        os.makedirs(config.UPLOAD_EVENT_DIR, exist_ok=True)
+        photo_name = os.path.basename(tmp_path)
+        shutil.move(tmp_path, os.path.join(config.UPLOAD_EVENT_DIR, photo_name))
+        photo_path = f"uploads/events/{photo_name}"
     report = {
         **agent["report"],
-        "eye": {"closed_sec": closed, "perclos": pc, "eye_open_prob": open_prob, "ear": eye.get("ear")},
+        "eye": {"closed_sec": closed, "perclos": pc, "eye_open_prob": open_prob, "ear": eye.get("ear"),
+                "photo": tmp_path is not None},
         "driving_quiz": [],
         "facts": facts,
         "is_real": {"llm": bool(analysis.get("is_real")), "rag": any(r.get("is_real") for r in regulations),
@@ -299,7 +312,7 @@ async def detect_handler(
         user_id=user.id, stage=stage, ear=eye.get("ear"), eye_closed_prob=eye.get("eye_closed_prob"),
         method=base["method"], reason=reason, perclos=pc,
         summary=(analysis.get("summary") or "")[:255], guidance=agent["guidance"][:255],
-        report=json.dumps(report, ensure_ascii=False), photo_path=f"uploads/events/{photo_name}",
+        report=json.dumps(report, ensure_ascii=False), photo_path=photo_path,
         latitude=lat, longitude=lng, status="미확인",
     )
     session.add(event)
