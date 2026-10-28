@@ -8,8 +8,8 @@
 #   video : 영상(사람마다 bright 1개 · dark 1개) → 구간 가운데 1초 간격 프레임 → 이름 자동 + 라벨 확인용 모아보기 그림
 #           영상 구성: 녹화 시작 → 2초 대기 → open 5초 → half 5초 → closed 5초 → open → half → closed (총 32초)
 #           구간마다 1.5 · 2.5 · 3.5초 지점 (뜨는 중 · 감는 중인 경계는 뺌) → 영상 1개에 open · half · closed 6장씩
-#           저장 크기: 앱 카메라(ResolutionPreset.medium 640×480, 4:3)와 같게 — 가운데를 4:3(세로 영상은 3:4)으로 잘라
-#                      640×480(세로 480×640)로 줄임. 원본 크기 프레임은 <dst>/_full/ 에 같은 이름으로 (해상도 비교용)
+#           저장 크기: 앱 카메라(ResolutionPreset.medium, 세로 480×640)와 얼굴 크기가 같게 — 자르지 않고 긴 변을 640 으로
+#                      줄임 (세로 9:16 영상 → 360×640, 10/28 팀장 수정). 원본 크기 프레임은 <dst>/_full/ 에 같은 이름으로 (해상도 비교용)
 #   photo : 촬영 순서대로 찍은 사진 → 이름 붙여 복사 (원본은 그대로)
 #           기본 사진: 사람마다 open 10 → half 5 → closed 10 (25장) 다 찍고 다음 사람
 #           조건 사진(마스크 · 선글라스 · 고개)은 조건마다 폴더를 나눠 넣고 --tag · --order · --people 로 한 번씩
@@ -85,19 +85,17 @@ def _imwrite(path, img):
 
 
 def to_app_size(frame):
-    """앱 카메라와 같은 조건: 가운데를 4:3 (세로 영상은 3:4) 으로 잘라 640×480 (세로 480×640)"""
+    """앱 카메라와 같은 조건: 자르지 않고 긴 변을 640 으로 줄인다 (세로 9:16 영상 → 360×640)
+
+    (10/28 팀장 수정) 예전에는 가운데를 3:4 로 잘랐는데, 그러면 얼굴이 앱보다 약 1.3배 크게 나온다.
+      - 센서는 4:3 이고 앱(480×640)은 센서 전체를 본다
+      - 9:16 영상은 센서의 양옆만 잘린 화면 → 세로 범위가 앱과 같다
+      - 여기서 위아래까지 자르면 앱보다 좁게 보는 셈 → 눈이 커져서 기준값이 어긋남
+      → 줄이기만 하면 얼굴이 화면에서 차지하는 크기가 앱과 같아진다 (양옆이 좁은 건 얼굴이 가운데면 영향 없음)
+    """
     h, w = frame.shape[:2]
-    portrait = h > w
-    ratio = APP_SHORT / APP_LONG if portrait else APP_LONG / APP_SHORT   # 가로 ÷ 세로
-    if w / h > ratio:      # 너무 넓음 → 양옆을 자름
-        nw = int(round(h * ratio))
-        x = (w - nw) // 2
-        frame = frame[:, x: x + nw]
-    else:                  # 너무 김 → 위아래를 자름
-        nh = int(round(w / ratio))
-        y = (h - nh) // 2
-        frame = frame[y: y + nh]
-    size = (APP_SHORT, APP_LONG) if portrait else (APP_LONG, APP_SHORT)
+    scale = APP_LONG / max(h, w)
+    size = (max(1, round(w * scale)), max(1, round(h * scale)))
     return cv2.resize(frame, size, interpolation=cv2.INTER_AREA)
 
 
