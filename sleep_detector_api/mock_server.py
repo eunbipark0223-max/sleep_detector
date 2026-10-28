@@ -378,7 +378,7 @@ def seed() -> None:
               "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[3], "location": "37.3950, 127.1100",
               "driving_quiz": quiz_fail}, summary="운전 중 음성 퀴즈에 2번 답하지 못했습니다.", guidance=GUIDANCE[3],
               lat=37.3950, lng=127.1100, created_at=_now_text(now - timedelta(minutes=20)))
-    add_event(1, 0, "rest_overdue", {"situation": "연속 운전 2시간 안내 뒤 15분 안에 쉬지 않음", "stage_reason": "휴게 미준수 (단계는 그대로)",
+    add_event(1, 1, "rest_overdue", {"situation": "연속 운전 2시간 안내 뒤 15분 안에 쉬지 않음", "stage_reason": "휴게 미준수 (단계는 올리지 않고 최소 1단계로 기록)",
               "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": "기사에게 휴식 안내", "location": "37.4300, 127.1300"},
               summary="휴게 시간을 지키지 않았습니다.", guidance="가까운 졸음쉼터에서 쉬어 주세요.",
               lat=37.4300, lng=127.1300, created_at=_now_text(now - timedelta(minutes=50)))
