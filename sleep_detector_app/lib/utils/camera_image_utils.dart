@@ -10,7 +10,7 @@
 //
 // [만들 것 (이름 약속 — 다른 파일이 이 이름으로 부름)]
 //   - toInputImage(CameraImage image, CameraDescription camera) → InputImage?
-//   - toJpg(CameraImage image) → Uint8List
+//   - toJpg(CameraImage image, {rotation}) → Uint8List? (nv21 · yuv420 · bgra8888, 실패하면 null)
 //
 // [주의]
 //   - 학생들이 가장 많이 막히는 곳 — 공식 예제 코드를 그대로 가져다 쓴다
@@ -39,9 +39,9 @@ class CameraImageUtils {
     final format = InputImageFormatValue.fromRawValue(image.format.raw);
 
     // Android 단일 평면(NV21)인 경우 바로 사용, 다중 평면(YUV_420_888)인 경우 NV21 바이트로 병합
-    final Uint8List bytes = image.planes.length == 1
-        ? image.planes.first.bytes
-        : _yuv420ToNv21(image);
+    //   → drive_screen 은 CameraController(imageFormatGroup: ImageFormatGroup.nv21) 로 열기 (공식 예제, 변환 없음)
+    final bool merged = Platform.isAndroid && image.planes.length > 1;
+    final Uint8List bytes = merged ? _yuv420ToNv21(image) : image.planes.first.bytes;
 
     return InputImage.fromBytes(
       bytes: bytes,
@@ -51,7 +51,8 @@ class CameraImageUtils {
         format: Platform.isAndroid
             ? InputImageFormat.nv21
             : (format ?? InputImageFormat.bgra8888),
-        bytesPerRow: image.planes.first.bytesPerRow,
+        // 병합한 NV21 은 줄 사이 여백 없이 width 바이트씩 채웠으므로 width (원래 줄 간격을 쓰면 화면이 깨짐)
+        bytesPerRow: merged ? image.width : image.planes.first.bytesPerRow,
       ),
     );
   }
@@ -94,7 +95,9 @@ class CameraImageUtils {
   static Uint8List? toJpg(CameraImage image, {int rotation = 270}) {
     try {
       img.Image? converted;
-      if (image.format.group == ImageFormatGroup.yuv420) {
+      if (image.format.group == ImageFormatGroup.nv21) {
+        converted = _convertNV21ToImage(image);
+      } else if (image.format.group == ImageFormatGroup.yuv420) {
         converted = _convertYUV420ToImage(image);
       } else if (image.format.group == ImageFormatGroup.bgra8888) {
         converted = img.Image.fromBytes(
@@ -114,6 +117,33 @@ class CameraImageUtils {
       return null;
     }
   }
+
+  /// NV21 (평면 1개: Y 전체 → V · U 교차) -> RGB 이미지
+  static img.Image _convertNV21ToImage(CameraImage image) {
+    final int width = image.width;
+    final int height = image.height;
+    final Uint8List bytes = image.planes.first.bytes;
+    final int stride = image.planes.first.bytesPerRow;
+    final int uvStart = stride * height;
+
+    final outImg = img.Image(width: width, height: height);
+    for (int y = 0; y < height; y++) {
+      final int uvRow = uvStart + (y ~/ 2) * stride;
+      for (int x = 0; x < width; x++) {
+        final int yp = bytes[y * stride + x];
+        final int uvIndex = uvRow + (x & ~1);
+        final int vp = uvIndex + 1 < bytes.length ? bytes[uvIndex] : 128;
+        final int up = uvIndex + 1 < bytes.length ? bytes[uvIndex + 1] : 128;
+        outImg.setPixelRgb(x, y, _r(yp, vp), _g(yp, up, vp), _b(yp, up));
+      }
+    }
+    return outImg;
+  }
+
+  static int _r(int y, int v) => (y + 1.402 * (v - 128)).round().clamp(0, 255);
+  static int _g(int y, int u, int v) =>
+      (y - 0.344136 * (u - 128) - 0.714136 * (v - 128)).round().clamp(0, 255);
+  static int _b(int y, int u) => (y + 1.772 * (u - 128)).round().clamp(0, 255);
 
   static img.Image _convertYUV420ToImage(CameraImage image) {
     final int width = image.width;
@@ -139,13 +169,7 @@ class CameraImageUtils {
           vp = vPlane.bytes[uvIndex];
         }
 
-        int r = (yp + 1.402 * (vp - 128)).round().clamp(0, 255);
-        int g = (yp - 0.344136 * (up - 128) - 0.714136 * (vp - 128))
-            .round()
-            .clamp(0, 255);
-        int b = (yp + 1.772 * (up - 128)).round().clamp(0, 255);
-
-        outImg.setPixelRgb(x, y, r, g, b);
+        outImg.setPixelRgb(x, y, _r(yp, vp), _g(yp, up, vp), _b(yp, up));
       }
     }
     return outImg;

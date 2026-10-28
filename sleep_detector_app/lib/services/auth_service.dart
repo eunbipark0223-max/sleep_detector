@@ -12,22 +12,27 @@
 //   - POST /users/login   {email, password}                      → {success, access_token, token_type, user}
 //   - POST /users/google  {email, name, firebase_uid}            → 로그인과 같은 응답 (구글 로그인 뒤 서버 JWT 로 통일)
 //   - GET  /users/me      Authorization: Bearer 토큰              → 내 정보 (토큰이 틀리면 401)
+//   - POST · GET · DELETE /users/me/photo                        → 프로필 사진 올리기(멀티파트 file) · 받기(토큰 필요) · 지우기
 //
 // [쓰는 법]
 //   - 실패는 AuthException(message) 으로 던진다 — message 는 화면에 그대로 보여 줘도 되는 글 (서버 detail · 422 메시지)
 //   - 다른 서비스(api_service)는 await AuthService.authHeaders() 로 토큰 헤더를 받아 쓴다
-//   - 서버 주소: 기본 http://10.0.2.2:8000 (에뮬레이터). 실기기는 flutter run --dart-define=API_BASE_URL=http://PC주소:8000
-//     (A 의 config.dart baseUrl 이 생기면 아래 _baseUrl 한 줄만 그쪽 값으로 바꾼다)
+//   - 서버 주소: config.dart 의 AppConfig.baseUrl 한 곳만 쓴다 (모든 서비스가 같은 값)
+//     기본 http://10.0.2.2:8000 (에뮬레이터). 실기기는 flutter run --dart-define=API_BASE_URL=http://PC주소:8000
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+
+import '../config.dart';
 
 /// 화면에 그대로 보여 줘도 되는 오류 글을 담는다.
 class AuthException implements Exception {
@@ -42,7 +47,6 @@ class AuthException implements Exception {
 class AuthService {
   AuthService._();
 
-  static const String _baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://10.0.2.2:8000');
   static const String _tokenKey = 'access_token';
   static const Duration _timeout = Duration(seconds: 15);
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
@@ -126,6 +130,43 @@ class AuthService {
     throw _error(res);
   }
 
+  // ── 프로필 사진 (서버: POST · GET · DELETE /users/me/photo) ──────────────
+  /// 내 프로필 사진 바이트. 사진이 없으면(404) null.
+  /// 사진은 로그인 토큰이 있어야 받을 수 있어서(주소만으로는 안 열림) Image.network 대신 바이트로 받아 Image.memory 로 그린다.
+  static Future<Uint8List?> fetchPhoto() async {
+    final res = await _send(() async => http.get(_uri('/users/me/photo'), headers: await authHeaders()));
+    if (res.statusCode == 200) return res.bodyBytes;
+    if (res.statusCode == 404) return null;
+    throw _error(res);
+  }
+
+  /// 프로필 사진 올리기. 서버가 정한 확장자(jpg · jpeg · png · webp · heic) · 5MB 를 어기면 서버 문구가 AuthException 으로 온다.
+  static Future<void> uploadPhoto(Uint8List bytes, String filename) async {
+    final headers = await authHeaders()
+      ..remove('Content-Type'); // 멀티파트의 Content-Type 은 http 가 경계값과 함께 직접 붙인다
+    final res = await _send(() async {
+      final request = http.MultipartRequest('POST', _uri('/users/me/photo'))
+        ..headers.addAll(headers)
+        ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: _imageType(filename)));
+      return http.Response.fromStream(await request.send());
+    });
+    if (res.statusCode != 200) throw _error(res);
+  }
+
+  /// 프로필 사진 지우기 (서버도 파일을 지운다).
+  static Future<void> deletePhoto() async {
+    final res = await _send(() async => http.delete(_uri('/users/me/photo'), headers: await authHeaders()));
+    if (res.statusCode != 200) throw _error(res);
+  }
+
+  static MediaType _imageType(String filename) {
+    final lower = filename.toLowerCase();
+    if (lower.endsWith('.png')) return MediaType('image', 'png');
+    if (lower.endsWith('.webp')) return MediaType('image', 'webp');
+    if (lower.endsWith('.heic')) return MediaType('image', 'heic');
+    return MediaType('image', 'jpeg');
+  }
+
   /// 로그아웃 — 토큰을 지우고 Firebase · 구글 로그인도 푼다 (둘 중 하나가 실패해도 토큰은 이미 지워진다).
   static Future<void> logout() async {
     await clearToken();
@@ -140,7 +181,7 @@ class AuthService {
   // ── 안쪽 도우미 ──────────────────────────────────────────────
   static const Map<String, String> _json = {'Content-Type': 'application/json'};
 
-  static Uri _uri(String path) => Uri.parse('$_baseUrl$path');
+  static Uri _uri(String path) => Uri.parse('${AppConfig.baseUrl}$path');
 
   static Future<http.Response> _send(Future<http.Response> Function() request) async {
     try {

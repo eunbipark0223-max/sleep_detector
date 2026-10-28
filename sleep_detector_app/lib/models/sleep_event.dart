@@ -69,6 +69,13 @@ class SleepEvent {
   /// 경고 종류 이름. 모르는 값이면 서버가 준 글자 그대로.
   String get reasonLabel => reasonLabels[reason] ?? reason;
 
+  /// 목록에 보여 줄 발생 시각 (예: 10/27 16:30)
+  String get createdLabel {
+    final t = createdAt.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(t.month)}/${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
+  }
+
   /// 관리자 웹에서 빨간 줄로 보이는 경고 (3단계 · 음성 응답 없음)
   bool get isUrgent => stage == 3 || reason == 'no_response';
 

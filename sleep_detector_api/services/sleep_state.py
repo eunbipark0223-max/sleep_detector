@@ -42,6 +42,7 @@ def get_state(user_id: int) -> dict:
         _states[user_id] = {
             "sleep_times": [],           # 최근 10분 내 졸음 발생 시각 리스트
             "stage": 0,                  # 현재 경고 단계 (0~3)
+            "stage_changed_at": datetime.now(),  # 단계가 마지막으로 바뀐 시각 (1단계 자동 해제 기준)
             "last_sleep_at": None,       # 마지막 졸음 시각
             "last_closed_sec": 0.0,      # 마지막 연속 감김 시간(초)
             "personal_ear": getattr(config, "EAR_THRESHOLD", 0.20),
@@ -54,14 +55,22 @@ def get_state(user_id: int) -> dict:
     return _states[user_id]
 
 
+def _change_stage(state: dict, stage: int) -> None:
+    """단계를 바꾸고 바뀐 시각을 기록 (1단계 자동 해제가 이 시각부터 10분을 셈)"""
+    if state["stage"] != stage:
+        state["stage"] = stage
+        state["stage_changed_at"] = datetime.now()
+
+
 def _prune_old_sleeps(state: dict, now: datetime) -> None:
     """10분(시연 모드 1분)이 지난 졸음 기록 제거 및 1단계 자동 해제"""
     cutoff = now - timedelta(minutes=_get_window_minutes())
     state["sleep_times"] = [t for t in state["sleep_times"] if t >= cutoff]
 
-    # 1단계에서 10분 동안 추가 졸음이 없으면 0단계로 자동 해제
-    if state["stage"] == 1 and len(state["sleep_times"]) == 0:
-        state["stage"] = 0
+    # 1단계가 된 지 10분이 지났고 그동안 졸음이 없으면 0단계로 자동 해제
+    #   (휴식 후 1단계로 내려온 경우 sleep_times 가 비어 있어도 재개 시각부터 10분은 1단계 유지)
+    if state["stage"] == 1 and not state["sleep_times"] and state["stage_changed_at"] <= cutoff:
+        _change_stage(state, 0)
 
 
 def start_drive(user_id: int) -> dict:
@@ -69,7 +78,7 @@ def start_drive(user_id: int) -> dict:
     state = get_state(user_id)
     now = datetime.now()
     state["sleep_times"] = []
-    state["stage"] = 0
+    _change_stage(state, 0)
     state["last_sleep_at"] = None
     state["last_closed_sec"] = 0.0
     state["drive_started_at"] = now
@@ -95,6 +104,9 @@ def record_sleep(user_id: int, closed_sec: float = 0.0) -> int:
 
     count = len(state["sleep_times"])
     rule_stage = min(3, count)
+    if state["stage"] == 1:
+        # 1단계에서 또 졸면 최소 2단계 — 휴식 후 1단계는 10분 기록이 비어 있어도 "다시 졸면 바로 2단계" (기획안 8-5)
+        rule_stage = max(rule_stage, 2)
 
     set_stage(user_id, rule_stage)
     return state["stage"]
@@ -110,7 +122,7 @@ def set_stage(user_id: int, new_stage: int) -> int:
     state = get_state(user_id)
     clamped = max(0, min(3, int(new_stage)))
     if clamped > state["stage"]:
-        state["stage"] = clamped
+        _change_stage(state, clamped)
     return state["stage"]
 
 
@@ -129,7 +141,7 @@ def reset(user_id: int) -> int:
     """관리자 [조치완료] 시 3단계 -> 0단계 완전 초기화"""
     state = get_state(user_id)
     state["sleep_times"] = []
-    state["stage"] = 0
+    _change_stage(state, 0)
     state["quiz_fails"] = 0
     state["rest_started_at"] = None
     return 0
@@ -164,7 +176,7 @@ def resume_drive(user_id: int) -> tuple[bool, int, dict]:
         return False, state["stage"], {"minutes": int(elapsed_min)}
 
     if state["stage"] == 2:
-        state["stage"] = 1
+        _change_stage(state, 1)
     state["sleep_times"] = []
     state["quiz_fails"] = 0
     state["rest_started_at"] = None
@@ -245,7 +257,7 @@ def finish_rest(user_id: int) -> int:
     """15분 휴식 뒤 [운행 재개] — resume_drive 와 같은 정리 (2단계 → 1단계, 10분 기록 · 퀴즈 실패 비움)"""
     state = get_state(user_id)
     if state["stage"] == 2:
-        state["stage"] = 1
+        _change_stage(state, 1)
     state["sleep_times"] = []
     state["quiz_fails"] = 0
     state["rest_started_at"] = None

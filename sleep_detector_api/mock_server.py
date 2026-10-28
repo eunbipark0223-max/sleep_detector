@@ -48,7 +48,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Literal, Optional
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -82,6 +82,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # 서버 메모리 (진짜 서버: MySQL users · sleep_events + sleep_state)
 # ═══════════════════════════════════════════════════════════════
 USERS: dict = {}          # user_id → {id, email, name, role}
+PHOTOS: dict = {}         # user_id → {"name", "bytes"}  프로필 사진 (메모리에만 보관)
 EVENTS: list = []         # 경고 목록 (sleep_events 한 줄 = dict 하나)
 STATES: dict = {}         # user_id → 기사별 졸음 상태 (sleep_state)
 QUIZZES: dict = {}        # quiz_id → {user_id, type, answer, asked, event_id}
@@ -227,6 +228,8 @@ def make_ai_text(stage: int, reason: str, count: int, closed_sec: float, perclos
             "situation": summary, "stage_reason": STAGE_REASON[stage],
             "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[stage],
             "location": f"{lat}, {lng}" if lat is not None and lng is not None else "",
+            # 진짜 서버(detect.py)와 같은 칸 — 모의 서버의 AI 는 전부 가짜라서 모두 False
+            "is_real": {"llm": False, "rag": False, "agent": False, "driver_voice": False},
         },
     }
 
@@ -359,13 +362,15 @@ def seed() -> None:
                  {"type": "add", "asked": "31+52", "heard": "", "passed": False, "answer_sec": None}]
     add_event(1, 1, "microsleep", {"situation": "10분 안 첫 졸음, 눈 감김 약 2초", "stage_reason": STAGE_REASON[1],
               "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[1], "location": "37.4021, 127.1088",
-              "eye": {"closed_sec": 2.1, "perclos": 0.12, "eye_open_prob": 0.18}, "driving_quiz": quiz_ok},
+              "eye": {"closed_sec": 2.1, "perclos": 0.12, "eye_open_prob": 0.18}, "driving_quiz": quiz_ok,
+              "is_real": {"llm": True, "rag": True, "agent": True, "driver_voice": True}},  # 시험용: 전부 진짜인 경고
               summary="눈을 약 2초간 감고 있었습니다. 10분 안에 1번째 졸음입니다.", guidance=GUIDANCE[1], ear=0.17, method="ear",
               perclos=0.12, eye_closed_prob=0.82, lat=37.4021, lng=127.1088, status="확인", created_at=_now_text(now - timedelta(hours=3)))
     add_event(1, 2, "perclos", {"situation": "10분 안 두 번째 졸음, PERCLOS 33%", "stage_reason": STAGE_REASON[2],
               "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[2], "location": "37.4105, 127.1190",
               "eye": {"closed_sec": 0.8, "perclos": 0.33, "eye_open_prob": 0.4}, "driving_quiz": quiz_ok,
-              "rest": {"started": "03:20", "resumed": "03:38", "minutes": 18}},
+              "rest": {"started": "03:20", "resumed": "03:38", "minutes": 18},
+              "is_real": {"llm": True, "rag": False, "agent": True, "driver_voice": True}},  # 시험용: 규정 검색만 가짜로 대체된 경고
               summary="눈 감김 비율(PERCLOS)이 33%로 피로가 누적된 상태입니다. 10분 안에 2번째 졸음입니다.", guidance=GUIDANCE[2],
               ear=0.19, method="ear", perclos=0.33, eye_closed_prob=0.6, lat=37.4105, lng=127.1190, status="휴식완료",
               created_at=_now_text(now - timedelta(hours=2)))
@@ -380,7 +385,7 @@ def seed() -> None:
 
 
 def reset_all() -> None:
-    USERS.clear(); EVENTS.clear(); STATES.clear(); QUIZZES.clear()
+    USERS.clear(); EVENTS.clear(); STATES.clear(); QUIZZES.clear(); PHOTOS.clear()
     _next.update({"user": 1, "event": 1})
     SCENARIO["name"] = "auto"
     add_user("driver@test.com", "김기사")
@@ -477,7 +482,43 @@ async def login_google(request: Request):
 
 @app.get("/users/me")
 def me(user: dict = Depends(current_user)):
-    return user
+    photo = PHOTOS.get(user["id"])
+    return {**user, "provider": "email", "photo_url": photo["name"] if photo else None}
+
+
+# 프로필 사진 — 진짜 서버(routers/user.py)와 같은 규칙: 확장자 · 5MB · 사진 받기는 로그인 토큰이 있어야 함 (메모리에만 보관)
+PROFILE_ALLOWED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".heic"}
+PROFILE_MAX_BYTES = 5 * 1024 * 1024
+_MEDIA ={".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".heic": "image/heic"}
+
+
+@app.post("/users/me/photo")
+async def upload_my_photo(file: UploadFile = File(...), user: dict = Depends(current_user)):
+    ext = os.path.splitext(file.filename or "photo.jpg")[1].lower() or ".jpg"
+    if ext not in PROFILE_ALLOWED_EXTS:
+        raise HTTPException(status_code=400, detail=f"이미지 파일만 올릴 수 있습니다 ({', '.join(sorted(PROFILE_ALLOWED_EXTS))})")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="빈 파일입니다")
+    if len(content) > PROFILE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail=f"사진이 너무 큽니다 (최대 {PROFILE_MAX_BYTES // (1024 * 1024)}MB)")
+    name = f"u{user['id']}_{uuid.uuid4().hex[:12]}{ext}"
+    PHOTOS[user["id"]] = {"name": name, "bytes": content}
+    return {"success": True, "photo_url": name}
+
+
+@app.get("/users/me/photo")
+def get_my_photo(user: dict = Depends(current_user)):
+    photo = PHOTOS.get(user["id"])
+    if not photo:
+        raise HTTPException(status_code=404, detail="프로필 사진이 없습니다")
+    return Response(content=photo["bytes"], media_type=_MEDIA.get(os.path.splitext(photo["name"])[1], "application/octet-stream"))
+
+
+@app.delete("/users/me/photo")
+def delete_my_photo(user: dict = Depends(current_user)):
+    PHOTOS.pop(user["id"], None)
+    return {"success": True}
 
 
 # ═══════════════════════════════════════════════════════════════
