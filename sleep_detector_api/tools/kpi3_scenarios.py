@@ -228,6 +228,17 @@ def bonus():
     return client.post("/drive/resume", headers=h).json()["stage"]
 
 
+def bonus_no_photo():
+    """고개를 떨궈 얼굴을 놓친 채 감김 → 앱이 사진 없이 보냄 → 서버는 앱 판단대로 확정, 사진 없이 기록"""
+    h, uid = new_driver()
+    r = client.post("/detect", data={"reason": "microsleep", "closed_sec": "1.8"}, headers=h).json()
+    with TestSession() as s:
+        ev = s.get(SleepEvent, r["event_id"])
+        photo = "사진 없음" if ev.photo_path is None else "사진 있음"
+    test = client.post("/detect", data={"reason": ""}, headers=h).status_code   # 사진 1장 테스트는 사진이 꼭 있어야
+    return f"{'확정' if r['is_sleep'] else '취소'} · {r['method']} · {r['stage']}단계 · {photo} · 사진 테스트 {test}"
+
+
 SCENARIOS = [
     ("① 졸음 1회 → 1단계",                     1, s1),
     ("② 10분 안 졸음 2회 → 2단계",              2, s2),
@@ -242,7 +253,8 @@ SCENARIOS = [
     ("⑪ 운전 중 퀴즈 통과 → 단계 그대로",          "통과 · 1단계", s11),
     ("⑫ 운전 중 퀴즈 2번 실패 → 단계 +1",          "2단계 · no_response 1건", s12),
 ]
-BONUS = [("(보너스) 3단계는 휴식으로 안 풀림 → 3단계", 3, bonus)]
+BONUS = [("(보너스) 3단계는 휴식으로 안 풀림 → 3단계", 3, bonus),
+         ("(보너스) 사진 없는 졸음 → 앱 판단대로 확정", "확정 · mlkit · 1단계 · 사진 없음 · 사진 테스트 400", bonus_no_photo)]
 
 
 def run(items):

@@ -36,13 +36,16 @@ USE_REAL_AI = True
 FALLBACK_ON_ERROR = True
 
 # ── 서버 확인 판정 (face_service) ────────────────────
-EAR_THRESHOLD = 0.20          # 기본 기준 (개인 기준이 없을 때)
+EAR_THRESHOLD = 0.23          # 기본 기준 (개인 기준이 없을 때) — 10/28 CNN 채택 회의 0.20 → 0.23 (KPI ①)
 CONFIRM_OPEN_MARGIN = 0.03    # EAR 이 기준 + 이 값 이상이면 '확실히 뜸' → 앱 의심 취소
 
-USE_CNN = False               # 3주차 수요일 채택 결정 (KPI ①)
-CNN_CLOSED_PROB = 0.5         # 감음 확률이 이 값 이상이면 감음
+# CNN — 10/28 CNN 채택 회의 (KPI ①): 채택, AI-Hub 미세조정 모델, 기준 0.4
+#   취소는 CNN · EAR 둘 다 '확실히 뜸' 일 때만 (face_service._normalize)
+#   torch(tools/requirements-cnn.txt) · 모델 파일이 없는 PC 는 자동으로 EAR 만 씀 (A · B · 팀장 PC 에만 설치)
+USE_CNN = True
+CNN_CLOSED_PROB = 0.4         # 감음 확률이 이 값 이상이면 감음 (CNN_OPEN_MARGIN 0.1 → 0.3 미만이면 '확실히 뜸')
 CNN_INPUT_SIZE = 64           # 눈 잘라 흑백 64×64 (학습 노트북과 같은 값)
-CNN_MODEL_PATH = os.path.join(BASE_DIR, "ml_models", "eye_cnn.pt")
+CNN_MODEL_PATH = os.path.join(BASE_DIR, "ml_models", "eye_cnn_aihub.pt")   # 구글 드라이브에서 받아 ml_models/ 에 (GitHub X)
 
 # ── 개인 기준 EAR (출발 때 정면 사진 5장) ─────────────
 CALIB_FRAMES = 5              # 받는 사진 수

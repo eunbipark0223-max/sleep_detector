@@ -11,6 +11,7 @@
 #       (자르기 · 흑백 · 크기는 services/eye_preprocess.py 의 crop_eye → prep_eye 사용, 학습과 같은 함수)
 #   - 결과: 감음 / 뜸 / 얼굴 없음 + ear · eye_closed_prob · method
 #   - 확인 규칙: microsleep → 서버도 감음이면 확정 / 확실히 뜸이면 취소 / 얼굴 없음이면 앱 판단대로(method mlkit)
+#       확실히 뜸 = CNN 이 있으면 CNN · EAR 둘 다 확실히 뜸 (10/28 회의), 없으면 EAR 만
 #   -           perclos → 앱 숫자로 확정 (method mlkit, 사진은 기록용)
 #   - 개인 기준 EAR: /drive/calibrate 사진 5장 중간값 × 0.7 (0.15~0.25)
 #
@@ -53,7 +54,8 @@ USE_CNN = getattr(config, "USE_CNN", False)
 CNN_CLOSED_PROB = getattr(config, "CNN_CLOSED_PROB", 0.5)
 CNN_INPUT_SIZE = getattr(config, "CNN_INPUT_SIZE", 64)
 CNN_MODEL_PATH = getattr(config, "CNN_MODEL_PATH", os.path.join(BASE_DIR, "ml_models", "eye_cnn.pt"))
-# 감음 확률이 CNN_CLOSED_PROB - 이 값 보다 낮아야 '확실히 뜸' → 취소 (0.4~0.6 은 애매 → 경고 쪽, eye_cnn.ipynb 2-6)
+# 감음 확률이 CNN_CLOSED_PROB - 이 값 보다 낮아야 '확실히 뜸' → 취소 (기준 0.4 이면 0.3~0.4 는 애매 → 경고 쪽, eye_cnn.ipynb 2-6)
+#   취소는 EAR 도 확실히 뜸이어야 함 (_normalize, 10/28 회의)
 CNN_OPEN_MARGIN = getattr(config, "CNN_OPEN_MARGIN", 0.1)
 USE_REAL_AI = getattr(config, "USE_REAL_AI", True)
 FALLBACK_ON_ERROR = getattr(config, "FALLBACK_ON_ERROR", True)
@@ -270,10 +272,14 @@ def _normalize(raw: dict, threshold: float, reason: str | None = None) -> dict:
         is_closed = False
         is_definitely_open = False
     elif method == "cnn" and eye_closed_prob is not None:
-        # CNN 채택 시: 감음 확률로 판정, 애매한 구간(0.4~0.6)은 취소하지 않음
+        # CNN 채택 시: 감음 · 뜸 판정은 CNN 감음 확률로, 애매한 구간(기준 ± 0.1)은 취소하지 않음
+        #   취소(확실히 뜸)는 CNN · EAR 둘 다 '확실히 뜸' 일 때만 (10/28 CNN 채택 회의)
+        #   → 반쯤 감은 눈 취소 48.6% → 26.6% (KPI ①, 미세조정 0.4 + EAR 0.23), 감은 눈 취소 0 · 뜬 눈 걸러 냄 그대로
         ear = round(float(ear), 3)
         is_closed = eye_closed_prob >= CNN_CLOSED_PROB
-        is_definitely_open = eye_closed_prob < (CNN_CLOSED_PROB - CNN_OPEN_MARGIN)
+        cnn_open = eye_closed_prob < (CNN_CLOSED_PROB - CNN_OPEN_MARGIN)
+        ear_open = ear >= (threshold + CONFIRM_OPEN_MARGIN)
+        is_definitely_open = cnn_open and ear_open
         result_str = "감음" if is_closed else "뜸"
     else:
         method = "ear" if method == "cnn" else method  # CNN 값이 없으면 EAR 로 판정한 것
