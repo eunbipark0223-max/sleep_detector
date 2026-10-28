@@ -6,7 +6,7 @@
 //
 // [이 파일이 하는 일]
 //   - 눈 판정을 앱이 하므로 판정 숫자는 여기 한곳에만 둔다
-//   - eyeClosedProb = 0.2      두 눈 평균 눈 뜸 확률이 이보다 작으면 '감김' (개인 기준이 없을 때, 10/27 팀 결정 0.3 → 0.2)
+//   - eyeClosedProb = 0.25     두 눈 평균 눈 뜸 확률이 이보다 작으면 '감김' (개인 기준이 없을 때, 10/27 0.3 → 0.2, 10/28 KPI ① → 0.25)
 //   - closedSec = 1.5          감김이 이만큼 이어지면 미세수면 의심
 //   - perclosWindowSec = 30    PERCLOS 계산 구간
 //   - perclosThreshold = 0.15  감김 비율이 이 이상이면 피로 누적 의심
@@ -14,6 +14,7 @@
 //   - minFaceSize = 0.15       ML Kit 최소 얼굴 크기 (조수석 · 뒷좌석 무시)
 //   - calibSec = 5 · calibRatio = 0.5 · calibMin = 0.2 · calibMax = 0.4 · calibMinFaces = 3   개인 기준
 //   - contourEarOn · useContourEar · earClosed   (🆕 10/27) ML Kit 눈 윤곽 점으로 폰에서 EAR — 반쯤 감은 눈용
+//   - headRuleOn · headDownDeg = 6 · headBaseSec · headBaseMinFrames   (🆕 10/28) 고개 숙임 → 감김과 같이 셈
 //   - pingSec = 30             서버 config.PING_SEC 과 같은 값
 //   - baseUrl                  서버 주소 (에뮬레이터는 http://10.0.2.2:8000)
 //
@@ -25,7 +26,8 @@
 class AppConfig {
   // 눈 감김 판정 기본 기준 (개인 기준 측정 전/실패 시 기본값)
   //   ML Kit 뜸 확률은 완전히 감음(≈0.01) · 뜸(≈0.99) 양 끝으로 갈려서 0.2 · 0.3 결과가 거의 같음 (ML Kit 동작 확인, 예비 시험)
-  static const double eyeClosedProb = 0.2;
+  //   10/28 KPI ① (팀 영상 프레임 178장): 0.2 → 완전히 감음 놓침 1.7% · 0.25 → 0% (오탐 둘 다 0%) → 0.25
+  static const double eyeClosedProb = 0.25;
 
   // 미세수면: 연속 감김 시간 기준 (초)
   static const double closedSec = 1.5;
@@ -58,6 +60,17 @@ class AppConfig {
   // 눈 폭(눈꼬리 사이)이 이보다 작으면 폰 EAR 을 안 씀 — 윤곽 점이 정수 픽셀이라 작은 눈은 뜸/감음 구분이 안 됨
   //   (모의 시험: 폭 30px 은 뜸 0.33 · 반쯤 0.13 · 감음 0.07, 폭 12px 은 0.41 · 0.37 · 0.33)
   static const double minEyeWidthPx = 20;
+
+  // 🆕 고개 숙임 규칙 (10/28 CNN 채택 회의) — 고개를 푹 숙이면 '감김' 과 같이 셈 (미세수면 · PERCLOS 를 그대로 탐)
+  //   headDownDeg   : 평소 고개 각도(ML Kit headEulerAngleX)보다 이만큼 숙이면 숙임. ML Kit 은 숙이면 X 가 내려감
+  //                   10/28 KPI ① 측정: 평소 눈 뜬 프레임 최대 3.4° · 고개 돌림 최대 4.1° / 고개 숙임 8.0~20.5° → 가운데 6°
+  //   headBaseSec   : 평소 각도 = 최근 이 시간 동안 '눈 뜨고 숙이지 않은' 프레임 각도의 중간값 (폰 위치 · 사람마다 달라서 고정값 못 씀)
+  //   headBaseMinFrames : 평소 각도를 낼 최소 프레임 수 (출발 직후 · 자세를 바꾼 직후에는 규칙을 쉼)
+  //   한계 (발표): 내비 등을 1.5초 넘게 내려다봐도 경고 · 고개는 그대로 두고 눈만 내리깔면 각도로는 못 잡음 (ML Kit 이 '감음' 으로 봄)
+  static const bool headRuleOn = true;
+  static const double headDownDeg = 6.0;
+  static const int headBaseSec = 60;
+  static const int headBaseMinFrames = 20;
 
   // 서버 ping 간격 (초)
   static const int pingSec = 30;
