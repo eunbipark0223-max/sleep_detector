@@ -24,6 +24,7 @@ import 'package:flutter/material.dart';
 
 import '../models/sleep_response.dart';
 import '../theme.dart';
+import 'rest_screen.dart';
 
 class WarningScreen extends StatefulWidget {
   final SleepResponse response; // 서버가 보내 준 결과
@@ -73,13 +74,16 @@ class _WarningScreenState extends State<WarningScreen> {
 
   // [정차했어요] → D님 RestScreen 으로 갔다가, 닫히면 돌려받은 단계로 색 바꾸기
   Future<void> _goRest() async {
-    // TODO(D님 RestScreen 완성되면 아래 3줄 주석 풀기 + 아래 임시 안내 지우기)
-    // final newStage = await Navigator.push<int>(
-    //   context, MaterialPageRoute(builder: (_) => const RestScreen()));
-    // if (newStage != null && mounted) setState(() => _stage = newStage);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('휴식 화면(D님)이 완성되면 여기로 연결돼요')),
+    // RestScreen 은 닫힐 때 서버 응답(Map: stage · status · message)을 돌려줘요.
+    // 휴식 시작에 실패해서 닫히면 null 이 와요.
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(builder: (_) => const RestScreen()),
     );
+    if (result == null || !mounted) return;
+    final s = result['stage'];
+    final newStage = s is num ? s.toInt() : int.tryParse('$s');
+    if (newStage != null) setState(() => _stage = newStage); // 돌려받은 단계로 색 바꾸기
   }
 
   // [규정 보기] — 아래에서 올라오는 창에 규정 목록
