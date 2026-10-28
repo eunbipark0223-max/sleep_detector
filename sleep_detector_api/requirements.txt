@@ -73,11 +73,3 @@ langchain-chroma==1.1.0
 langchain-text-splitters==1.1.3
 
 # 운전 중 음성 퀴즈 판정(voice_quiz_service.py)은 파이썬 기본 difflib 사용 → 추가 설치 없음
-
-# ───────────────────────────────────────────────
-# CNN (P2 — CNN 채택이 정해진 뒤에만 설치, B · A)
-#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-#   설치 후 버전을 확인해서 아래 주석을 풀고 == 로 고정
-# ───────────────────────────────────────────────
-# torch
-# torchvision

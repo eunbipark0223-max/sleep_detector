@@ -1,0 +1,21 @@
+# ===============================================================
+# tools/requirements-cnn.txt — CNN 도구 추가 설치 (A · B · 팀장 PC 전용, Python 3.11 CPU 판)
+#   (sleep_detector_api 폴더에서, 서버 기본 설치를 마친 뒤)
+#   venv\Scripts\activate
+#   pip install -r tools/requirements-cnn.txt
+#
+# [쓰는 곳]
+#   - tools/webcam_eye_cnn.py (웹캠 시연 · 확인)
+#   - 측정 PC 에서 서버 CNN 켜 보기 (config.USE_CNN = True — 커밋 X)
+#   - C · D 는 설치하지 않는다 → 서버는 torch 가 없으면 자동으로 EAR 만 씀
+#   - 서버 기본 설치(requirements.txt) · Railway 배포에는 넣지 않는다 (CNN 채택 후 따로 정함)
+#
+# 🔴 버전은 팀장 PC에서 실제로 설치·실행해 본 버전입니다. 세 PC 모두 같은 버전으로.
+#    CPU 판 주소(아래 index-url)를 꼭 같이 씁니다. 없으면 큰 GPU 판(수 GB)이 받아질 수 있음.
+# ===============================================================
+--index-url https://download.pytorch.org/whl/cpu
+
+torch==2.14.1+cpu
+torchvision==0.29.1+cpu
+
+# 웹캠 화면 창(cv2.imshow) 은 mediapipe 가 같이 깔아 주는 opencv-contrib-python 으로 됨 → 추가 설치 없음
