@@ -19,3 +19,211 @@
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
+
+import 'package:flutter/material.dart';
+
+import '../models/sleep_response.dart';
+import '../theme.dart';
+
+class WarningScreen extends StatefulWidget {
+  final SleepResponse response; // 서버가 보내 준 결과
+
+  const WarningScreen({super.key, required this.response});
+
+  @override
+  State<WarningScreen> createState() => _WarningScreenState();
+}
+
+class _WarningScreenState extends State<WarningScreen> {
+  late int _stage; // 지금 화면의 단계 (정차 후 돌려받은 단계로 바뀜)
+
+  @override
+  void initState() {
+    super.initState();
+    _stage = widget.response.stage;
+  }
+
+  // 단계별 큰 글씨 한 줄
+  String get _headline {
+    switch (_stage) {
+      case 1:
+        return '일어나세요';
+      case 2:
+        return '계속 졸고 있습니다.\n가까운 졸음쉼터로 이동하세요';
+      case 3:
+        return '관리자에게 알렸습니다.\n안전한 곳에 정차해 주세요.';
+      default:
+        return '정상 운행 중이에요';
+    }
+  }
+
+  // 단계별 아이콘
+  IconData get _icon {
+    switch (_stage) {
+      case 1:
+        return Icons.notifications_active;
+      case 2:
+        return Icons.local_cafe;
+      case 3:
+        return Icons.warning_rounded;
+      default:
+        return Icons.check_circle;
+    }
+  }
+
+  // [정차했어요] → D님 RestScreen 으로 갔다가, 닫히면 돌려받은 단계로 색 바꾸기
+  Future<void> _goRest() async {
+    // TODO(D님 RestScreen 완성되면 아래 3줄 주석 풀기 + 아래 임시 안내 지우기)
+    // final newStage = await Navigator.push<int>(
+    //   context, MaterialPageRoute(builder: (_) => const RestScreen()));
+    // if (newStage != null && mounted) setState(() => _stage = newStage);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('휴식 화면(D님)이 완성되면 여기로 연결돼요')),
+    );
+  }
+
+  // [규정 보기] — 아래에서 올라오는 창에 규정 목록
+  void _showRegulations() {
+    final regs = widget.response.regulations;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        builder: (_, controller) => ListView(
+          controller: controller,
+          padding: const EdgeInsets.all(20),
+          children: [
+            const Text('관련 규정',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+            const SizedBox(height: 12),
+            if (regs.isEmpty)
+              const Text('표시할 규정이 없어요.', style: TextStyle(color: AppColors.textMuted)),
+            for (final r in regs)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.cardBorder),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(r.title,
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                    if (r.source.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(r.source,
+                            style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                      ),
+                    const SizedBox(height: 8),
+                    Text(r.content,
+                        style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.response;
+    final bg = AppColors.stage(_stage);
+    final fg = AppColors.onStage(_stage);
+
+    return Scaffold(
+      backgroundColor: bg,
+      appBar: AppBar(
+        backgroundColor: bg,
+        foregroundColor: fg,
+        elevation: 0,
+        title: Text('${_stage}단계 경고'),
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            const SizedBox(height: 8),
+            Icon(_icon, size: 88, color: fg),
+            const SizedBox(height: 16),
+            // 큰 글씨 한 줄
+            Text(
+              _headline,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: fg, height: 1.3),
+            ),
+            const SizedBox(height: 16),
+            // 요약
+            if (r.summary.isNotEmpty)
+              Text(r.summary,
+                  textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: fg)),
+            const SizedBox(height: 20),
+            // 안내
+            if (r.guidance.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(r.guidance,
+                    style: const TextStyle(fontSize: 15, color: AppColors.textPrimary, height: 1.4)),
+              ),
+            const SizedBox(height: 12),
+            // 기사 음성 보고 문장 (보라 카드)
+            if (r.driverVoice.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.aiPurple,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('🔊 기사 음성 보고',
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70)),
+                    const SizedBox(height: 6),
+                    Text(r.driverVoice,
+                        style: const TextStyle(fontSize: 15, color: Colors.white, height: 1.4)),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 20),
+            // 버튼들
+            OutlinedButton(
+              onPressed: _showRegulations,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: fg,
+                side: BorderSide(color: fg),
+                minimumSize: const Size.fromHeight(50),
+              ),
+              child: const Text('규정 보기'),
+            ),
+            if (_stage == 2) ...[
+              const SizedBox(height: 10),
+              FilledButton(
+                onPressed: _goRest,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: AppColors.textPrimary,
+                  minimumSize: const Size.fromHeight(50),
+                ),
+                child: const Text('정차했어요'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
