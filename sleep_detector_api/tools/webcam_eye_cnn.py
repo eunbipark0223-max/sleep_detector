@@ -9,6 +9,8 @@
 #   - 비교용으로 서버 EAR (config.EAR_THRESHOLD) 도 같이 보여 줌
 #   - 기준값 0.4 · 0.5 두 가지로 판정 표시 (AI-Hub test 에서 0.4 가 균형 정확도 최고)
 #   - 모델이 실제로 보는 64×64 눈 두 장을 왼쪽 위에 보여 줌 (발표: "CNN 이 무엇을 보는지")
+#   - 서버 확인 결과 (앱이 미세수면 의심으로 보냈다면 KEEP warning / CANCEL) — face_service._normalize 를 그대로 불러 씀
+#     (10/28 채택: 미세조정 · 기준 config.CNN_CLOSED_PROB · 취소는 CNN · EAR 둘 다 '확실히 뜸' 일 때만), q 로 끝내면 라벨별 취소 비율
 #
 # [키]
 #   o 누르고 있기 = 지금 눈 뜸 (정답 기록) / h = 반쯤 감음 / c = 눈 감음 (눈 감은 채로 키만 누르고 있으면 됨)
@@ -38,8 +40,9 @@ import mediapipe as mp
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # sleep_detector_api
 sys.path.insert(0, BASE)
-from config import CNN_INPUT_SIZE as SIZE, EAR_THRESHOLD, FACE_LANDMARKER_PATH  # noqa: E402
+from config import CNN_CLOSED_PROB, CNN_INPUT_SIZE as SIZE, EAR_THRESHOLD, FACE_LANDMARKER_PATH  # noqa: E402
 from services.eye_preprocess import crop_eye, prep_eye  # noqa: E402  서버와 같은 함수
+from services.face_service import _normalize as server_confirm  # noqa: E402  서버 확인 규칙 그대로 (베끼지 않음)
 
 MODEL_DIR = Path(BASE) / "ml_models"
 OUT_DIR = Path.home() / "sleep_detector_webcam"  # 기록 CSV (숫자만) — 저장소 밖
@@ -98,6 +101,11 @@ def summary(rows):
             v = np.array([r[col] for r in half if r[col] != ""], float)
             if len(v):
                 print(f"  반쯤 감음 {col} 중간값 {np.median(v):.2f}")
+    print(f"  서버 확인 (미세조정 ≥{CNN_CLOSED_PROB} + EAR {EAR_THRESHOLD}, 둘 다 '확실히 뜸' 이면 취소) — 취소 비율:")
+    for name in ("closed", "half", "open"):
+        g = [r["server_cancel"] for r in rows if r["label"] == name]
+        if g:
+            print(f"    {name:6s} {sum(g)}/{len(g)} ({np.mean(g):.1%})  {'← 좋음 (걸러냄)' if name == 'open' else '← 나쁨 (졸음 취소)'}")
 
 
 def main():
@@ -162,10 +170,18 @@ def main():
                 cv2.putText(view, "CNN: eye too small / out of frame", (10, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
             cv2.putText(view, f"EAR {e:.3f} {'CLOSED' if e < EAR_THRESHOLD else 'open'}", (10, 240),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 0), 2)
+            # 앱이 미세수면 의심으로 이 프레임을 보냈다면 서버는? (서버 모델 = 미세조정, CNN 값이 없으면 EAR 로)
+            #   취소 = CNN · EAR 둘 다 '확실히 뜸' (10/28 CNN 채택 회의) / 그 밖은 경고 유지
+            conf = server_confirm({"face_found": True, "ear": e, "eye_closed_prob": probs.get("p_aihub"),
+                                   "method": "cnn" if probs else "ear"}, EAR_THRESHOLD, reason="microsleep")
+            keep = conf["is_sleep"]
+            cv2.putText(view, f"server ({conf['method']}): {'KEEP warning' if keep else 'CANCEL'}", (10, 272),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255) if keep else (0, 200, 0), 2)
             if label and now - t0 >= WARMUP_SEC:
                 rows.append(dict(person=args.person, t=round(now - t0, 2), label=label,
                                  p_mrl=round(probs["p_mrl"], 4) if probs else "",
-                                 p_aihub=round(probs["p_aihub"], 4) if probs else "", ear=round(e, 4)))
+                                 p_aihub=round(probs["p_aihub"], 4) if probs else "", ear=round(e, 4),
+                                 server_cancel=int(not keep)))
         else:
             cv2.putText(view, "no face", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
