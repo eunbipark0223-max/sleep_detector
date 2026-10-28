@@ -226,19 +226,12 @@ def _real(image_path: str, threshold: float) -> dict:
 
     landmarks = detection_result.face_landmarks[0]
 
-    # 수정사항 2: 눈 영역(랜드마크 기반 Bounding Box) 크기가 가로/세로 8px 미만인지 확인
+    # 눈 점 픽셀 좌표 (CNN 눈 자르기용)
+    #   눈이 너무 작으면 crop_eye 가 None → CNN 없이 EAR (눈 '폭' 기준).
+    #   🔴 눈 점의 '높이' 로 거르면 안 됨 — 눈을 감으면 높이가 당연히 작아져서 감은 눈에서만 CNN 이 꺼짐 (10/28 수정)
     left_pts = np.array([(landmarks[pt].x * w, landmarks[pt].y * h) for pt in LEFT_EYE])
     right_pts = np.array([(landmarks[pt].x * w, landmarks[pt].y * h) for pt in RIGHT_EYE])
-    all_eye_pts = np.vstack([left_pts, right_pts])
-    x_min, y_min = np.min(all_eye_pts, axis=0)
-    x_max, y_max = np.max(all_eye_pts, axis=0)
-    box_w = x_max - x_min
-    box_h = y_max - y_min
-
     use_cnn_local = USE_CNN
-    if box_w < 8 or box_h < 8:
-        # 눈 영역이 너무 작으면 CNN 없이 EAR만 사용하도록 강제 전환
-        use_cnn_local = False
 
     # 픽셀 변환을 위해 가로(w), 세로(h) 값을 전달
     left_ear = calculate_ear(LEFT_EYE, landmarks, w, h)

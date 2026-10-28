@@ -12,7 +12,7 @@
 //   - 최근 30초 PERCLOS 15% 이상 → 피로 누적 의심 (모름은 빼고 계산, 내려갔다 다시 넘어야 셈)
 //   - 감긴 프레임을 잠깐 들고 있다가 의심이 확정되면 그 프레임을 넘김 (이미 눈을 뜬 뒤 찍지 않게)
 //   - 모름이 3초 이어지면 카메라 확인 신호
-//   - 사진 파일 1장 분석 (사진 1장 테스트 · KPI ① 측정) · 개인 기준 측정 (평소 확률 중간값 × 0.5, 0.2~0.4, 실패 시 0.3)
+//   - 사진 파일 1장 분석 (사진 1장 테스트 · KPI ① 측정) · 개인 기준 측정 (평소 확률 중간값 × 0.5, 0.2~0.4, 실패 시 기본값 + 예외)
 //   - 🆕 (AppConfig.contourEarOn) 눈 윤곽 점 16개로 폰 EAR 계산 — 반쯤 감은 눈은 뜸 확률이 높게 나와서 보완용
 //       AppConfig.useContourEar 를 켜면 "뜸 확률 < 기준 또는 EAR < earClosed" 를 감김으로 봄 (시연 폰 확인 뒤에만)
 //
@@ -26,7 +26,7 @@
 //   - analyzeFile(String path) → 눈 뜸 확률
 //   - analyzeFileDetail(String path) → EyeReading(눈 뜸 확률 · 폰 EAR · 처리 ms) — 사진 비교 · KPI ① 측정용
 //   - lastProcessMs · avgProcessMs · processedFps — 성능 시험용 (ML Kit 이 실제로 도는지 숫자로 확인)
-//   - calibrate(List<String> paths) → 개인 기준
+//   - calibrate(List<String> paths) → 개인 기준 (얼굴이 잡힌 사진이 3장 미만이면 StateError, 기준은 기본값으로)
 //   - currentPerclos (ping 에 실어 보낼 값) · close()
 //
 // [주의]
@@ -337,6 +337,8 @@ class EyeMonitor {
   }
 
   /// 출발 시 정면 사진 5장으로 개인 기준 설정 (중간값 * 0.5, 0.2~0.4 제한)
+  ///   눈 확률이 나온 사진이 calibMinFaces(3)장 미만이면 기준을 기본값으로 되돌리고 StateError
+  ///   → calibration_screen(D) 이 잡아서 "얼굴을 확인하지 못해 기본 기준으로 시작해요" (서버 CALIB_MIN_FACES 와 같은 기준)
   Future<double> calibrate(List<String> paths) async {
     final List<double> probs = [];
     for (final path in paths) {
@@ -344,9 +346,9 @@ class EyeMonitor {
       if (prob != null) probs.add(prob);
     }
 
-    if (probs.isEmpty) {
-      threshold = AppConfig.eyeClosedProb; // 실패 시 기본값 0.3
-      return threshold;
+    if (probs.length < AppConfig.calibMinFaces) {
+      threshold = AppConfig.eyeClosedProb;
+      throw StateError('개인 기준 측정 실패: 얼굴이 잡힌 사진 ${probs.length}장 (${AppConfig.calibMinFaces}장 필요)');
     }
 
     probs.sort();

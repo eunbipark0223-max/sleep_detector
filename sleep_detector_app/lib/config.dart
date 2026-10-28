@@ -12,7 +12,7 @@
 //   - perclosThreshold = 0.15  감김 비율이 이 이상이면 피로 누적 의심
 //   - unknownSec = 3           얼굴 없음 · 모름이 이만큼 이어지면 '카메라를 확인하세요'
 //   - minFaceSize = 0.15       ML Kit 최소 얼굴 크기 (조수석 · 뒷좌석 무시)
-//   - calibSec = 5 · calibRatio = 0.5 · calibMin = 0.2 · calibMax = 0.4   개인 기준
+//   - calibSec = 5 · calibRatio = 0.5 · calibMin = 0.2 · calibMax = 0.4 · calibMinFaces = 3   개인 기준
 //   - contourEarOn · useContourEar · earClosed   (🆕 10/27) ML Kit 눈 윤곽 점으로 폰에서 EAR — 반쯤 감은 눈용
 //   - pingSec = 30             서버 config.PING_SEC 과 같은 값
 //   - baseUrl                  서버 주소 (에뮬레이터는 http://10.0.2.2:8000)
@@ -45,6 +45,7 @@ class AppConfig {
   static const double calibRatio = 0.5;
   static const double calibMin = 0.2;
   static const double calibMax = 0.4;
+  static const int calibMinFaces = 3; // 눈 확률이 나온 사진이 이 장 수 미만이면 측정 실패 (서버 CALIB_MIN_FACES 와 같게)
 
   // 🆕 폰 EAR (ML Kit 눈 윤곽 점 16개) — 반쯤 감긴 눈은 뜸 확률이 높게 나와 사진이 안 가는 문제 보완
   //   contourEarOn  : 윤곽 점을 받아 EAR 계산 (측정 · 화면 표시). 켜면 ML Kit 이 느려짐 → 처리 시간(ms) 측정
