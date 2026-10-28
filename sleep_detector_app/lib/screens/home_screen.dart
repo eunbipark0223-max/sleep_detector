@@ -5,16 +5,17 @@
 // 수업 원본: road_hazard_app/lib/screens/home_screen.dart (🟡 버튼 변경)
 //
 // [이 파일이 하는 일]
-//   - [운행 시작] → calibration_screen (P1) → drive_screen
+//   - [운행 시작] → calibration_screen (내 눈 기준 측정) → drive_screen
 //   - [사진 1장 테스트] → upload_screen
 //   - 최근 경고 2~3건 (GET /events/my)
 //
 // [연결됨]
 //   - 최근 경고 : C 의 ApiService.fetchMyEvents() (GET /events/my). 실패하면 '불러오지 못했어요 + 다시 시도'
+//   - [사진 1장 테스트] : C 의 UploadScreen
+//   - [운행 시작]      : D 의 CalibrationScreen 까지 (측정을 건너뛰거나 끝내면 기준 값을 받는다)
 //
 // [연결 대기 — 아래 파일에 클래스가 생기면 표시한 줄만 바꾼다 ('TODO(연결)' 로 찾을 수 있다)]
-//   - [운행 시작]      : C 의 DriveScreen (지금 drive_screen.dart 는 주석뿐) · D 의 CalibrationScreen (P1, 아직 안 만듦)
-//   - [사진 1장 테스트] : C 의 UploadScreen (지금 upload_screen.dart 는 주석뿐)
+//   - [운행 시작]      : C 의 DriveScreen (지금 drive_screen.dart 는 주석뿐) — 측정이 끝나면 그 화면을 열어야 한다
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
@@ -23,12 +24,17 @@ import 'package:flutter/material.dart';
 import '../models/sleep_event.dart';
 import '../services/api_service.dart';
 import '../theme.dart';
+import 'calibration_screen.dart';
+import 'upload_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   /// 최근 경고를 가져오는 함수. 비워 두면 기본(_defaultLoad). 테스트 · 미리보기에서 바꿔 끼우는 입구.
   final Future<List<SleepEvent>?> Function()? loadEvents;
 
-  const HomeScreen({super.key, this.loadEvents});
+  /// 개인 기준 측정 화면. 비워 두면 진짜 CalibrationScreen (카메라 필요). 테스트 · 미리보기에서 바꿔 끼우는 입구.
+  final Widget Function()? calibrationBuilder;
+
+  const HomeScreen({super.key, this.loadEvents, this.calibrationBuilder});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -62,12 +68,20 @@ class _HomeScreenState extends State<HomeScreen> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  // TODO(연결): C 의 DriveScreen 이 생기면 → Navigator.push(MaterialPageRoute(builder: (_) => const DriveScreen()))
-  //            P1 CalibrationScreen 이 생기면 DriveScreen 앞에 끼운다 (CalibrationScreen → DriveScreen)
-  void _startDrive() => _comingSoon('운행 화면은 준비 중이에요');
+  // 측정 화면이 돌려주는 값: 기준 값(double) / null = 시작 전에 뒤로 가기 (운행을 시작하지 않는다)
+  // TODO(연결): C 의 DriveScreen 이 생기면 아래 안내 대신 → Navigator.push(MaterialPageRoute(builder: (_) => DriveScreen(...)))
+  //            기준 값 t 를 넘기는 법은 C 와 맞춘다 (calibration_screen 맨 위 [약속] 참고: eyeMonitor.threshold = t)
+  Future<void> _startDrive() async {
+    final t = await Navigator.of(context).push<double>(
+      MaterialPageRoute(builder: (_) => (widget.calibrationBuilder ?? () => const CalibrationScreen())()),
+    );
+    if (t == null || !mounted) return;
+    _comingSoon('내 눈 기준 ${t.toStringAsFixed(2)} — 운행 화면은 준비 중이에요');
+  }
 
-  // TODO(연결): C 의 UploadScreen 이 생기면 → Navigator.push(MaterialPageRoute(builder: (_) => const UploadScreen()))
-  void _photoTest() => _comingSoon('사진 1장 테스트는 준비 중이에요');
+  void _photoTest() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UploadScreen()));
+  }
 
   @override
   Widget build(BuildContext context) {
