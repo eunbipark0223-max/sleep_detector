@@ -99,6 +99,7 @@ class EyeMonitor {
   // 감긴 순간의 프레임 임시 보관
   CameraImage? _lastClosedFrame;
   CameraDescription? _lastCamera;
+  bool _frameInStreak = false; // _lastClosedFrame 이 지금 이어지는 감김 동안 찍은 것인지 (미세수면 사진용)
   double _lastEyeOpenProb = 1.0;
 
   // C의 drive_screen.dart와 약속된 콜백 인터페이스
@@ -303,6 +304,7 @@ class EyeMonitor {
       if (frame != null) {
         _lastClosedFrame = frame;
         _lastCamera = cam;
+        _frameInStreak = true;
       }
       if (avgProb != null) _lastEyeOpenProb = avgProb;
 
@@ -310,7 +312,8 @@ class EyeMonitor {
         _microsleepTriggered = true; // 눈을 다시 떠야 다음 미세수면을 셈
         // 같은 감김이 눈 뜬 직후 PERCLOS 로 한 번 더 잡히지 않게 — PERCLOS 도 기준 아래로 내려갔다 다시 넘어야 셈
         _perclosTriggered = true;
-        final target = _lastClosedFrame;
+        // 이번 감김 동안 찍은 프레임만 보냄 — 얼굴을 놓친 채 시작된 감김이면 몇 분 전 사진이 갈 수 있어서 (10/28 팀장 확인)
+        final target = _frameInStreak ? _lastClosedFrame : null;
         final jpg = target == null
             ? null
             : CameraImageUtils.toJpg(
@@ -322,7 +325,9 @@ class EyeMonitor {
       }
     } else {
       // 눈을 다시 뜨면 미세수면 플래그 및 타이머 리셋
+      //   (_lastClosedFrame 은 PERCLOS 사진용으로 남김 — PERCLOS 15% 면 최근 30초 안의 감긴 프레임이라 오래된 사진이 아님)
       _closedStartTime = null;
+      _frameInStreak = false;
       _microsleepTriggered = false;
     }
 
