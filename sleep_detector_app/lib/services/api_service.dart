@@ -63,7 +63,7 @@ class ApiService {
   // ── 함수들 (이름 약속 그대로) ───────────────────────────────────
 
   // sendDetect (서버에 사진전송, 졸음판정 결과 서버에서 받아오기)
-  static Future<SleepResponse> sendDetect(Uint8List jpgBytes, {
+  static Future<SleepResponse> sendDetect(Uint8List? jpgBytes, {
     String reason = '',
     double? closedSec,
     double? perclos,
@@ -80,13 +80,16 @@ class ApiService {
       ..fields['perclos'] = perclos?.toString() ?? ''
       ..fields['eye_open_prob'] = eyeOpenProb?.toString() ?? ''
       ..fields['latitude'] = lat?.toString() ?? ''
-      ..fields['longitude'] = lng?.toString() ?? ''
-      ..files.add(http.MultipartFile.fromBytes(
+      ..fields['longitude'] = lng?.toString() ?? '';
+    // 사진이 있을 때만 붙인다 (고개를 떨궈 얼굴을 놓치면 jpg 가 null)
+    if (jpgBytes != null) {
+      request.files.add(http.MultipartFile.fromBytes(
         'file',
         jpgBytes,
         filename: 'frame.jpg',
         contentType: MediaType('image', 'jpeg'),
       ));
+    }
     final streamed = await request.send().timeout(const Duration(seconds: 30));
     final res = await http.Response.fromStream(streamed);
 
