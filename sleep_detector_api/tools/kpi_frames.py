@@ -2,28 +2,41 @@
 # tools/kpi_frames.py — KPI ① 촬영 자료 정리 (영상 → 프레임 · 사진 이름 붙이기)
 # ═══════════════════════════════════════════════════════════════
 # 담당: A   |   우선: P0 (KPI ①)   |   서버 코드가 아니라 PC 에서 한 번 돌리는 도구
+#   촬영 수칙 · 이름 규칙: 노션 「팀원 사진 · 영상 촬영」 (팀장 양식)
 #
 # [하는 일]
-#   video : 영상(사람 × 조명마다 1개) → 구간 가운데에서 1초 간격으로 프레임 → 이름 자동 + 라벨 확인용 모아보기 그림
-#           영상 구성 (촬영 약속): 녹화 시작 → LEAD 2초 대기 → open 5초 → half 5초 → closed 5초 → open → half → closed
-#           구간마다 1.5 · 2.5 · 3.5초 지점 (뜨는 중 · 감는 중인 구간 경계는 뺌) → 영상 1개에 상태별 6장
-#   photo : 촬영 순서대로 찍은 사진 → 이름 붙여 복사 (사람마다 bright[open 2 · half 1 · closed 2] → dark[같은 순서])
-#   이름 규칙 = notebooks/kpi_eye_accuracy.ipynb · lib/tools/eye_measure_main.dart 와 같음
-#       p1_bright_closed_v03.jpg (영상 프레임) · p1_dark_open_s02.jpg (사진)
+#   video : 영상(사람마다 bright 1개 · dark 1개) → 구간 가운데 1초 간격 프레임 → 이름 자동 + 라벨 확인용 모아보기 그림
+#           영상 구성: 녹화 시작 → 2초 대기 → open 5초 → half 5초 → closed 5초 → open → half → closed (총 32초)
+#           구간마다 1.5 · 2.5 · 3.5초 지점 (뜨는 중 · 감는 중인 경계는 뺌) → 영상 1개에 open · half · closed 6장씩
+#           저장 크기: 앱 카메라(ResolutionPreset.medium 640×480, 4:3)와 같게 — 가운데를 4:3(세로 영상은 3:4)으로 잘라
+#                      640×480(세로 480×640)로 줄임. 원본 크기 프레임은 <dst>/_full/ 에 같은 이름으로 (해상도 비교용)
+#   photo : 촬영 순서대로 찍은 사진 → 이름 붙여 복사 (원본은 그대로)
+#           기본 사진: 사람마다 open 10 → half 5 → closed 10 (25장) 다 찍고 다음 사람
+#           조건 사진(마스크 · 선글라스 · 고개)은 조건마다 폴더를 나눠 넣고 --tag · --order · --people 로 한 번씩
 #
-# [실행] (sleep_detector_api 폴더, venv 켠 상태)
-#   python tools/kpi_frames.py video  <영상 폴더>  images  --people p1,p2,p3,p4,p5
-#   python tools/kpi_frames.py photo  <사진 폴더>  images  --people p1,p2,p3,p4,p5
-#   → images/ 에 프레임 · 사진, images/_check/ 에 영상별 모아보기 그림 (라벨이 맞는지 눈으로 확인 → 틀린 사진은 지움)
-#   → 서버: python services/face_service.py images
+#   이름 규칙 (notebooks/kpi_eye_accuracy.ipynb · lib/tools/eye_measure_main.dart 가 이 이름을 읽음)
+#       영상 프레임  a_bright_closed_v01.jpg        사진  a_bright_open_s01.jpg
+#       조건 사진    a_bright_mask_open_s01.jpg · a_bright_sun_closed_s01.jpg · a_bright_turn_open_s01.jpg
+#       사람 = 팀원 a · b · c · d, 팀장 t
+#
+# [실행] (sleep_detector_api 폴더)
+#   venv\Scripts\python tools/kpi_frames.py video <영상 폴더> images --people a,b,c,d,t
+#   venv\Scripts\python tools/kpi_frames.py photo <사진 폴더> images --people a,b,c,d,t
+#   venv\Scripts\python tools/kpi_frames.py photo <마스크 폴더>   images --people a,b,c,d,t --tag mask --order open:2,closed:2
+#   venv\Scripts\python tools/kpi_frames.py photo <선글라스 폴더> images --people a,c     --tag sun  --order open:1,closed:1
+#   venv\Scripts\python tools/kpi_frames.py photo <고개 폴더>     images --people a,b,c,d,t --tag turn --order open:2
+#   → images/_check/ 영상별 모아보기 그림 (라벨이 맞는지 눈으로 확인 → 틀린 프레임은 images/ 에서 지우기)
+#   → 서버: venv\Scripts\python services/face_service.py images
 #   → 폰:  adb push images/. /sdcard/Pictures/kpi_eye/
 #          adb shell content call --method scan_volume --uri content://media --arg external_primary   (갤러리에 보이게)
 #
 # [주의]
-#   - 영상 · 사진은 촬영 시각 순서(= 삼성 카메라 파일 이름 순서)로 사람 · 조명을 붙인다
-#       → 찍는 순서를 지킬 것: p1 bright → p1 dark → p2 bright → …  (다시 찍은 실패 영상 · 사진은 바로 지우기)
+#   - 영상 · 사진은 파일 이름 순서(= 삼성 카메라의 촬영 시각 순서)로 사람 · 조명을 붙인다
+#       → 찍는 순서를 지킬 것 (영상: a bright → a dark → b bright → … / 사진: a 25장 → b 25장 → …)
+#       → 실패한 영상 · 사진은 촬영할 때 바로 지우기. 장수가 안 맞으면 도구가 멈추고 짝지은 표를 보여 줌
 #   - 폰 영상은 옆으로 누운 채 저장되고 회전 정보만 붙는 경우가 많음 → OpenCV 가 회전 정보대로 세움 (--rotate 로 직접 지정 가능)
-#   - 얼굴 사진 · 결과는 GitHub 에 올리지 않는다 (images/ 는 gitignore) — Google Drive 에만
+#   - 얼굴 사진 · 결과는 GitHub 에 올리지 않는다 (images/ · result_images/ 는 gitignore, _full · _check 도 그 안) — Google Drive 에만
+#   - 원본 크기도 서버로 재 보려면: venv\Scripts\python services/face_service.py images/_full  (맨 위 폴더 파일만 읽음)
 # ═══════════════════════════════════════════════════════════════
 import argparse
 import os
@@ -37,8 +50,10 @@ LEAD_SEC = 2.0
 SEGMENT_SEC = 5.0
 SEGMENTS = ["open", "half", "closed", "open", "half", "closed"]
 PICK_AT = (1.5, 2.5, 3.5)            # 구간 시작에서 몇 초 지점을 뽑나 (경계 1초 · 1.5초는 버림)
-PHOTO_ORDER = [("open", 2), ("half", 1), ("closed", 2)]   # 조명 하나당 촬영 순서
-LIGHTS = ["bright", "dark"]
+VIDEO_LIGHTS = ["bright", "dark"]    # 영상: 사람마다 이 순서로 1개씩
+APP_LONG, APP_SHORT = 640, 480       # 앱 카메라 ResolutionPreset.medium (4:3)
+DEFAULT_PHOTO_ORDER = "open:10,half:5,closed:10"
+STATES = ("open", "half", "closed")
 VIDEO_EXT = (".mp4", ".mov", ".3gp", ".mkv")
 PHOTO_EXT = (".jpg", ".jpeg", ".png", ".heic")
 ROTATE = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}
@@ -50,28 +65,16 @@ def _files(folder, exts):
     return sorted(f for f in os.listdir(folder) if f.lower().endswith(exts))
 
 
-def _slots(people):
-    """촬영 순서 = 사람마다 bright → dark"""
-    return [(p, light) for p in people for light in LIGHTS]
-
-
-def _check_count(files, slots, what):
-    if len(files) != len(slots):
-        print(f"❌ {what} {len(files)}개인데 {len(slots)}개가 필요합니다 (사람 {len(slots) // len(LIGHTS)}명 × {LIGHTS}).")
-        print("   촬영 순서대로 짝지은 결과 (남거나 모자라는 쪽 확인):")
-        for i in range(max(len(files), len(slots))):
-            f = files[i] if i < len(files) else "(없음)"
-            s = "_".join(slots[i]) if i < len(slots) else "(남음)"
-            print(f"   {i + 1:3d}. {f}  →  {s}")
-        sys.exit(1)
-
-
-def _read_at(cap, sec, rotate):
-    cap.set(cv2.CAP_PROP_POS_MSEC, sec * 1000)
-    ok, frame = cap.read()
-    if not ok:
-        return None
-    return cv2.rotate(frame, ROTATE[rotate]) if rotate in ROTATE else frame
+def _check_count(files, slots, what, need_text):
+    if len(files) == len(slots):
+        return
+    print(f"❌ {what} {len(files)}개인데 {len(slots)}개가 필요합니다 ({need_text}).")
+    print("   촬영 순서대로 짝지은 결과 (남거나 모자라는 곳 확인 → 빠진 것 다시 찍기 / 남는 것 지우기):")
+    for i in range(max(len(files), len(slots))):
+        f = files[i] if i < len(files) else "(없음)"
+        s = "_".join(slots[i]) if i < len(slots) else "(남음)"
+        print(f"   {i + 1:3d}. {f}  →  {s}")
+    sys.exit(1)
 
 
 def _imwrite(path, img):
@@ -79,6 +82,23 @@ def _imwrite(path, img):
     if ok:
         buf.tofile(path)  # 한글 경로에서도 저장되게
     return ok
+
+
+def to_app_size(frame):
+    """앱 카메라와 같은 조건: 가운데를 4:3 (세로 영상은 3:4) 으로 잘라 640×480 (세로 480×640)"""
+    h, w = frame.shape[:2]
+    portrait = h > w
+    ratio = APP_SHORT / APP_LONG if portrait else APP_LONG / APP_SHORT   # 가로 ÷ 세로
+    if w / h > ratio:      # 너무 넓음 → 양옆을 자름
+        nw = int(round(h * ratio))
+        x = (w - nw) // 2
+        frame = frame[:, x: x + nw]
+    else:                  # 너무 김 → 위아래를 자름
+        nh = int(round(w / ratio))
+        y = (h - nh) // 2
+        frame = frame[y: y + nh]
+    size = (APP_SHORT, APP_LONG) if portrait else (APP_LONG, APP_SHORT)
+    return cv2.resize(frame, size, interpolation=cv2.INTER_AREA)
 
 
 def _contact_sheet(items, path, cols=6, size=200):
@@ -100,9 +120,11 @@ def _contact_sheet(items, path, cols=6, size=200):
 
 def run_video(src, dst, people, rotate):
     files = _files(src, VIDEO_EXT)
-    slots = _slots(people)
-    _check_count(files, slots, "영상")
-    os.makedirs(os.path.join(dst, "_check"), exist_ok=True)
+    slots = [(p, light) for p in people for light in VIDEO_LIGHTS]
+    _check_count(files, slots, "영상", f"사람 {len(people)}명 × {VIDEO_LIGHTS}")
+    full = os.path.join(dst, "_full")
+    for d in (dst, full, os.path.join(dst, "_check")):
+        os.makedirs(d, exist_ok=True)
     need = LEAD_SEC + SEGMENT_SEC * len(SEGMENTS)
     total = 0
     for f, (person, light) in zip(files, slots):
@@ -112,54 +134,64 @@ def run_video(src, dst, people, rotate):
         fps = cap.get(cv2.CAP_PROP_FPS) or 30
         length = cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps
         meta = int(cap.get(cv2.CAP_PROP_ORIENTATION_META) or 0)
-        if rotate is None:  # OpenCV 가 회전 정보대로 세움 (CAP_PROP_ORIENTATION_AUTO 기본 켬)
-            rot = 0
-        else:
+        if rotate is not None:      # 직접 지정하면 OpenCV 자동 회전을 끄고 그 각도로
             cap.set(cv2.CAP_PROP_ORIENTATION_AUTO, 0)
-            rot = rotate
         if length + 0.5 < need:
             print(f"⚠️ {f}: {length:.1f}초 — 약속({need:.0f}초)보다 짧음, 있는 구간만 뽑음")
-        count, sheet = {}, []
+        count, sheet, full_size = {}, [], None
         for k, state in enumerate(SEGMENTS):
             for at in PICK_AT:
                 sec = LEAD_SEC + k * SEGMENT_SEC + at
                 if sec >= length:
                     continue
-                frame = _read_at(cap, sec, rot)
-                if frame is None:
+                cap.set(cv2.CAP_PROP_POS_MSEC, sec * 1000)
+                ok, frame = cap.read()
+                if not ok:
                     continue
+                if rotate in ROTATE:
+                    frame = cv2.rotate(frame, ROTATE[rotate])
+                full_size = frame.shape[1::-1]
+                small = to_app_size(frame)
                 count[state] = count.get(state, 0) + 1
                 name = f"{person}_{light}_{state}_v{count[state]:02d}.jpg"
-                _imwrite(os.path.join(dst, name), frame)
-                sheet.append((frame, f"{state} {sec:.1f}s"))
+                _imwrite(os.path.join(dst, name), small)
+                _imwrite(os.path.join(full, name), frame)
+                sheet.append((small, f"{state} {sec:.1f}s"))
         cap.release()
         if sheet:
             _contact_sheet(sheet, os.path.join(dst, "_check", f"{person}_{light}.jpg"))
-        h, w = sheet[0][0].shape[:2] if sheet else (0, 0)
-        print(f"✅ {f} → {person}_{light}: {sum(count.values())}장 {count} · {w}×{h} · {length:.1f}초 · 회전정보 {meta}°")
+        app_size = sheet[0][0].shape[1::-1] if sheet else None
+        print(f"✅ {f} → {person}_{light}: {sum(count.values())}장 {count} · 원본 {full_size} → 앱 크기 {app_size}"
+              f" · {length:.1f}초 · 회전정보 {meta}°")
         total += sum(count.values())
-    print(f"\n🎉 프레임 {total}장 → {dst}   라벨 확인: {os.path.join(dst, '_check')} (틀린 프레임은 images/ 에서 지우기)")
+    print(f"\n🎉 프레임 {total}장 → {dst} (앱 크기) · {full} (원본 크기)")
+    print(f"   라벨 확인: {os.path.join(dst, '_check')} — 틀린 프레임은 두 폴더에서 같이 지우기")
 
 
-def run_photo(src, dst, people):
+def _parse_order(text):
+    order = []
+    for part in text.split(","):
+        state, _, n = part.strip().partition(":")
+        if state not in STATES or not n.isdigit():
+            sys.exit(f"--order 형식이 틀렸습니다: {text!r} (예: open:10,half:5,closed:10)")
+        order.append((state, int(n)))
+    return order
+
+
+def run_photo(src, dst, people, light, tag, order_text):
     files = _files(src, PHOTO_EXT)
-    per_light = sum(n for _, n in PHOTO_ORDER)
-    slots = [(p, light, state) for p, light in _slots(people) for state, n in PHOTO_ORDER for _ in range(n)]
-    if len(files) != len(slots):
-        print(f"❌ 사진 {len(files)}장인데 {len(slots)}장이 필요합니다 (사람 {len(people)}명 × {LIGHTS} × {per_light}장 "
-              f"= {PHOTO_ORDER}).")
-        for i in range(max(len(files), len(slots))):
-            f = files[i] if i < len(files) else "(없음)"
-            s = "_".join(slots[i]) if i < len(slots) else "(남음)"
-            print(f"   {i + 1:3d}. {f}  →  {s}")
-        sys.exit(1)
+    order = _parse_order(order_text)
+    per_person = sum(n for _, n in order)
+    slots = [(p, light, tag, state) if tag else (p, light, state) for p in people for state, n in order for _ in range(n)]
+    _check_count(files, slots, "사진", f"사람 {len(people)}명 × {per_person}장 = {order_text}")
     os.makedirs(dst, exist_ok=True)
     count = {}
-    for f, (person, light, state) in zip(files, slots):
-        key = (person, light, state)
-        count[key] = count.get(key, 0) + 1
+    for f, slot in zip(files, slots):
+        count[slot] = count.get(slot, 0) + 1
         ext = os.path.splitext(f)[1].lower()
-        name = f"{person}_{light}_{state}_s{count[key]:02d}{'.jpg' if ext == '.jpeg' else ext}"
+        name = f"{'_'.join(slot)}_s{count[slot]:02d}{'.jpg' if ext == '.jpeg' else ext}"
+        if os.path.exists(os.path.join(dst, name)):
+            sys.exit(f"이미 있는 이름입니다: {name} — 같은 폴더를 두 번 돌렸는지 확인")
         shutil.copy2(os.path.join(src, f), os.path.join(dst, name))
         print(f"   {f} → {name}")
     print(f"\n🎉 사진 {len(files)}장 → {dst} (원본은 그대로)")
@@ -170,15 +202,18 @@ def main():
     ap.add_argument("mode", choices=["video", "photo"])
     ap.add_argument("src", help="영상 / 사진 폴더 (촬영 시각 순서 = 파일 이름 순서)")
     ap.add_argument("dst", help="내보낼 폴더 (예: images)")
-    ap.add_argument("--people", default="p1,p2,p3,p4,p5", help="촬영한 순서대로 사람 이름 (쉼표)")
+    ap.add_argument("--people", default="a,b,c,d,t", help="촬영한 순서대로 사람 이름 (쉼표, 팀원 a~d · 팀장 t)")
     ap.add_argument("--rotate", type=int, choices=[0, 90, 180, 270], default=None,
                     help="(video) 회전을 직접 지정 — 모아보기에서 얼굴이 누워 있을 때만")
+    ap.add_argument("--light", default="bright", choices=["bright", "dark"], help="(photo) 이름에 넣을 조명")
+    ap.add_argument("--tag", default="", help="(photo) 조건 사진 — mask · sun · turn · down 등 (기본 사진은 비움)")
+    ap.add_argument("--order", default=DEFAULT_PHOTO_ORDER, help=f"(photo) 한 사람의 촬영 순서 (기본 {DEFAULT_PHOTO_ORDER})")
     a = ap.parse_args()
     people = [p.strip() for p in a.people.split(",") if p.strip()]
     if a.mode == "video":
         run_video(a.src, a.dst, people, a.rotate)
     else:
-        run_photo(a.src, a.dst, people)
+        run_photo(a.src, a.dst, people, a.light, a.tag.strip().lower(), a.order)
 
 
 if __name__ == "__main__":
