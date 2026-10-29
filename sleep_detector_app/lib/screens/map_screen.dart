@@ -7,7 +7,9 @@
 // [이 파일이 하는 일]
 //   - 공공데이터 '전국 졸음쉼터 표준데이터' (assets/rest_areas.json) 에서 내 위치와 가까운 5곳
 //   - 위: 카카오맵 WebView — 내 위치(파란 점) + 쉼터 마커 (누르면 이름)
-//   - 아래: 가까운 순 목록 (직선 거리) — 누르면 지도가 그 쉼터로 이동, [길찾기] → 카카오맵 길찾기 웹 화면
+//   - 아래: 가까운 순 목록 (직선 거리) — 누르면 지도가 그 쉼터로 이동
+//   - [길찾기] → ① 카카오맵 앱 자동차 길안내 (출발 = 내 위치) ② 앱이 없으면 폰 브라우저로 카카오맵 웹 길찾기
+//              ③ 둘 다 안 되면 앱 안 WebView (url_launcher, AndroidManifest <queries> 에 kakaomap · https)
 //
 // [데이터]
 //   - notebooks/rest_areas_json.py 로 포털 CSV → assets/rest_areas.json (인터넷 · API 키 없이 읽음)
@@ -21,7 +23,7 @@
 //
 // [연결]
 //   - Navigator.push(context, MaterialPageRoute(builder: (_) => const MapScreen()));
-//   - 아래 생성자의 loadAreas · getPosition 은 테스트 · 미리보기에서 바꿔 끼우는 입구다 (비우면 기본)
+//   - 아래 생성자의 loadAreas · getPosition · openUrl 은 테스트 · 미리보기에서 바꿔 끼우는 입구다 (비우면 기본)
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
@@ -31,6 +33,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../theme.dart';
@@ -88,6 +91,17 @@ List<(RestArea, double)> nearestAreas(List<RestArea> all, LatLng me, {int n = 5}
   return withDist.take(n).toList();
 }
 
+/// [길찾기] 주소 두 개: (카카오맵 앱 자동차 길안내, 카카오맵 웹 길찾기). 내 위치를 알면 둘 다 출발지로 넣음
+/// (웹은 출발지가 없으면 기사가 '현위치' 를 한 번 더 눌러야 함)
+(Uri, Uri) kakaoRouteUris(RestArea a, LatLng? me) {
+  final to = 'to/${Uri.encodeComponent(a.name)},${a.lat},${a.lng}';
+  final from = me == null ? '' : 'from/${Uri.encodeComponent('내 위치')},${me.lat},${me.lng}/';
+  return (
+    Uri.parse('kakaomap://route?${me == null ? '' : 'sp=${me.lat},${me.lng}&'}ep=${a.lat},${a.lng}&by=CAR'),
+    Uri.parse('https://map.kakao.com/link/$from$to'),
+  );
+}
+
 class MapScreen extends StatefulWidget {
   /// 졸음쉼터 전체 목록. 비워 두면 assets/rest_areas.json.
   final Future<List<RestArea>> Function()? loadAreas;
@@ -98,7 +112,10 @@ class MapScreen extends StatefulWidget {
   /// 카카오 JavaScript 키. 비워 두면 --dart-define=KAKAO_JS_KEY 값.
   final String kakaoJsKey;
 
-  const MapScreen({super.key, this.loadAreas, this.getPosition, this.kakaoJsKey = _kakaoKeyFromEnv});
+  /// 주소를 폰의 다른 앱(카카오맵 · 브라우저)으로 열기. 열었으면 true. 비워 두면 url_launcher.
+  final Future<bool> Function(Uri url)? openUrl;
+
+  const MapScreen({super.key, this.loadAreas, this.getPosition, this.kakaoJsKey = _kakaoKeyFromEnv, this.openUrl});
 
   static const String _kakaoKeyFromEnv = String.fromEnvironment('KAKAO_JS_KEY');
 
@@ -112,6 +129,7 @@ class _MapScreenState extends State<MapScreen> {
   bool _loading = true;
   String? _error; // 화면에 보여 줄 오류 글
   List<(RestArea, double)> _near = [];
+  LatLng? _me;
   WebViewController? _web;
   int? _selected;
 
@@ -156,6 +174,7 @@ class _MapScreenState extends State<MapScreen> {
       final near = nearestAreas(areas, me, n: _count);
       setState(() {
         _near = near;
+        _me = me;
         _selected = null;
         _web = widget.kakaoJsKey.isEmpty ? null : _buildMap(me, near);
         _loading = false;
@@ -186,10 +205,21 @@ class _MapScreenState extends State<MapScreen> {
     _web?.runJavaScript('window.focusArea && window.focusArea($i)');
   }
 
-  void _openRoute(RestArea a) {
-    // 카카오맵 길찾기 웹 (키 필요 없음). 도착지 = 쉼터, 출발지 = 카카오맵이 내 위치로 잡음
-    final url = 'https://map.kakao.com/link/to/${Uri.encodeComponent(a.name)},${a.lat},${a.lng}';
-    Navigator.push(context, MaterialPageRoute(builder: (_) => _RoutePage(title: a.name, url: url)));
+  static Future<bool> _defaultOpenUrl(Uri url) async {
+    try {
+      return await launchUrl(url, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      return false; // 열 앱이 없음
+    }
+  }
+
+  // 앱 안 WebView 는 카카오맵 앱을 못 열어서 (웹 링크가 '앱 설치' 화면으로 감) 폰의 카카오맵 앱 · 브라우저로 넘긴다
+  Future<void> _openRoute(RestArea a) async {
+    final (app, web) = kakaoRouteUris(a, _me);
+    final open = widget.openUrl ?? _defaultOpenUrl;
+    if (await open(app) || await open(web)) return;
+    if (!mounted) return;
+    Navigator.push(context, MaterialPageRoute(builder: (_) => _RoutePage(title: a.name, url: web.toString())));
   }
 
   @override
