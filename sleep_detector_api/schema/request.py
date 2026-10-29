@@ -8,6 +8,7 @@
 #   - 로그인 · 회원가입 · 채팅 · StatusUpdate — 수업 그대로 (StatusUpdate 설명만 졸음용 상태로)
 #   - VoiceQuizAnswer — quiz_id · answer_text(STT 글자, 무응답이면 '') · answer_sec(무응답이면 null)
 #   - DrivePing — perclos (기록용)
+#   - ProfileUpdate — phone · vehicle_no (PATCH /users/me, 기사 연락용. 형식 검사 · 정리는 format_phone · format_vehicle_no)
 #
 # [주의]
 #   - 수업용 DirectReport · ReportSubmit 은 지운다
@@ -50,6 +51,49 @@ class SignupRequest(BaseModel):
 class LoginRequest(BaseModel):
     email   : EmailStr = Field(..., description="사용자 이메일 주소")
     password: str      = Field(..., min_length=8, description="비밀번호(평문 입력)")
+
+
+# ── 내 연락처 · 차량 (PATCH /users/me) ───────────────────────
+# 안 보낸(빠진) 칸은 그대로 두고, 빈 글자("")를 보내면 지운다. 전화번호는 하이픈 형식으로 바꿔서 저장한다.
+def format_phone(value: str) -> str:
+    """'01012345678' → '010-1234-5678'. 형식이 맞지 않으면 ValueError."""
+    digits = re.sub(r"\D", "", value)
+    if re.search(r"[^0-9\-\s]", value) or not 9 <= len(digits) <= 11:
+        raise ValueError("전화번호 형식이 올바르지 않아요 (예: 010-1234-5678)")
+    if len(digits) == 11:
+        return f"{digits[:3]}-{digits[3:7]}-{digits[7:]}"
+    if digits.startswith("02"):
+        return f"{digits[:2]}-{digits[2:-4]}-{digits[-4:]}"
+    if len(digits) == 10:
+        return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
+    raise ValueError("전화번호 형식이 올바르지 않아요 (예: 010-1234-5678)")
+
+
+def format_vehicle_no(value: str) -> str:
+    """'서울12가3456' · '서울  12가 3456' → '서울 12가 3456'. 형식이 맞지 않으면 ValueError."""
+    # [지역] 숫자 2~3자리 + 한글 1자 + 숫자 4자리  (예: 12가 3456 · 123가 4567 · 서울 12가 3456)
+    m = re.fullmatch(r"(?:([가-힣]{2,4})\s*)?(\d{2,3})\s*([가-힣])\s*(\d{4})", value.strip())
+    if not m:
+        raise ValueError("차량번호 형식이 올바르지 않아요 (예: 12가 3456, 서울 12가 3456)")
+    region, head, kind, tail = m.groups()
+    return f"{region + ' ' if region else ''}{head}{kind} {tail}"
+
+
+class ProfileUpdate(BaseModel):
+    phone     : Optional[str] = Field(None, max_length=30, description="전화번호 (예: 010-1234-5678). ''면 지움, 안 보내면 그대로")
+    vehicle_no: Optional[str] = Field(None, max_length=30, description="차량번호 (예: 12가 3456). ''면 지움, 안 보내면 그대로")
+
+    @field_validator("phone")
+    def check_phone(cls, value):
+        if value is None or not value.strip():
+            return "" if value is not None else None
+        return format_phone(value)
+
+    @field_validator("vehicle_no")
+    def check_vehicle_no(cls, value):
+        if value is None or not value.strip():
+            return "" if value is not None else None
+        return format_vehicle_no(value)
 
 
 class GoogleLoginRequest(BaseModel):

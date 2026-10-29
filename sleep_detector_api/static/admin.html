@@ -15,8 +15,12 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
   - 기사 관리: 기사 목록(이름 · 이메일 · 상태 · 오늘 경고 · 누적 경고 · 마지막 경고) + 검색 + 연락 모달
   - AI 처리 표시: 보고서의 report.is_real(llm · rag · agent)로 '모의'로 대체된 단계를 태그로 알려 줌
 
-[확정본과 다른 점 — 서버(DB)에 없는 값은 만들지 않았다 (기획안: DB 칸 추가 없음)]
-  - 전화번호 · 차량번호 없음 → 연락 모달은 이름 · 이메일만, '운행 중 기사' 카드는 '등록된 기사'로, 기사 상태는 경고 처리 상황으로 계산
+[기사 연락 (전화번호 · 차량번호)]
+  - 팀장 결정(10/29)으로 users 에 phone · vehicle_no 추가 → 기사가 앱 '내 정보'에서 직접 적음. 안 적었으면 '미등록'
+  - 연락 모달: 문자(sms:) · 전화(tel:) 링크 (번호가 없으면 이메일 보내기). 기사 목록은 이름 · 차량번호 · 전화번호 · 상태 …
+
+[확정본과 다른 점 — 서버(DB)에 없는 값은 만들지 않았다]
+  - '운행 중 기사' 카드는 '등록된 기사'로, 기사 상태는 경고 처리 상황으로 계산 (운행 중 여부는 서버 메모리라 API 가 없음)
   - 카카오맵 자리는 도로명 주소 · 좌표 글자로 (지도 API 연결 전)
   - 차트는 Chart.js(외부 CDN) 대신 SVG · CSS 로 직접 그림 (인터넷 없이도 시연되게)
 
@@ -127,6 +131,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     .empty-row td { text-align: center; color: var(--text-sub); padding: 40px; }
     td .sub { display: block; font-size: 14px; color: var(--text-sub); font-weight: 400; }
     .nowrap { white-space: nowrap; }
+    .unset { color: var(--text-sub); font-weight: 400; }
 
     .badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px 4px 8px; border-radius: 8px; font-size: 14px; font-weight: 700; white-space: nowrap; }
     .b-1 { background: var(--stage-1); color: var(--text-main); }
@@ -185,7 +190,9 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     .contact-body { padding: 28px 24px; text-align: center; }
     .contact-avatar { width: 72px; height: 72px; border-radius: 50%; background: var(--brand-light); color: var(--brand); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
     .contact-body h3 { font-size: 21px; font-weight: 800; margin-bottom: 4px; }
-    .contact-body .mail { font-size: 18px; font-weight: 800; color: var(--brand); word-break: break-all; }
+    .contact-body .sub { font-size: 16px; color: var(--text-sub); margin-bottom: 10px; }
+    .contact-body .phone { font-size: 26px; font-weight: 800; color: var(--brand); letter-spacing: 1px; }
+    .contact-body .mail { margin-top: 8px; font-size: 16px; font-weight: 700; color: var(--text-sub); word-break: break-all; }
     .contact-body .note { margin-top: 12px; font-size: 15px; color: var(--text-sub); }
 
     /* ── 알림 ── */
@@ -256,13 +263,13 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       <div class="table-section">
         <div class="table-header">
           <h3>기사 목록<small id="driverCount"></small></h3>
-          <label class="visually-hidden" for="driverSearch">기사 이름 또는 이메일 검색</label>
-          <input class="search-box" id="driverSearch" type="search" placeholder="이름 또는 이메일 검색" autocomplete="off">
+          <label class="visually-hidden" for="driverSearch">기사 이름, 차량번호, 전화번호 또는 이메일 검색</label>
+          <input class="search-box" id="driverSearch" type="search" placeholder="이름 · 차량번호 · 전화번호 검색" autocomplete="off">
         </div>
         <div class="table-wrap">
           <table>
             <caption class="visually-hidden">기사 목록</caption>
-            <thead><tr><th scope="col">이름</th><th scope="col">이메일</th><th scope="col">상태</th><th scope="col">오늘 경고</th><th scope="col">누적 경고</th><th scope="col">마지막 경고</th><th scope="col">관리</th></tr></thead>
+            <thead><tr><th scope="col">이름</th><th scope="col">차량번호</th><th scope="col">전화번호</th><th scope="col">상태</th><th scope="col">오늘 경고</th><th scope="col">누적 경고</th><th scope="col">마지막 경고</th><th scope="col">관리</th></tr></thead>
             <tbody id="driverBody"></tbody>
           </table>
         </div>
@@ -326,6 +333,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       person: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
       robot: 'M20 9V7c0-1.1-.9-2-2-2h-3c0-1.66-1.34-3-3-3S9 3.34 9 5H6c-1.1 0-2 .9-2 2v2c-1.66 0-3 1.34-3 3s1.34 3 3 3v4c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-4c1.66 0 3-1.34 3-3s-1.34-3-3-3zM7.5 11.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5S9.83 13 9 13s-1.5-.67-1.5-1.5zM16 17H8v-2h8v2zm-1-4c-.83 0-1.5-.67-1.5-1.5S14.17 10 15 10s1.5.67 1.5 1.5S15.83 13 15 13z',
       pin: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
+      phone: 'M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z',
       mail: 'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z',
       alert: 'M11 15h2v2h-2zm0-8h2v6h-2zm.99-5C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z',
     };
@@ -501,17 +509,19 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     function renderDrivers() {
       const active = document.activeElement;
       const keepKey = active && active.dataset ? active.dataset.key : null;
-      const q = driverQuery.trim().toLowerCase();
-      const list = drivers().filter((u) => !q || (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q));
+      const q = driverQuery.trim().toLowerCase(), qDigits = digitsOf(q);
+      const list = drivers().filter((u) => !q || (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q)
+        || (u.vehicle_no || '').replace(/\s/g, '').toLowerCase().includes(q.replace(/\s/g, '')) || (qDigits.length >= 3 && digitsOf(u.phone).includes(qDigits)));
       $('driverBody').replaceChildren(...(list.length ? list.map((u) => {
         const [cls, ic, text] = driverState(u);
         const today = events.filter((e) => e.user_id === u.id && isToday(e.created_at)).length;
-        return h('tr', null, h('td', null, h('strong', null, u.name)), h('td', null, u.email),
+        const unset = (v) => v ? v : h('span', { class: 'unset' }, '미등록');
+        return h('tr', null, h('td', { class: 'nowrap' }, h('strong', null, u.name)), h('td', { class: 'nowrap' }, unset(u.vehicle_no)), h('td', { class: 'nowrap' }, unset(u.phone)),
           h('td', null, h('span', { class: 'st ' + cls }, icon(ic, 16), text)),
           h('td', { class: 'nowrap' }, today + '건'), h('td', { class: 'nowrap' }, (u.event_count || 0) + '건'),
           h('td', { class: 'nowrap' }, u.last_event_at ? fmtTime(u.last_event_at) : '없음'),
-          h('td', null, h('button', { class: 'btn-action', type: 'button', 'data-key': 'dr' + u.id, onclick: () => openContact({ name: u.name, email: u.email }), 'aria-label': u.name + ' 기사 연락하기' }, '연락하기')));
-      }) : [h('tr', { class: 'empty-row' }, h('td', { colspan: 7 }, q ? '검색 결과가 없어요' : '등록된 기사가 없어요'))]));
+          h('td', null, h('button', { class: 'btn-action', type: 'button', 'data-key': 'dr' + u.id, onclick: () => openContact({ name: u.name, email: u.email, phone: u.phone, vehicle: u.vehicle_no }), 'aria-label': u.name + ' 기사 연락하기' }, '연락하기')));
+      }) : [h('tr', { class: 'empty-row' }, h('td', { colspan: 8 }, q ? '검색 결과가 없어요' : '등록된 기사가 없어요'))]));
       $('driverCount').textContent = list.length + '명';
       if (keepKey) { const again = document.querySelector('[data-key="' + keepKey + '"]'); if (again) again.focus({ preventScroll: true }); }
     }
@@ -579,6 +589,12 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       if (!real || typeof real !== 'object' || !(key in real)) return label ? h('span', { class: 'r-ai' }, label) : null;
       return real[key] === true ? h('span', { class: 'r-ai' }, label) : h('span', { class: 'r-ai mock' }, label + ' · 모의');
     }
+    // '김기사 (차량번호 경기 34나 7890 · 전화 010-…)' — 둘 다 없으면 이메일로 대신
+    function driverNote(e) {
+      const parts = [e.user_vehicle_no ? '차량번호 ' + e.user_vehicle_no : '', e.user_phone ? '전화 ' + e.user_phone : ''].filter(Boolean);
+      if (!parts.length && e.user_email) parts.push(e.user_email);
+      return parts.length ? ' (' + parts.join(' · ') + ')' : '';
+    }
     function fillModal(e) {
       const r = e.report || {}, n = stageNum(e.stage);
       const header = $('mHeader'); header.className = 'modal-header s' + n;
@@ -607,7 +623,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       $('mBody').replaceChildren(
         h('div', null, photo, place),
         h('div', { class: 'report-card' }, h('h3', null, icon('robot', 22), 'Agent 자동 분석 보고서'),
-          reportRow('발생 기사', (e.user_name || '기사 ' + e.user_id) + (e.user_email ? ' (' + e.user_email + ')' : '')),
+          reportRow('발생 기사', (e.user_name || '기사 ' + e.user_id) + driverNote(e)),
           reportRow('상황 요약', r.situation || e.summary, aiTag(r, 'llm', 'LLM')),
           reportRow('단계 판정 이유', r.stage_reason, aiTag(null, '', '규칙')),
           reportRow('관련 법규 근거', r.regulation, aiTag(r, 'rag', 'RAG')),
@@ -616,7 +632,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
           quizNode, reportRow('휴식 기록', restText), reportRow('앱 눈 숫자', eyeParts.join(' · '))));
 
       const footer = [h('button', { class: 'btn', type: 'button', 'data-act': 'close', onclick: closeModal }, '닫기'),
-        h('button', { class: 'btn', type: 'button', 'data-act': 'contact', onclick: () => openContact({ name: e.user_name || '기사 ' + e.user_id, email: e.user_email, fromModal: true }) }, icon('mail', 18), '기사에게 연락')];
+        h('button', { class: 'btn', type: 'button', 'data-act': 'contact', onclick: () => openContact({ name: e.user_name || '기사 ' + e.user_id, email: e.user_email, phone: e.user_phone, vehicle: e.user_vehicle_no }) }, icon('phone', 18), '기사에게 연락')];
       if (e.status === '미확인') footer.push(h('button', { class: 'btn', type: 'button', 'data-act': 'ack', onclick: () => changeStatus(e, '확인') }, icon('eye', 18), '확인했어요'));
       if (e.urgent && e.status !== '조치완료') footer.push(h('button', { class: 'btn brand', type: 'button', 'data-act': 'resolve', onclick: () => changeStatus(e, '조치완료') }, icon('check', 18), e.stage === 3 ? '조치완료 (기사 앱 해제)' : '조치완료'));
       $('mFooter').replaceChildren(...footer);
@@ -655,16 +671,22 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       finally { busy = false; }
     }
 
-    // ── 기사 연락 모달 (전화번호는 DB 에 없어서 이름 · 이메일만) ─────
+    // ── 기사 연락 모달: 전화번호 · 차량번호는 기사가 앱 프로필에서 직접 적은 값 (안 적었으면 '미등록') ─────
+    const digitsOf = (s) => String(s || '').replace(/\D/g, '');
     function openContact(ctx) {
       contactCtx = ctx;
       const validMail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ctx.email || '');
+      const phoneDigits = digitsOf(ctx.phone);
+      const validPhone = phoneDigits.length >= 9 && phoneDigits.length <= 11;      // tel: · sms: 링크에는 숫자만 넣는다
       $('cBody').replaceChildren(h('div', { class: 'contact-avatar' }, icon('person', 34)),
         h('h3', null, ctx.name + ' 기사님'),
-        validMail ? h('p', { class: 'mail' }, ctx.email) : h('p', { class: 'note' }, '등록된 이메일이 없어요'),
-        h('p', { class: 'note' }, '전화번호와 차량번호는 아직 시스템에 등록되어 있지 않아요.'));
+        h('p', { class: 'sub' }, ctx.vehicle ? '차량번호 ' + ctx.vehicle : '차량번호 미등록'),
+        validPhone ? h('p', { class: 'phone' }, ctx.phone) : h('p', { class: 'note' }, '전화번호가 아직 등록되지 않았어요. 기사가 앱의 내 정보에서 적으면 여기에 나와요.'),
+        validMail ? h('p', { class: 'mail' }, ctx.email) : null);
       $('cFooter').replaceChildren(h('button', { class: 'btn', type: 'button', onclick: closeContact }, '닫기'),
-        validMail ? h('a', { class: 'btn brand', href: 'mailto:' + ctx.email }, icon('mail', 18), '이메일 보내기') : null);
+        validPhone ? h('a', { class: 'btn', href: 'sms:' + phoneDigits }, icon('mail', 18), '문자 보내기') : null,
+        validPhone ? h('a', { class: 'btn brand', href: 'tel:' + phoneDigits }, icon('phone', 18), '전화 걸기')
+          : validMail ? h('a', { class: 'btn brand', href: 'mailto:' + ctx.email }, icon('mail', 18), '이메일 보내기') : null);
       // 경고 모달 위에 겹쳐 열릴 때는 뒤 화면 inert 를 풀지 않고, 닫을 때 경고 모달로 돌아간다
       if ($('hazardModal').classList.contains('open')) { contactFocus = document.activeElement; $('contactModal').classList.add('open'); $('mClose').closest('.modal').inert = true; $('cClose').focus(); }
       else openOverlay($('contactModal'), $('cClose'));

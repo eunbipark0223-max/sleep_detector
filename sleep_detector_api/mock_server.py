@@ -7,7 +7,7 @@
 # [이 파일이 하는 일]
 #   - 진짜 서버와 같은 주소 · 같은 JSON 칸 이름으로 대답해서 C(앱) 가 서버 없이도 화면을 만들 수 있게 한다
 #   - 구현한 API (기획안 9장 · 각 router 파일 맨 위 주석 그대로)
-#       POST /users/signup · /users/login · /users/google  ·  GET /users/me
+#       POST /users/signup · /users/login · /users/google  ·  GET · PATCH /users/me (PATCH = 전화번호 · 차량번호)
 #       POST /detect                       졸음 의심 사진 1장 + reason · closed_sec · perclos · eye_open_prob · latitude · longitude (Form)
 #       POST /drive/start · /drive/calibrate · /drive/ping · /drive/rest · /drive/resume
 #       POST /quiz/answer                  VoiceQuizAnswer (quiz_id · answer_text · answer_sec)
@@ -52,6 +52,8 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+from schema.request import ProfileUpdate   # 전화번호 · 차량번호 형식 검사는 진짜 서버와 같은 것을 쓴다
 
 # ── 기준 숫자 (진짜 서버는 config.py 에서 가져옴) ──────────────────
 WINDOW_SEC = int(os.getenv("MOCK_WINDOW_SEC", "60"))          # 1단계 자동 해제 · 졸음 횟수를 세는 구간 (진짜 600)
@@ -108,11 +110,11 @@ def state_of(user_id: int) -> dict:
     return STATES.setdefault(user_id, _new_state())
 
 
-def add_user(email: str, name: str, role: str = "user") -> dict:
+def add_user(email: str, name: str, role: str = "user", phone: Optional[str] = None, vehicle_no: Optional[str] = None) -> dict:
     for u in USERS.values():
         if u["email"] == email:
             return u
-    user = {"id": _next["user"], "email": email, "name": name, "role": role}
+    user = {"id": _next["user"], "email": email, "name": name, "role": role, "phone": phone, "vehicle_no": vehicle_no}
     USERS[user["id"]] = user
     _next["user"] += 1
     return user
@@ -350,6 +352,8 @@ def event_out(e: dict, admin: bool = False) -> dict:
         user = USERS.get(e["user_id"], {})
         out["user_name"] = user.get("name", "")
         out["user_email"] = user.get("email", "")
+        out["user_phone"] = user.get("phone") or ""
+        out["user_vehicle_no"] = user.get("vehicle_no") or ""
         out["address"] = get_road_address(e["latitude"], e["longitude"])
         out["urgent"] = e["stage"] == 3 or e["reason"] == "no_response"  # 빨간 줄
     return out
@@ -388,9 +392,9 @@ def reset_all() -> None:
     USERS.clear(); EVENTS.clear(); STATES.clear(); QUIZZES.clear(); PHOTOS.clear()
     _next.update({"user": 1, "event": 1})
     SCENARIO["name"] = "auto"
-    add_user("driver@test.com", "김기사")
+    add_user("driver@test.com", "김기사", phone="010-2345-6789", vehicle_no="경기 34나 7890")
     add_user("admin@test.com", "관리자", "admin")
-    add_user("driver2@test.com", "이기사")
+    add_user("driver2@test.com", "이기사")          # 일부러 전화번호 · 차량번호 없이 — 관리자 웹의 '미등록' 표시 시험용
     seed()
 
 
@@ -484,6 +488,16 @@ async def login_google(request: Request):
 def me(user: dict = Depends(current_user)):
     photo = PHOTOS.get(user["id"])
     return {**user, "provider": "email", "photo_url": photo["name"] if photo else None}
+
+
+# 내 전화번호 · 차량번호 — 진짜 서버(routers/user.py)와 같은 규칙 (schema.request 의 검사를 그대로 씀): 빠진 칸은 그대로, ''면 지움
+@app.patch("/users/me")
+def update_me(body: ProfileUpdate, user: dict = Depends(current_user)):
+    if "phone" in body.model_fields_set and body.phone is not None:
+        user["phone"] = body.phone or None
+    if "vehicle_no" in body.model_fields_set and body.vehicle_no is not None:
+        user["vehicle_no"] = body.vehicle_no or None
+    return me(user)
 
 
 # 프로필 사진 — 진짜 서버(routers/user.py)와 같은 규칙: 확장자 · 5MB · 사진 받기는 로그인 토큰이 있어야 함 (메모리에만 보관)
@@ -821,7 +835,9 @@ def dev_reset():
 #   /events/my 한 줄       id · user_id · stage · stage_label · status · reason · ear · eye_closed_prob · method · perclos · summary · guidance
 #                          · report(객체: situation · stage_reason · regulation · recommended_action · location · eye · driving_quiz · rest)
 #                          · photo_url · latitude · longitude · created_at     (목록은 배열, 최신순)
-#   /admin/events 한 줄    위와 같고 + user_name · user_email · address · urgent
+#   /admin/events 한 줄    위와 같고 + user_name · user_email · user_phone · user_vehicle_no · address · urgent  (전화 · 차량이 없으면 '')
+#   /admin/users 한 줄     {id · email · name · role · phone · vehicle_no · event_count · last_event_at}  (phone · vehicle_no 없으면 null)
+#   PATCH /users/me        {phone?, vehicle_no?} → 내 정보 (빠진 칸은 그대로, '' 면 지움, 형식이 틀리면 422)
 #   PATCH 요청/응답        {status} → {success, id, status, stage_reset}     status: 미확인 · 확인 · 조치완료 · 휴식완료 (아니면 422)
 #   관리자 전용            PATCH /events/{id}/status · /admin/*  — role 이 admin 이 아니면 403 (mock 은 이메일이 admin 으로 시작하면 admin)
 #   /chat 응답             {success, answer, sources}

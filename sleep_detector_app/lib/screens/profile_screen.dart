@@ -8,6 +8,8 @@
 //   - 신고 건수 → 경고 건수, 내 기준 표시만 추가
 //   - AuthService.me() 로 내 정보(이름 · 이메일 · 역할 · 가입 방식 · 가입일)를 보여 준다
 //   - 프로필 사진: 아바타를 누르면 [갤러리에서 선택 · 사진 찍기 · 사진 삭제] (서버 /users/me/photo)
+//   - 연락처 · 차량: 전화번호 · 차량번호를 보여 주고 [수정] 으로 적는다 (서버 PATCH /users/me). 관리자 웹의 '기사에게 연락' 창에 나온다
+//     (생성자의 saveContact 는 테스트 · 미리보기에서 저장을 바꿔 끼우는 입구, 비우면 AuthService.updateProfile)
 //   - main_screen 의 ≡ 메뉴 → 내 정보 에서 Navigator.push 로 열리므로 Scaffold · AppBar 를 직접 가진다
 //
 // [프로필 사진 메모]
@@ -41,7 +43,10 @@ class ProfileScreen extends StatefulWidget {
   /// 사진 고르기 (갤러리 · 카메라). 취소하면 null. 비워 두면 image_picker.
   final Future<PickedPhoto?> Function(ImageSource source)? pickPhoto;
 
-  const ProfileScreen({super.key, this.pickPhoto});
+  /// 전화번호 · 차량번호 저장. 비워 두면 AuthService.updateProfile. 바뀐 내 정보(Map)를 돌려준다.
+  final Future<Map<String, dynamic>> Function({String? phone, String? vehicleNo})? saveContact;
+
+  const ProfileScreen({super.key, this.pickPhoto, this.saveContact});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -91,7 +96,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (user == null) {
             return _Message(text: '로그인 정보가 만료되었습니다. 다시 로그인해 주세요', buttonText: '로그인 화면으로', onPressed: _goLogin);
           }
-          return _Body(user: user, pickPhoto: widget.pickPhoto);
+          return _Body(user: user, pickPhoto: widget.pickPhoto, saveContact: widget.saveContact);
         },
       ),
     );
@@ -103,7 +108,8 @@ enum _PhotoAction { gallery, camera, delete }
 class _Body extends StatefulWidget {
   final Map<String, dynamic> user;
   final Future<PickedPhoto?> Function(ImageSource source)? pickPhoto;
-  const _Body({required this.user, this.pickPhoto});
+  final Future<Map<String, dynamic>> Function({String? phone, String? vehicleNo})? saveContact;
+  const _Body({required this.user, this.pickPhoto, this.saveContact});
 
   @override
   State<_Body> createState() => _BodyState();
@@ -112,8 +118,9 @@ class _Body extends StatefulWidget {
 class _BodyState extends State<_Body> {
   Uint8List? _photo; // 내 프로필 사진 (없으면 이름 첫 글자)
   bool _busy = false; // 올리거나 지우는 중
+  late Map<String, dynamic> _user = Map<String, dynamic>.of(widget.user); // 저장하면 이 복사본의 전화번호 · 차량번호를 바꾼다
 
-  Map<String, dynamic> get user => widget.user;
+  Map<String, dynamic> get user => _user;
 
   @override
   void initState() {
@@ -231,6 +238,28 @@ class _BodyState extends State<_Body> {
     return value is String ? value.trim() : '';
   }
 
+  // 전화번호 · 차량번호: 안 적었으면 '미등록'
+  String _contactValue(String key) {
+    final value = _text(key);
+    return value.isEmpty ? '미등록' : value;
+  }
+
+  Future<void> _editContact() async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _ContactDialog(
+        phone: _text('phone'),
+        vehicleNo: _text('vehicle_no'),
+        save: widget.saveContact ?? AuthService.updateProfile,
+      ),
+    );
+    if (result == null || !mounted) return; // 취소
+    setState(() {
+      _user = {..._user, 'phone': result['phone'], 'vehicle_no': result['vehicle_no']};
+    });
+    _toast('연락처를 저장했어요');
+  }
+
   String get _roleLabel => _text('role') == 'admin' ? '관리자' : '기사';
 
   String get _providerLabel => _text('provider') == 'google' ? '구글 로그인' : '이메일';
@@ -275,6 +304,16 @@ class _BodyState extends State<_Body> {
           _Row(label: '가입 방식', value: _providerLabel),
           _Row(label: '가입일', value: _joined),
         ]),
+        const SizedBox(height: 12),
+        _Section(
+          title: '연락처 · 차량',
+          action: TextButton(onPressed: _editContact, child: const Text('수정')),
+          rows: [
+            _Row(label: '전화번호', value: _contactValue('phone')),
+            _Row(label: '차량번호', value: _contactValue('vehicle_no')),
+          ],
+          note: '졸음 경고가 났을 때 관리자가 바로 연락하는 데만 써요.',
+        ),
         const SizedBox(height: 12),
         const _Section(title: '운전 기록', rows: [
           _Row(label: '경고 건수', value: '—'),
@@ -348,7 +387,9 @@ class _Avatar extends StatelessWidget {
 class _Section extends StatelessWidget {
   final String title;
   final List<_Row> rows;
-  const _Section({required this.title, required this.rows});
+  final Widget? action; // 제목 오른쪽 버튼 (예: [수정])
+  final String? note; // 맨 아래 작은 안내 글
+  const _Section({required this.title, required this.rows, this.action, this.note});
 
   @override
   Widget build(BuildContext context) {
@@ -358,12 +399,118 @@ class _Section extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textMuted)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textMuted)),
+                ?action,
+              ],
+            ),
             const SizedBox(height: 4),
             ...rows,
+            if (note != null) ...[
+              const SizedBox(height: 4),
+              Text(note!, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 전화번호 · 차량번호 입력 창. 저장에 성공하면 바뀐 내 정보(Map)를 돌려주고, 취소하면 null.
+/// 서버가 형식을 검사해서 틀리면 그 문구를 창 안에 그대로 보여 준다 (창은 닫지 않음).
+class _ContactDialog extends StatefulWidget {
+  final String phone;
+  final String vehicleNo;
+  final Future<Map<String, dynamic>> Function({String? phone, String? vehicleNo}) save;
+  const _ContactDialog({required this.phone, required this.vehicleNo, required this.save});
+
+  @override
+  State<_ContactDialog> createState() => _ContactDialogState();
+}
+
+class _ContactDialogState extends State<_ContactDialog> {
+  late final TextEditingController _phone = TextEditingController(text: widget.phone);
+  late final TextEditingController _vehicle = TextEditingController(text: widget.vehicleNo);
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _phone.dispose();
+    _vehicle.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_saving) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      // 칸을 비웠으면 ''(빈 글자)를 보내 서버가 지우게 한다
+      final result = await widget.save(phone: _phone.text.trim(), vehicleNo: _vehicle.text.trim());
+      if (!mounted) return;
+      Navigator.of(context).pop(result);
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = '저장하지 못했어요. 잠시 뒤 다시 시도해 주세요';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('연락처 · 차량번호'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _phone,
+              enabled: !_saving,
+              keyboardType: TextInputType.phone,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: '전화번호', hintText: '010-1234-5678'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _vehicle,
+              enabled: !_saving,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _submit(),
+              decoration: const InputDecoration(labelText: '차량번호', hintText: '12가 3456'),
+            ),
+            const SizedBox(height: 8),
+            const Text('비워 두고 저장하면 지워져요.', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(_error!, style: const TextStyle(fontSize: 13, color: AppColors.danger)),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: _saving ? null : () => Navigator.of(context).pop(), child: const Text('취소')),
+        TextButton(
+          onPressed: _saving ? null : _submit,
+          child: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('저장'),
+        ),
+      ],
     );
   }
 }
