@@ -137,7 +137,7 @@ class _DriveScreenState extends State<DriveScreen> {
             Text(
               '카메라는 다음 단계에서 붙여요',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: fg.withOpacity(0.7)),
+              style: TextStyle(fontSize: 13, color: fg.withValues(alpha: 0.7)),
             ),
             const SizedBox(height: 24),
             OutlinedButton(

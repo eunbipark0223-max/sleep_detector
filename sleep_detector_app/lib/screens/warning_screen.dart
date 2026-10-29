@@ -149,7 +149,7 @@ class _WarningScreenState extends State<WarningScreen> {
         backgroundColor: bg,
         foregroundColor: fg,
         elevation: 0,
-        title: Text('${_stage}단계 경고'),
+        title: Text('$_stage단계 경고'),
       ),
       body: SafeArea(
         child: ListView(
