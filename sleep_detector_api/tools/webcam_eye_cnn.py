@@ -9,6 +9,8 @@
 #   - 비교용으로 서버 EAR (config.EAR_THRESHOLD) 도 같이 보여 줌
 #   - 기준값 0.4 · 0.5 두 가지로 판정 표시 (AI-Hub test 에서 0.4 가 균형 정확도 최고)
 #   - 모델이 실제로 보는 64×64 눈 두 장을 왼쪽 위에 보여 줌 (발표: "CNN 이 무엇을 보는지")
+#   - 서버 확인 결과 (앱이 미세수면 의심으로 보냈다면 KEEP warning / CANCEL) — face_service._normalize 를 그대로 불러 씀
+#     (10/28 채택: 미세조정 · 기준 config.CNN_CLOSED_PROB · 취소는 CNN · EAR 둘 다 '확실히 뜸' 일 때만), q 로 끝내면 라벨별 취소 비율
 #
 # [키]
 #   o 누르고 있기 = 지금 눈 뜸 (정답 기록) / h = 반쯤 감음 / c = 눈 감음 (눈 감은 채로 키만 누르고 있으면 됨)
@@ -35,11 +37,13 @@ import numpy as np
 import torch
 import torchvision
 import mediapipe as mp
+from PIL import Image, ImageDraw, ImageFont  # 화면 한글 (cv2.putText 는 한글이 깨짐) — torchvision 이 같이 깔아 줌
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # sleep_detector_api
 sys.path.insert(0, BASE)
-from config import CNN_INPUT_SIZE as SIZE, EAR_THRESHOLD, FACE_LANDMARKER_PATH  # noqa: E402
+from config import CNN_CLOSED_PROB, CNN_INPUT_SIZE as SIZE, EAR_THRESHOLD, FACE_LANDMARKER_PATH  # noqa: E402
 from services.eye_preprocess import crop_eye, prep_eye  # noqa: E402  서버와 같은 함수
+from services.face_service import _normalize as server_confirm  # noqa: E402  서버 확인 규칙 그대로 (베끼지 않음)
 
 MODEL_DIR = Path(BASE) / "ml_models"
 OUT_DIR = Path.home() / "sleep_detector_webcam"  # 기록 CSV (숫자만) — 저장소 밖
@@ -49,6 +53,18 @@ EYES = {"L": [33, 160, 158, 133, 153, 144], "R": [362, 385, 387, 263, 373, 380]}
 HOLD_SEC = 0.6  # 키를 누르고 있는 동안 (윈도우 키 반복 간격보다 길게)
 WARMUP_SEC = 1.0  # 켠 직후 웹캠이 밝기를 맞추는 동안은 기록 안 함 (10.27 확인: 처음 ~0.9초 확률이 0.4~0.66 으로 흔들림)
 KEYS = {ord("o"): "open", ord("h"): "half", ord("c"): "closed"}
+LABEL_KO = {"open": "뜸", "half": "반쯤 감음", "closed": "감음"}
+FONT_PATH = r"C:\Windows\Fonts\malgun.ttf"  # 맑은 고딕 (윈도우 기본)
+RED, ORANGE, GREEN, CYAN, YELLOW = (0, 0, 255), (0, 165, 255), (0, 200, 0), (255, 255, 0), (0, 255, 255)  # BGR
+
+
+def draw_texts(view, texts, font):
+    """[(글자, (x, 위쪽 y), BGR색)] 을 한 번에 그림 (PIL 로 바꿨다 돌아옴 — 프레임마다 한 번)"""
+    img = Image.fromarray(cv2.cvtColor(view, cv2.COLOR_BGR2RGB))
+    d = ImageDraw.Draw(img)
+    for text, xy, bgr in texts:
+        d.text(xy, text, font=font, fill=bgr[::-1], stroke_width=2, stroke_fill=(0, 0, 0))
+    return cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2BGR)
 
 
 def load_cnn(path):
@@ -98,6 +114,11 @@ def summary(rows):
             v = np.array([r[col] for r in half if r[col] != ""], float)
             if len(v):
                 print(f"  반쯤 감음 {col} 중간값 {np.median(v):.2f}")
+    print(f"  서버 확인 (미세조정 ≥{CNN_CLOSED_PROB} + EAR {EAR_THRESHOLD}, 둘 다 '확실히 뜸' 이면 취소) — 취소 비율:")
+    for name in ("closed", "half", "open"):
+        g = [r["server_cancel"] for r in rows if r["label"] == name]
+        if g:
+            print(f"    {name:6s} {sum(g)}/{len(g)} ({np.mean(g):.1%})  {'← 좋음 (걸러냄)' if name == 'open' else '← 나쁨 (졸음 취소)'}")
 
 
 def main():
@@ -109,12 +130,14 @@ def main():
     ap.add_argument("--landmarker", default=FACE_LANDMARKER_PATH)
     ap.add_argument("--out_dir", default=str(OUT_DIR), help="기록 CSV 저장 폴더 (저장소 밖으로)")
     ap.add_argument("--cam", type=int, default=0)
+    ap.add_argument("--font", default=FONT_PATH, help="화면 한글 글꼴 (.ttf)")
     args = ap.parse_args()
     paths = {"p_mrl": args.model_mrl or os.path.join(args.model_dir, "eye_cnn.pt"),
              "p_aihub": args.model_aihub or os.path.join(args.model_dir, "eye_cnn_aihub.pt")}
-    for path in [*paths.values(), args.landmarker]:
+    for path in [*paths.values(), args.landmarker, args.font]:
         if not os.path.exists(path):
-            sys.exit(f"파일이 없어요: {path}  (--model_dir · --landmarker 로 위치를 알려 주세요)")
+            sys.exit(f"파일이 없어요: {path}  (--model_dir · --landmarker · --font 로 위치를 알려 주세요)")
+    font = ImageFont.truetype(args.font, 22)
 
     models = {k: load_cnn(v) for k, v in paths.items()}
     lm = load_landmarker(args.landmarker)
@@ -132,6 +155,7 @@ def main():
         res = lm.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)),
                                   int((time.time() - t0) * 1000))
         view = cv2.flip(frame, 1)  # 거울처럼 보이게 (계산은 원본으로)
+        texts = []  # (글자, (x, 위쪽 y), BGR색) — 프레임 끝에 한 번에 한글로 그림
         now = time.time()
         if now > label_until:
             label = None
@@ -152,28 +176,36 @@ def main():
                     ins = np.clip((img - img.min()) / (np.ptp(img) + 1e-6) * 255, 0, 255).astype(np.uint8)
                     view[10:138, 10 + k * 138:138 + k * 138] = cv2.cvtColor(
                         cv2.resize(ins, (128, 128), interpolation=cv2.INTER_NEAREST), cv2.COLOR_GRAY2BGR)
-                for line, (k, name) in enumerate((("p_mrl", "MRL"), ("p_aihub", "FT "))):
+                for line, (k, name) in enumerate((("p_mrl", "MRL만"), ("p_aihub", "미세조정"))):
                     p = probs[k]
-                    marks = " ".join(f"{t}:{'C' if p >= t else 'o'}" for t in THRESHOLDS)
-                    color = (0, 0, 255) if p >= 0.5 else ((0, 165, 255) if p >= 0.4 else (0, 200, 0))
-                    cv2.putText(view, f"{name} closed {p:.2f}  [{marks}]", (10, 170 + line * 32),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.75, color, 2)
+                    marks = " · ".join(f"{t}: {'감김' if p >= t else '뜸'}" for t in THRESHOLDS)
+                    color = RED if p >= 0.5 else (ORANGE if p >= 0.4 else GREEN)
+                    texts.append((f"{name} 감김 확률 {p:.2f}  [{marks}]", (10, 148 + line * 32), color))
             else:
-                cv2.putText(view, "CNN: eye too small / out of frame", (10, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-            cv2.putText(view, f"EAR {e:.3f} {'CLOSED' if e < EAR_THRESHOLD else 'open'}", (10, 240),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 0), 2)
+                texts.append(("CNN 없음: 눈이 너무 작거나 화면 밖", (10, 148), RED))
+            texts.append((f"EAR {e:.3f} → {'감김' if e < EAR_THRESHOLD else '뜸'} (기준 {EAR_THRESHOLD})", (10, 212), CYAN))
+            # 앱이 미세수면 의심으로 이 프레임을 보냈다면 서버는? (서버 모델 = 미세조정, CNN 값이 없으면 EAR 로)
+            #   취소 = CNN · EAR 둘 다 '확실히 뜸' (10/28 CNN 채택 회의) / 그 밖은 경고 유지
+            conf = server_confirm({"face_found": True, "ear": e, "eye_closed_prob": probs.get("p_aihub"),
+                                   "method": "cnn" if probs else "ear"}, EAR_THRESHOLD, reason="microsleep")
+            keep = conf["is_sleep"]
+            texts.append((f"서버 확인 ({'CNN+EAR' if conf['method'] == 'cnn' else 'EAR'}): "
+                          f"{'경고 유지 (졸음 확정)' if keep else '경고 취소 (확실히 뜸)'}", (10, 244), RED if keep else GREEN))
             if label and now - t0 >= WARMUP_SEC:
                 rows.append(dict(person=args.person, t=round(now - t0, 2), label=label,
                                  p_mrl=round(probs["p_mrl"], 4) if probs else "",
-                                 p_aihub=round(probs["p_aihub"], 4) if probs else "", ear=round(e, 4)))
+                                 p_aihub=round(probs["p_aihub"], 4) if probs else "", ear=round(e, 4),
+                                 server_cancel=int(not keep)))
         else:
-            cv2.putText(view, "no face", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            texts.append(("얼굴 없음 (서버는 앱 판단대로 경고 유지)", (10, 20), RED))
 
         if now - t0 < WARMUP_SEC:
-            cv2.putText(view, "warming up...", (10, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+            texts.append(("카메라 준비 중…", (10, h - 40), YELLOW))
         elif label:
-            cv2.putText(view, f"REC {args.person} label={label}  ({len(rows)})", (10, h - 20),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+            texts.append((f"기록 중 {args.person} · 정답 = {LABEL_KO[label]}  ({len(rows)}프레임)", (10, h - 40), YELLOW))
+        else:
+            texts.append(("o 뜸 · h 반쯤 감음 · c 감음 (누르고 있기) · q 끝내기", (10, h - 40), YELLOW))
+        view = draw_texts(view, texts, font)
         cv2.imshow("eye_cnn webcam: MRL vs fine-tuned (q = quit)", view)
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
