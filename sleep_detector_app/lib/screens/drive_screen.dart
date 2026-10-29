@@ -28,6 +28,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/eye_monitor.dart';
 import '../theme.dart';
+import 'warning_screen.dart';
 
 class DriveScreen extends StatefulWidget {
   /// 측정 화면(D)이 돌려준 "내 눈 기준값". 측정을 건너뛰었으면 null → 기본 기준을 쓴다.
@@ -49,6 +50,7 @@ class _DriveScreenState extends State<DriveScreen> {
   double _perclos = 0; // 최근 30초 눈 감은 비율
   String _notice = ''; // 화면에 보여 줄 안내 글
   bool _sending = false; // 서버에 보내는 중인지 (같은 졸음을 두 번 보내지 않게)
+  bool _warningOpen = false; // 경고 화면이 떠 있는지 (또 띄우지 않게)
 
   @override
   void initState() {
@@ -122,7 +124,15 @@ class _DriveScreenState extends State<DriveScreen> {
         _stage = res.stage;
         _notice = res.isSleep ? '졸음 확정 (${res.stage}단계)' : '서버 확인: 눈 뜸 → 취소';
       });
-      // 3단계에서 여기에 경고 화면 띄우기를 넣어요
+      // 졸음이 맞고 1단계 이상이면 경고 화면을 띄운다 (이미 떠 있으면 또 띄우지 않는다)
+      if (res.isSleep && res.stage >= 1 && !_warningOpen) {
+        _warningOpen = true;
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => WarningScreen(response: res)),
+        );
+        _warningOpen = false; // 경고 화면이 닫히면(뒤로 가기) 다시 띄울 수 있게
+      }
     } catch (e) {
       if (mounted) setState(() => _notice = '서버 연결 실패: $e');
     } finally {
