@@ -12,9 +12,11 @@
 //   - 최근 30초 PERCLOS 15% 이상 → 피로 누적 의심 (모름은 빼고 계산, 내려갔다 다시 넘어야 셈)
 //   - 감긴 프레임을 잠깐 들고 있다가 의심이 확정되면 그 프레임을 넘김 (이미 눈을 뜬 뒤 찍지 않게)
 //   - 모름이 3초 이어지면 카메라 확인 신호
-//   - 🆕 (AppConfig.headRuleOn) 고개 숙임 → 감김과 같이 셈 (미세수면 · PERCLOS 그대로, reason 도 그대로)
+//   - 🆕 (AppConfig.headRuleOn) 고개 숙임이 3초 이어지면 → 미세수면 의심 (reason 그대로 microsleep)
 //       평소 각도 = 최근 60초 '눈 뜨고 숙이지 않은' 프레임의 ML Kit headEulerAngleX 중간값, 그보다 6° 이상 숙이면 숙임
-//       숙인 채 얼굴을 놓치면 (화면 밖으로 떨굼) 모름이 아니라 감김으로 계속 셈 — 얼굴이 다시 잡힐 때까지
+//       숙인 채 얼굴을 놓치면 (화면 밖으로 떨굼) 모름이 아니라 숙임으로 계속 셈 — 얼굴이 다시 잡힐 때까지
+//       PERCLOS 는 눈 감김만 (고개만 숙인 프레임은 넣지 않음)
+//       10/29 시연 폰 시험: 계기판 보기 1.0~2.3초 · 졸아서 숙이기 3.8~7.4초 → 1.5초였을 때 계기판에서 경고 3번 → 3초
 //   - 사진 파일 1장 분석 (사진 1장 테스트 · KPI ① 측정) · 개인 기준 측정 (평소 확률 중간값 × 0.5, 0.2~0.4, 실패 시 기본값 + 예외)
 //   - 🆕 (AppConfig.contourEarOn) 눈 윤곽 점 16개로 폰 EAR 계산 — 반쯤 감은 눈은 뜸 확률이 높게 나와서 보완용
 //       AppConfig.useContourEar 를 켜면 "뜸 확률 < 기준 또는 EAR < earClosed" 를 감김으로 봄 (시연 폰 확인 뒤에만)
@@ -95,6 +97,16 @@ class EyeMonitor {
   // 고개 규칙: 평소 고개 각도 계산용 (눈 뜨고 숙이지 않은 프레임만) · 바로 전 프레임이 숙임이었는지
   final List<_HeadRecord> _headHistory = [];
   bool _headDown = false;
+  DateTime? _headStartTime;   // 고개 숙임이 시작된 시각 (고개를 headUpResetSec 동안 들면 null)
+  DateTime? _headUpSince;     // 숙임 중 고개를 든 첫 시각 (다시 숙이면 null)
+  bool _headTriggered = false; // 이번 숙임으로 이미 의심을 냈는지 (고개를 들어야 다음)
+  CameraImage? _headFrame;    // 이번 숙임 동안 찍은 마지막 얼굴 프레임 (서버로 갈 사진)
+  CameraDescription? _headCamera;
+
+  // 시험 화면용 (tools/eye_live_main.dart) — 판정에는 안 씀
+  double? lastHeadX;  // 마지막 프레임 고개 위아래 각도 (얼굴 없음이면 그대로)
+  double? headBase;   // 지금 평소 각도 (아직 못 냈으면 null)
+  bool get isHeadDown => _headDown;
 
   // 감긴 순간의 프레임 임시 보관
   CameraImage? _lastClosedFrame;
@@ -210,11 +222,14 @@ class EyeMonitor {
       _recordTime(watch.elapsedMilliseconds, now);
 
       // 1. 얼굴 없음 또는 눈 확률 null -> "모름" 처리
-      //    (고개 규칙) 바로 전 프레임에서 고개를 숙이고 있었으면 → 숙여서 얼굴을 놓친 것 → 감김으로 계속 셈
+      //    (고개 규칙) 바로 전 프레임에서 고개를 숙이고 있었으면 → 숙여서 얼굴을 놓친 것 → 숙임으로 계속 셈
+      //    (눈 상태는 모르니 PERCLOS 에는 넣지 않음)
       if (faces.isEmpty) {
         if (AppConfig.headRuleOn && _headDown) {
-          _judge(now, true, null, cam, null, null);
+          _keepNotUnknown();
+          _checkHeadDown(now, null, cam, null);
         } else {
+          _headUp(now);
           _handleUnknown(now);
         }
         return;
@@ -225,13 +240,17 @@ class EyeMonitor {
       final rightProb = face.rightEyeOpenProbability;
 
       if (leftProb == null || rightProb == null) {
-        // 눈 확률은 없어도 고개 각도는 나올 수 있음 → 숙였으면 감김 (각도도 없으면 바로 전 프레임대로)
+        // 이미 숙이던 중이면 → 눈 확률은 없어도 고개 각도로 숙임을 이어서 셈 (각도도 없으면 그대로)
+        //   눈 확률이 없는 프레임으로 숙임을 새로 시작하지는 않음 — 손으로 얼굴을 가릴 때 각도가 틀어져
+        //   숙임으로 잡히고 이어서 얼굴을 놓쳐 미세수면이 됐음 (10/29 시연 폰 시험) → 그때는 '모름' (카메라 확인)
         //   눈 상태를 모르니 평소 각도 기록에는 넣지 않음 (eyesClosed: true)
         final headX = face.headEulerAngleX;
-        _headDown = AppConfig.headRuleOn && (headX != null ? _isHeadDown(headX, now, true) : _headDown);
+        _headDown = AppConfig.headRuleOn && _headDown && (headX == null || _isHeadDown(headX, now, true));
         if (_headDown) {
-          _judge(now, true, image, cam, null, null);
+          _keepNotUnknown();
+          _checkHeadDown(now, image, cam, null);
         } else {
+          _headUp(now);
           _handleUnknown(now);
         }
         return;
@@ -242,16 +261,67 @@ class EyeMonitor {
       // 완전히 감음 = 뜸 확률, (useContourEar 켜면) 반쯤 감음 = 폰 EAR
       final bool eyesClosed = avgProb < threshold ||
           (AppConfig.useContourEar && ear != null && ear < AppConfig.earClosed);
-      // 고개를 푹 숙임 = 감김과 같이 셈 (서버 reason 은 그대로 microsleep · perclos)
       _headDown = AppConfig.headRuleOn && _isHeadDown(face.headEulerAngleX, now, eyesClosed);
 
-      _judge(now, eyesClosed || _headDown, image, cam, avgProb, ear);
+      // 눈 감김 · PERCLOS 는 눈만으로 (고개만 숙이고 눈 뜬 프레임은 '뜸')
+      _judge(now, eyesClosed, image, cam, avgProb, ear);
+      // 고개 숙임은 따로 — headDownSec(3초) 이어져야 의심 (계기판 · 내비를 잠깐 보는 1~2초는 넘김)
+      if (_headDown) {
+        _checkHeadDown(now, image, cam, avgProb);
+      } else {
+        _headUp(now);
+      }
     } catch (e) {
       // 프레임 하나가 실패해도 다음 프레임은 계속 분석 (원인은 디버그 콘솔에만)
       debugPrint('[eye_monitor] 프레임 분석 실패: $e');
     } finally {
       _busy = false;
     }
+  }
+
+  /// 고개 숙임이 이어진 시간 → headDownSec 이상이면 미세수면 의심 (같은 숙임 동안 1번)
+  ///   눈 감김 미세수면이 이미 났으면 (같은 졸음) 다시 내지 않음 · 고개 숙임 경고 뒤 눈 감김도 다시 내지 않음
+  ///   frame == null : 얼굴을 놓친 프레임 → 서버로 갈 사진은 이번 숙임 동안 찍은 마지막 얼굴 (없으면 사진 없이)
+  void _checkHeadDown(DateTime now, CameraImage? frame, CameraDescription cam, double? avgProb) {
+    _headUpSince = null;
+    if (_headStartTime == null) {
+      _headStartTime = now;
+      _headFrame = null;
+    }
+    if (frame != null) {
+      _headFrame = frame;
+      _headCamera = cam;
+    }
+    final sec = now.difference(_headStartTime!).inMilliseconds / 1000.0;
+    if (sec < AppConfig.headDownSec || _headTriggered || _microsleepTriggered) return;
+
+    _headTriggered = true;
+    _microsleepTriggered = true; // 고개를 든 채 눈을 감고 있어도 같은 졸음 → 미세수면 다시 안 냄 (눈을 떠야 다음)
+    _perclosTriggered = true;
+    final target = _headFrame;
+    final jpg = target == null
+        ? null
+        : CameraImageUtils.toJpg(target, rotation: _headCamera?.sensorOrientation ?? 270);
+    onSuspect?.call('microsleep', sec, _calculatePerclos(), avgProb ?? _lastEyeOpenProb, jpg);
+  }
+
+  /// 숙이지 않은 프레임 — headUpResetSec 동안 계속 들고 있어야 숙임 시간을 처음부터 (한두 프레임 흔들림은 숙임이 이어짐)
+  ///   10/29 시연 폰 시험: 떨구는 4초 동안 숙인 정도가 22° → 6.4° → 12° 로 흔들려 기준 6° 아래 1프레임에 타이머가 0 → 경고 안 남
+  void _headUp(DateTime now) {
+    if (_headStartTime == null) return;
+    _headUpSince ??= now;
+    if (now.difference(_headUpSince!).inMilliseconds >= AppConfig.headUpResetSec * 1000) {
+      _headStartTime = null;
+      _headTriggered = false;
+      _headUpSince = null;
+    }
+  }
+
+  /// 숙여서 얼굴을 놓친 프레임 — '모름' (카메라 확인) 으로 세지 않음
+  void _keepNotUnknown() {
+    _unknownStartTime = null;
+    _cameraWarnTriggered = false;
+    onFrameResult?.call(null, _calculatePerclos(), null);
   }
 
   /// 고개 숙임인지 — 평소 각도(최근 headBaseSec 동안 눈 뜨고 숙이지 않은 프레임의 중간값)보다 headDownDeg 이상 숙임
@@ -266,6 +336,8 @@ class EyeMonitor {
       final xs = _headHistory.map((r) => r.x).toList()..sort();
       base = xs[xs.length ~/ 2];
     }
+    lastHeadX = headX;
+    headBase = base;
     final down = base != null && base - headX >= AppConfig.headDownDeg;
     // 숙인 프레임 · 감은 프레임은 평소 각도에 넣지 않음 (졸면서 숙인 각도가 평소가 되지 않게)
     //   자세를 아예 바꾸면 headBaseSec 뒤 기록이 비고 → 새 자세로 평소 각도를 다시 냄
@@ -273,9 +345,7 @@ class EyeMonitor {
     return down;
   }
 
-  /// 감김 / 뜸 1프레임 판정 → PERCLOS 창 · 미세수면 · PERCLOS 의심
-  ///   frame == null : 얼굴을 놓친 프레임 (고개 숙임으로 감김) → 서버로 보낼 사진은 마지막 감긴 프레임 그대로
-  ///   avgProb == null : 눈 확률 없음 (고개 숙임으로 감김) → onFrameResult 에는 null, 서버에는 마지막 확률
+  /// 눈 감김 / 뜸 1프레임 판정 → PERCLOS 창 · 미세수면 · PERCLOS 의심 (고개 숙임은 _checkHeadDown 에서 따로)
   void _judge(DateTime now, bool isClosed, CameraImage? frame, CameraDescription cam,
       double? avgProb, double? ear) {
     // 감김 · 뜸이 판정되면 "모름" 타이머 초기화
@@ -310,6 +380,7 @@ class EyeMonitor {
 
       if (currentClosedSec >= AppConfig.closedSec && !_microsleepTriggered) {
         _microsleepTriggered = true; // 눈을 다시 떠야 다음 미세수면을 셈
+        if (_headDown) _headTriggered = true; // 숙인 채 눈 감김으로 이미 경고 → 같은 숙임으로 다시 안 냄
         // 같은 감김이 눈 뜬 직후 PERCLOS 로 한 번 더 잡히지 않게 — PERCLOS 도 기준 아래로 내려갔다 다시 넘어야 셈
         _perclosTriggered = true;
         // 이번 감김 동안 찍은 프레임만 보냄 — 얼굴을 놓친 채 시작된 감김이면 몇 분 전 사진이 갈 수 있어서 (10/28 팀장 확인)
