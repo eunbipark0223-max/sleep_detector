@@ -12,10 +12,7 @@
 // [연결됨]
 //   - 최근 경고 : C 의 ApiService.fetchMyEvents() (GET /events/my). 실패하면 '불러오지 못했어요 + 다시 시도'
 //   - [사진 1장 테스트] : C 의 UploadScreen
-//   - [운행 시작]      : D 의 CalibrationScreen 까지 (측정을 건너뛰거나 끝내면 기준 값을 받는다)
-//
-// [연결 대기 — 아래 파일에 클래스가 생기면 표시한 줄만 바꾼다 ('TODO(연결)' 로 찾을 수 있다)]
-//   - [운행 시작]      : C 의 DriveScreen (지금 drive_screen.dart 는 주석뿐) — 측정이 끝나면 그 화면을 열어야 한다
+//   - [운행 시작]      : D 의 CalibrationScreen → C 의 DriveScreen(threshold: 기준 값)
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
@@ -25,6 +22,7 @@ import '../models/sleep_event.dart';
 import '../services/api_service.dart';
 import '../theme.dart';
 import 'calibration_screen.dart';
+import 'drive_screen.dart';
 import 'upload_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -34,7 +32,10 @@ class HomeScreen extends StatefulWidget {
   /// 개인 기준 측정 화면. 비워 두면 진짜 CalibrationScreen (카메라 필요). 테스트 · 미리보기에서 바꿔 끼우는 입구.
   final Widget Function()? calibrationBuilder;
 
-  const HomeScreen({super.key, this.loadEvents, this.calibrationBuilder});
+  /// 운행 화면. 기준 값을 받아 만든다. 비워 두면 진짜 DriveScreen (카메라 필요). 테스트 · 미리보기에서 바꿔 끼우는 입구.
+  final Widget Function(double threshold)? driveBuilder;
+
+  const HomeScreen({super.key, this.loadEvents, this.calibrationBuilder, this.driveBuilder});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -62,21 +63,16 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _comingSoon(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
-  }
-
   // 측정 화면이 돌려주는 값: 기준 값(double) / null = 시작 전에 뒤로 가기 (운행을 시작하지 않는다)
-  // TODO(연결): C 의 DriveScreen 이 생기면 아래 안내 대신 → Navigator.push(MaterialPageRoute(builder: (_) => DriveScreen(...)))
-  //            기준 값 t 를 넘기는 법은 C 와 맞춘다 (calibration_screen 맨 위 [약속] 참고: eyeMonitor.threshold = t)
+  // 기준 값은 DriveScreen(threshold: t) 로 넘긴다 (측정을 건너뛰었으면 기본 기준이 들어 있다)
   Future<void> _startDrive() async {
     final t = await Navigator.of(context).push<double>(
       MaterialPageRoute(builder: (_) => (widget.calibrationBuilder ?? () => const CalibrationScreen())()),
     );
     if (t == null || !mounted) return;
-    _comingSoon('내 눈 기준 ${t.toStringAsFixed(2)} — 운행 화면은 준비 중이에요');
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => (widget.driveBuilder ?? (t) => DriveScreen(threshold: t))(t)),
+    );
   }
 
   void _photoTest() {
