@@ -70,30 +70,57 @@ class _DriveScreenState extends State<DriveScreen> {
     _startCamera(); // 카메라 켜기
   }
 
-  // 앞 카메라를 켜고, 프레임이 올 때마다 눈 감시 도구에 넘긴다
+  // 앞 카메라를 켠다.
+  // 측정 화면(D)이 막 닫힌 직후에는 카메라가 아직 정리되는 중이라 첫 시도가 실패할 수 있다.
+  // 그래서 잠깐 기다렸다가 켜고, 안 켜지면 1초 쉬고 최대 3번까지 다시 시도한다.
   Future<void> _startCamera() async {
-    try {
-      final cameras = await availableCameras();
-      final front = cameras.firstWhere(
-            (c) => c.lensDirection == CameraLensDirection.front,
-        orElse: () => cameras.first,
-      );
-      final controller = CameraController(
-        front,
-        ResolutionPreset.medium,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.nv21, // ⭐ 꼭 (A님 camera_image_utils 약속)
-      );
-      await controller.initialize();
-      if (!mounted) {
-        await controller.dispose();
-        return;
+    await Future.delayed(const Duration(milliseconds: 500)); // 이전 화면이 카메라를 놓을 시간
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      if (!mounted) return;
+      try {
+        await _openCamera();
+        return; // 켜졌으면 끝
+      } catch (e) {
+        if (attempt == 3) {
+          if (mounted) setState(() => _notice = '카메라를 켤 수 없어요: $e');
+          return;
+        }
+        await Future.delayed(const Duration(seconds: 1));
       }
-      setState(() => _controller = controller);
+    }
+  }
+
+  // 카메라를 한 번 켜 본다 (실패하면 오류를 위로 던진다)
+  Future<void> _openCamera() async {
+    final cameras = await availableCameras();
+    final front = cameras.firstWhere(
+          (c) => c.lensDirection == CameraLensDirection.front,
+      orElse: () => cameras.first,
+    );
+    final controller = CameraController(
+      front,
+      ResolutionPreset.medium,
+      enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.nv21, // ⭐ 꼭 (A님 camera_image_utils 약속)
+    );
+    try {
+      await controller.initialize();
+    } catch (e) {
+      await controller.dispose(); // 실패한 카메라는 정리하고 오류를 위로 던진다
+      rethrow;
+    }
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+    setState(() => _controller = controller);
+    try {
       // 프레임이 올 때마다 A님 눈 감시 도구에 넘긴다 (바쁘면 A님 코드가 알아서 버림)
       await controller.startImageStream((image) => _eye.processFrame(image, front));
     } catch (e) {
-      if (mounted) setState(() => _notice = '카메라를 켤 수 없어요: $e');
+      await controller.dispose();
+      if (mounted) setState(() => _controller = null);
+      rethrow;
     }
   }
 
