@@ -22,6 +22,7 @@
 
 import 'dart:typed_data';
 
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../services/eye_monitor.dart';
@@ -40,6 +41,7 @@ class DriveScreen extends StatefulWidget {
 
 class _DriveScreenState extends State<DriveScreen> {
   late final EyeMonitor _eye; // 눈 감시 도구 (A)
+  CameraController? _controller; // 앞 카메라
 
   int _stage = 0; // 지금 단계 (0 정상 ~ 3 긴급)
   double? _eyeOpenProb; // 지금 눈 뜸 확률 (모르면 null)
@@ -50,7 +52,7 @@ class _DriveScreenState extends State<DriveScreen> {
   void initState() {
     super.initState();
 
-    // 눈 감시 도구를 만들고, 알림이 오면 받을 함수를 연결한다
+    // 눈 감시 도구를 만들고, 알림이 오면 받을 함수를 연결한다(A님과 연결, EyeMonitor)
     _eye = EyeMonitor(
       onSuspect: _onSuspect,
       onCheckCamera: _onCheckCamera,
@@ -60,10 +62,40 @@ class _DriveScreenState extends State<DriveScreen> {
     // ⭐ 측정 화면이 돌려준 기준값을 눈 감시 도구에 넣는다 (없으면 기본값 그대로)
     final t = widget.threshold;
     if (t != null) _eye.threshold = t;
+
+    _startCamera(); // 카메라 켜기
+  }
+
+  // 앞 카메라를 켜고, 프레임이 올 때마다 눈 감시 도구에 넘긴다
+  Future<void> _startCamera() async {
+    try {
+      final cameras = await availableCameras();
+      final front = cameras.firstWhere(
+            (c) => c.lensDirection == CameraLensDirection.front,
+        orElse: () => cameras.first,
+      );
+      final controller = CameraController(
+        front,
+        ResolutionPreset.medium,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.nv21, // ⭐ 꼭 (A님 camera_image_utils 약속)
+      );
+      await controller.initialize();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+      setState(() => _controller = controller);
+      // 프레임이 올 때마다 A님 눈 감시 도구에 넘긴다 (바쁘면 A님 코드가 알아서 버림)
+      await controller.startImageStream((image) => _eye.processFrame(image, front));
+    } catch (e) {
+      if (mounted) setState(() => _notice = '카메라를 켤 수 없어요: $e');
+    }
   }
 
   @override
   void dispose() {
+    _controller?.dispose(); // 카메라 끄기
     _eye.close(); // 눈 감시 도구 끄기
     super.dispose();
   }
@@ -133,12 +165,6 @@ class _DriveScreenState extends State<DriveScreen> {
               const SizedBox(height: 12),
               Text(_notice, textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: fg)),
             ],
-            const SizedBox(height: 12),
-            Text(
-              '카메라는 다음 단계에서 붙여요',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: fg.withValues(alpha: 0.7)),
-            ),
             const SizedBox(height: 24),
             OutlinedButton(
               onPressed: () => Navigator.of(context).pop(),
