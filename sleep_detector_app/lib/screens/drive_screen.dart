@@ -25,6 +25,7 @@ import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
+import '../services/api_service.dart';
 import '../services/eye_monitor.dart';
 import '../theme.dart';
 
@@ -47,12 +48,13 @@ class _DriveScreenState extends State<DriveScreen> {
   double? _eyeOpenProb; // 지금 눈 뜸 확률 (모르면 null)
   double _perclos = 0; // 최근 30초 눈 감은 비율
   String _notice = ''; // 화면에 보여 줄 안내 글
+  bool _sending = false; // 서버에 보내는 중인지 (같은 졸음을 두 번 보내지 않게)
 
   @override
   void initState() {
     super.initState();
 
-    // 눈 감시 도구를 만들고, 알림이 오면 받을 함수를 연결한다(A님과 연결, EyeMonitor)
+    // 눈 감시 도구를 만들고, 알림이 오면 받을 함수를 연결한다
     _eye = EyeMonitor(
       onSuspect: _onSuspect,
       onCheckCamera: _onCheckCamera,
@@ -100,11 +102,32 @@ class _DriveScreenState extends State<DriveScreen> {
     super.dispose();
   }
 
-  // 졸음 의심 (눈을 오래 감음 / 최근 30초 중 많이 감음)
-  // TODO: 다음 단계에서 sendDetect 로 보내고, 경고 화면을 겹쳐 띄우기
-  void _onSuspect(String reason, double closedSec, double perclos, double eyeOpenProb, Uint8List? frame) {
-    if (!mounted) return;
-    setState(() => _notice = '졸음 의심: $reason (${closedSec.toStringAsFixed(1)}초)');
+  // 졸음 의심 (눈을 오래 감음 / 최근 30초 중 많이 감음) → 서버에 보내서 확인받기
+  Future<void> _onSuspect(String reason, double closedSec, double perclos,
+      double eyeOpenProb, Uint8List? frame) async {
+    if (!mounted || _sending) return;
+    _sending = true;
+    setState(() => _notice = '서버 확인 중…');
+    try {
+      // frame 이 null 이어도 꼭 보낸다 (고개를 떨군 채 졸면 사진이 없음 → 서버가 앱 판단대로 처리)
+      final res = await ApiService.sendDetect(
+        frame,
+        reason: reason,
+        closedSec: closedSec,
+        perclos: perclos,
+        eyeOpenProb: eyeOpenProb,
+      );
+      if (!mounted) return;
+      setState(() {
+        _stage = res.stage;
+        _notice = res.isSleep ? '졸음 확정 (${res.stage}단계)' : '서버 확인: 눈 뜸 → 취소';
+      });
+      // 3단계에서 여기에 경고 화면 띄우기를 넣어요
+    } catch (e) {
+      if (mounted) setState(() => _notice = '서버 연결 실패: $e');
+    } finally {
+      _sending = false;
+    }
   }
 
   // 얼굴이 3초 이상 안 보임
