@@ -74,10 +74,10 @@ TOKEN_EXPIRE_MIN = 12 * 60    # 수업은 60분 → 운행(2시간 이상) 중�
 DRIVER_VOICE_MAX_CHARS = 90
 
 # ── 음성 퀴즈 (voice_quiz_service, /quiz/answer) ──────
-QUIZ_MODE = "voice"           # STT 안 되면 "screen" (부품 B)
+QUIZ_MODE = "voice"           # 10/29 STT 시험으로 부품 A 확정 (STT 안 되면 "screen" = 부품 B)
 VOICE_QUIZ_GAP_SEC = 120      # 퀴즈 사이 최소 간격
 VOICE_QUIZ_MAX_TRIES = 2      # 이만큼 실패하면 단계 +1, reason = no_response
-LISTEN_SEC = 7                # 앱이 듣는 시간
+LISTEN_SEC = 10               # 앱이 듣는 시간 — 10/29 STT 시험 7 → 10 (말을 시작하는 데 ~3초, 계산하느라 6~7초에 답하기도 함)
 REPEAT_MIN_SCORE = 0.8        # 따라 말하기 유사도 통과 기준 (difflib)
 QUIZ_RETRY_WAIT_MIN = 5       # (부품 B) 복귀 퀴즈 실패 후 다시 시도까지
 

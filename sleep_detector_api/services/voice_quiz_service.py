@@ -167,24 +167,29 @@ def _normalize_text(text):
     return re.sub(r"[^0-9A-Za-z가-힣]", "", str(text or ""))
 
 
-def _edit_distance(a, b):
-    prev = list(range(len(b) + 1))
+def _best_window_distance(a, b):
+    """a 를 b 의 '가장 비슷한 한 토막' 과 맞춘 편집 거리 — b 앞뒤의 군말은 세지 않는다."""
+    prev = [0] * (len(b) + 1)          # b 의 어디서 시작해도 됨
     for i, ca in enumerate(a, 1):
         cur = [i]
         for j, cb in enumerate(b, 1):
             cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
         prev = cur
-    return prev[-1]
+    return min(prev)                   # b 의 어디서 끝나도 됨
 
 
 def repeat_score(expected, answer_text):
-    """기획안 8-4: 1 − (편집 거리 ÷ 제시 문장 글자 수). 문장을 통째로 말했으면(앞뒤 군말 포함) 1."""
+    """기획안 8-4: 1 − (편집 거리 ÷ 제시 문장 글자 수). 앞뒤 군말은 빼고 가장 비슷한 부분으로 잰다.
+
+    '안전 운전이 최은서입니다 안전 운전이' (잘못 들려 다시 말함, 10/29 STT 시험) → '안전운전이최은서입니다' 부분 0.82.
+    문장을 통째로 말했으면(앞뒤 군말 포함) 1.
+    """
     exp, ans = _normalize_text(expected), _normalize_text(answer_text)
     if not exp or not ans:
         return 0.0
     if exp in ans:
         return 1.0
-    return max(0.0, 1 - _edit_distance(exp, ans) / len(exp))
+    return max(0.0, 1 - _best_window_distance(exp, ans) / len(exp))
 
 
 # 한글 숫자 낱말 (긴 것부터 맞춰 봄 — '일곱' 을 '일' 로 읽지 않게)
@@ -200,8 +205,9 @@ def extract_numbers(text):
     """말 속의 숫자를 모두 꺼낸다: '68' · '육십팔' · '예순여덟' · '60팔' → 68.
 
     숫자가 아닌 글자에서 끊고, '팔이요' 처럼 숫자 글자가 조사로 붙으면(한 자리 뒤 한 자리) 새 숫자로 본다.
+    아라비아 숫자 사이 띄어쓰기도 끊는다: 앱이 끊긴 STT 를 이어 붙인 '9 99' 를 999 로 읽지 않게 (10/29 STT 시험)
     """
-    s = _normalize_text(text)
+    s = _normalize_text(re.sub(r"(?<=\d)\s+(?=\d)", "x", str(text or "")))   # 'x' = 숫자가 아닌 글자 → 끊김
     found, total, cur, last, i = [], 0, 0, None, 0
 
     def close():
