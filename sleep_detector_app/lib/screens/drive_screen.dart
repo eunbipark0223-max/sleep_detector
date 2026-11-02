@@ -22,10 +22,13 @@
 
 import 'dart:typed_data';
 
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
+import '../services/api_service.dart';
 import '../services/eye_monitor.dart';
 import '../theme.dart';
+import 'warning_screen.dart';
 
 class DriveScreen extends StatefulWidget {
   /// 측정 화면(D)이 돌려준 "내 눈 기준값". 측정을 건너뛰었으면 null → 기본 기준을 쓴다.
@@ -40,11 +43,14 @@ class DriveScreen extends StatefulWidget {
 
 class _DriveScreenState extends State<DriveScreen> {
   late final EyeMonitor _eye; // 눈 감시 도구 (A)
+  CameraController? _controller; // 앞 카메라
 
   int _stage = 0; // 지금 단계 (0 정상 ~ 3 긴급)
   double? _eyeOpenProb; // 지금 눈 뜸 확률 (모르면 null)
   double _perclos = 0; // 최근 30초 눈 감은 비율
   String _notice = ''; // 화면에 보여 줄 안내 글
+  bool _sending = false; // 서버에 보내는 중인지 (같은 졸음을 두 번 보내지 않게)
+  bool _warningOpen = false; // 경고 화면이 떠 있는지 (또 띄우지 않게)
 
   @override
   void initState() {
@@ -60,19 +66,105 @@ class _DriveScreenState extends State<DriveScreen> {
     // ⭐ 측정 화면이 돌려준 기준값을 눈 감시 도구에 넣는다 (없으면 기본값 그대로)
     final t = widget.threshold;
     if (t != null) _eye.threshold = t;
+
+    _startCamera(); // 카메라 켜기
+  }
+
+  // 앞 카메라를 켠다.
+  // 측정 화면(D)이 막 닫힌 직후에는 카메라가 아직 정리되는 중이라 첫 시도가 실패할 수 있다.
+  // 그래서 잠깐 기다렸다가 켜고, 안 켜지면 1초 쉬고 최대 3번까지 다시 시도한다.
+  Future<void> _startCamera() async {
+    await Future.delayed(const Duration(milliseconds: 500)); // 이전 화면이 카메라를 놓을 시간
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      if (!mounted) return;
+      try {
+        await _openCamera();
+        return; // 켜졌으면 끝
+      } catch (e) {
+        if (attempt == 3) {
+          if (mounted) setState(() => _notice = '카메라를 켤 수 없어요: $e');
+          return;
+        }
+        await Future.delayed(const Duration(seconds: 1));
+      }
+    }
+  }
+
+  // 카메라를 한 번 켜 본다 (실패하면 오류를 위로 던진다)
+  Future<void> _openCamera() async {
+    final cameras = await availableCameras();
+    final front = cameras.firstWhere(
+          (c) => c.lensDirection == CameraLensDirection.front,
+      orElse: () => cameras.first,
+    );
+    final controller = CameraController(
+      front,
+      ResolutionPreset.medium,
+      enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.nv21, // ⭐ 꼭 (A님 camera_image_utils 약속)
+    );
+    try {
+      await controller.initialize();
+    } catch (e) {
+      await controller.dispose(); // 실패한 카메라는 정리하고 오류를 위로 던진다
+      rethrow;
+    }
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+    setState(() => _controller = controller);
+    try {
+      // 프레임이 올 때마다 A님 눈 감시 도구에 넘긴다 (바쁘면 A님 코드가 알아서 버림)
+      await controller.startImageStream((image) => _eye.processFrame(image, front));
+    } catch (e) {
+      await controller.dispose();
+      if (mounted) setState(() => _controller = null);
+      rethrow;
+    }
   }
 
   @override
   void dispose() {
+    _controller?.dispose(); // 카메라 끄기
     _eye.close(); // 눈 감시 도구 끄기
     super.dispose();
   }
 
-  // 졸음 의심 (눈을 오래 감음 / 최근 30초 중 많이 감음)
-  // TODO: 다음 단계에서 sendDetect 로 보내고, 경고 화면을 겹쳐 띄우기
-  void _onSuspect(String reason, double closedSec, double perclos, double eyeOpenProb, Uint8List? frame) {
-    if (!mounted) return;
-    setState(() => _notice = '졸음 의심: $reason (${closedSec.toStringAsFixed(1)}초)');
+  // 졸음 의심 (눈을 오래 감음 / 최근 30초 중 많이 감음) → 서버에 보내서 확인받기
+  Future<void> _onSuspect(String reason, double closedSec, double perclos,
+      double eyeOpenProb, Uint8List? frame) async {
+    if (!mounted || _sending) return;
+    _sending = true;
+    setState(() => _notice = '서버 확인 중…');
+    try {
+      // frame 이 null 이어도 꼭 보낸다 (고개를 떨군 채 졸면 사진이 없음 → 서버가 앱 판단대로 처리)
+      final res = await ApiService.sendDetect(
+        frame,
+        reason: reason,
+        closedSec: closedSec,
+        perclos: perclos,
+        eyeOpenProb: eyeOpenProb,
+      );
+      if (!mounted) return;
+      setState(() {
+        _stage = res.stage;
+        _notice = res.isSleep ? '졸음 확정 (${res.stage}단계)' : '서버 확인: 눈 뜸 → 취소';
+      });
+      // 졸음이 맞고 1단계 이상이면 경고 화면을 띄운다 (이미 떠 있으면 또 띄우지 않는다)
+      if (res.isSleep && res.stage >= 1 && !_warningOpen) {
+        _warningOpen = true;
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => WarningScreen(response: res)),
+        );
+        _warningOpen = false; // 경고 화면이 닫히면(뒤로 가기) 다시 띄울 수 있게
+      }
+    } catch (e) {
+      if (mounted) setState(() => _notice = '서버 연결 실패: $e');
+    } finally {
+      _sending = false;
+    }
   }
 
   // 얼굴이 3초 이상 안 보임
@@ -133,12 +225,6 @@ class _DriveScreenState extends State<DriveScreen> {
               const SizedBox(height: 12),
               Text(_notice, textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: fg)),
             ],
-            const SizedBox(height: 12),
-            Text(
-              '카메라는 다음 단계에서 붙여요',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: fg.withValues(alpha: 0.7)),
-            ),
             const SizedBox(height: 24),
             OutlinedButton(
               onPressed: () => Navigator.of(context).pop(),
