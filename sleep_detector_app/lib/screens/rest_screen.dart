@@ -27,9 +27,9 @@
 // [연결됨]
 //   - C 의 ApiService.startRest() · resumeDrive()  → 서버 JSON(Map)을 그대로 돌려주고, 실패하면 서버 detail 을 담은
 //     Exception 을 던진다 (409 의 'N초 남음' 문구가 그대로 화면에 나온다)
+//   - 팀장의 VoiceService.speak()  (11/02 — 안내 문구가 소리로 나온다)
 //
-// [연결 대기 — 'TODO(연결)' 로 찾을 수 있다]
-//   - C 의 voice_service.speak()  (지금 voice_service.dart 는 주석뿐 — 안내 문구가 소리로 나오지 않는다)
+// [연결 대기]
 //   - 이 화면을 여는 warning_screen 의 [정차했어요] (C, 지금 warning_screen.dart 는 주석뿐)
 //   - 아래 생성자의 startRest · resumeDrive · speak · now 는 테스트 · 미리보기에서 바꿔 끼우는 입구다 (비우면 기본)
 //
@@ -40,6 +40,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
+import '../services/voice_service.dart';
 import '../theme.dart';
 
 class RestScreen extends StatefulWidget {
@@ -75,8 +76,7 @@ class _RestScreenState extends State<RestScreen> {
   static Future<Map<String, dynamic>> _defaultStartRest() => ApiService.startRest();
   static Future<Map<String, dynamic>> _defaultResumeDrive() => ApiService.resumeDrive();
 
-  // TODO(연결): C 의 voice_service 가 생기면 `VoiceService.speak` 로 바꾼다 (지금은 소리 없이 넘어간다)
-  static Future<void> _defaultSpeak(String text) async {}
+  static Future<void> _defaultSpeak(String text) => VoiceService.speak(text);
 
   DateTime _now() => (widget.now ?? DateTime.now)();
 
