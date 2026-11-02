@@ -14,7 +14,7 @@
 //
 // [수업과 다른 점]
 //   - 응답 키: 수업 reply · suggestions → 우리 서버 message / answer · sources · is_real
-//     추천 질문은 서버가 주지 않아서 _greetingSuggestions (첫 질문 전까지만)
+//     추천 질문은 서버가 주지 않아서 _greetingSuggestions — 답이 올 때마다 아직 안 물어본 것만 다시 보여 줌
 //   - 답 아래에 근거 규정(sources) — regulation_screen.dart 규정 카드 모양, 누르면 원문
 //   - is_real == false → "AI 답변 아님 — 규정 원문" 표시
 //   - MainScreen(D) 의 '규정 도우미' 탭 안에 들어가므로 AppBar 없음 (제목은 MainScreen 이 보여 줌)
@@ -69,6 +69,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scrollController = ScrollController();
 
   List<String> _suggestions = [];
+  final _asked = <String>{}; // 답을 받은 질문 (추천 질문에서 뺄 것)
   bool _isSending = false;
 
   @override
@@ -124,6 +125,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final res = await _sendChat(message: message, history: history.map((m) => m.toJson()).toList());
       if (!mounted) return;
       setState(() {
+        _asked.add(message);
         _messages.add(
           ChatMessage(
             res['answer'] as String,
@@ -144,7 +146,13 @@ class _ChatScreenState extends State<ChatScreen> {
         _messages.add(ChatMessage('⚠️ $msg', isMine: false));
       });
     } finally {
-      if (mounted) setState(() => _isSending = false);
+      // 답이 오면(실패해도) 추천 질문을 다시 — 이미 답을 받은 질문은 빼고
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+          _suggestions = _greetingSuggestions.where((q) => !_asked.contains(q)).toList();
+        });
+      }
       _scrollToBottom();
     }
   }

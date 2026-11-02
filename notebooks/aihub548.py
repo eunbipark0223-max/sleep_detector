@@ -1,0 +1,477 @@
+# ═══════════════════════════════════════════════════════════════
+# notebooks/aihub548.py — AI-Hub 548 (안구 움직임, 한국인 RGB) 받기 · 시험 · 눈 자르기 (PC 에서, eye_cnn.ipynb 6번 구간 준비)
+# ═══════════════════════════════════════════════════════════════
+# 담당: B (CNN 학습)  |  우선: P2 (CNN)
+#
+# [왜 548]  (11/02 팀장 결정)
+#   지금 CNN 은 적외선(MRL · AI-Hub 173)으로만 학습 → 폰 같은 컬러 카메라에서 확인 필요
+#   548 = 한국인 1,510명 웹캠 RGB 1280×720 (얼굴 전체, 30 · 50cm, 정면 · 좌 · 우 보기, 안경 · 마스크 섞임)
+#        + 눈꺼풀 라벨 open / half / closed (CVAT XML, 눈마다 16점 다각형)
+#   ⚠️ 시선 데이터라 감은 눈이 적음 (Validation G1: RGB 28,080장 중 half 478 · closed 505)
+#   ⚠️ 사람이 아니라 사진 단위로 나뉨 — Validation G1 65명(526~590번)이 Training G1 안에 전원 있음
+#      → 추가 학습용 눈 자르기에서 Validation 사람은 반드시 뺀다 (eval 이 공정하게)
+#
+# [하는 일]
+#   download : filekey 를 AI-Hub API 로 받기 (aihub_crop.py 와 같은 방식, 이어받기 됨) → tar 풀기 → .part 합치기
+#   eval     : Validation G1 → 지금 서버 판정(face_service 그대로) 시험 — 감음 · 반쯤 전부 + 사람 · 거리마다 뜸 25장
+#              → result_g1.csv (사진마다 한 줄, 저장소 밖에만) + 요약 출력
+#   wandb    : eval 결과 숫자 · 묶음 표만 W&B eye-cnn 에 (run b_eval548_g1)
+#   crop     : 추가 학습용 — 학습 라벨(TL.zip) + 학습 사진 zip(TS_*) → 서버와 같은 MediaPipe · crop_eye → 흑백 96×96 눈
+#              → eye_npz/crops_*.npz + summary.json (aihub_crop.py 와 같은 모양 → eye_cnn.ipynb 에서 3-1 처럼 읽음)
+#              · Validation(VL.zip) 에 있는 사람은 전부 뺌 (사람 = 그룹 + 번호, 예: G1_526 — 번호는 그룹마다 따로 매겨짐)
+#              · 남은 사람을 사람 단위로 train / val 85 : 15 (시드 0) → split 칸. 기준값은 val 로 고르고, 시험은 Validation · 팀 사진
+#              · 눈 하나 = 한 줄. 라벨은 그 눈 다각형의 status: y = 감음 1 / 뜸 0 / 반쯤 -1 (반쯤을 학습에 넣을지는 노트북에서)
+#              · 사진 고르기: 감음 · 반쯤 감음 사진 전부 + 사람 · 거리마다 뜸 OPEN_PER_TRAIN 장
+#              · 라벨의 left_eyelid = 사진 왼쪽 눈. 그래도 이름 대신 MediaPipe 눈 중심 ↔ 다각형 중심 거리로 짝지음 (먼 눈은 버림)
+#
+# [실행] 서버 venv (mediapipe 1.1.0 · opencv · torch) 로, 저장소 폴더에서:
+#   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py download --keys 55882
+#   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py eval
+#   set PYTHONUTF8=1 && sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py wandb
+#     (PYTHONUTF8: 사용자 폴더 이름이 한글이면 wandb 가 cp949 로 읽다 실패함)
+#   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py crop --limit 300   (시험: 결과는 eye_npz_test/)
+#   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py crop
+#   → D:\aihub548\eye_npz\ 안 파일을 구글 드라이브 sleep_detector/aihub548_eye/ 에 (본인 드라이브만)
+#
+# [filekey]  TL 55881 · TS_G1_1 55882 · TS_G1_2 55883 · TS_G2_1 55884 · TS_G2_2 55885 · TS_U_1 55886 · TS_U_2 55887
+#            VL 55888 · VS_G1 55889 · VS_G2 55890 · VS_U 55891
+#
+# [규칙]
+#   - API 키는 notebooks/.env 의 AIHUB_API_KEY (.gitignore 에 있음). 키는 출력하지 않는다
+#   - 🔴 AI-Hub 원본 · 꺼낸 사진 · 사진마다 한 줄 결과는 저장소 밖(D:\aihub548)과 본인 드라이브에만. GitHub · 단톡 X
+#   - W&B 에는 숫자 · 묶음 표만 (사진 · 사진마다 한 줄 · 키 X)
+#   - 출처: AI-Hub 「안구 움직임 영상 데이터」 (dataSetSn=548)
+# ═══════════════════════════════════════════════════════════════
+
+import argparse
+import collections
+import csv
+import glob
+import os
+import random
+import re
+import sys
+import tarfile
+import time
+import urllib.error
+import urllib.request
+import xml.etree.ElementTree as ET
+import zipfile
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+API_DIR = os.path.join(HERE, "..", "sleep_detector_api")
+ROOT = r"D:\aihub548"  # 저장소 밖
+ENV_PATH = os.path.join(HERE, ".env")
+DOWN_URL = "https://api.aihub.or.kr/down/0.6/548.do"  # aihubshell v0.6 과 같은 주소 (aihub_crop.py 와 같음)
+OPEN_PER = 25  # eval: 사람 · 거리마다 뜬 눈 사진 수
+OPEN_PER_TRAIN = 30  # crop: 사람 · 거리마다 뜬 눈 사진 수 (이웃 프레임이 거의 같아서 많이 넣어도 이득 적음)
+VAL_FRAC = 0.15  # crop: val 로 뗄 사람 비율
+STORE = 96  # crop: 저장 크기 (학습 때 augment → prep_eye 가 64×64 로, aihub_crop.py 와 같음)
+CHUNK = 5000  # crop: 사진 이만큼마다 .npz 하나 (끊겨도 이어서)
+MATCH = 0.6  # crop: MediaPipe 눈 중심이 라벨 다각형 중심에서 '다각형 폭 × 이 값' 안이어야 같은 눈
+Y_OF = {"open": 0, "closed": 1, "half": -1}
+SEED = 0
+
+
+def zname(info):
+    """zip 안 이름 (한글 폴더가 cp949 로 들어 있음)"""
+    return info.filename if info.flag_bits & 0x800 else info.filename.encode("cp437").decode("cp949", "replace")
+
+
+WEB_DIR = r"D:\033.안구 움직임 영상 데이터"  # AI-Hub 웹 화면에서 받은 폴더 (VL · VS_G1 은 여기로 받았음)
+EXTRA_DIR = r"D:\aihub548_extra"  # 동시에 받은 묶음 (TL · VS_G2 · VS_U) — 받는 중 조각 파일이 섞이지 않게 폴더를 나눔
+
+
+def data_dirs():
+    return (ROOT, WEB_DIR, EXTRA_DIR)
+
+
+def find(pattern):
+    """ROOT · WEB_DIR · EXTRA_DIR 아래에서 파일 하나 찾기 (API 로 받은 구조 · 브라우저로 받은 구조 둘 다)"""
+    hits = sorted(h for d in data_dirs() for h in glob.glob(os.path.join(d, "**", pattern), recursive=True))
+    if not hits:
+        raise SystemExit(f"{' · '.join(data_dirs())} 아래에 {pattern} 이 없습니다 (download 먼저, 또는 --root)")
+    return hits[0]
+
+
+# ── download ─────────────────────────────────────
+def read_key():
+    for line in open(ENV_PATH, encoding="utf-8"):
+        line = line.strip()
+        if line.startswith("AIHUB_API_KEY") and "=" in line:
+            return line.split("=", 1)[1].strip().strip("\"'")
+    raise SystemExit(f"{ENV_PATH} 에 AIHUB_API_KEY=… 가 없습니다")
+
+
+def download(keys):
+    key = read_key()
+    tar_dir, raw_dir = os.path.join(ROOT, "tar"), os.path.join(ROOT, "raw")
+    os.makedirs(tar_dir, exist_ok=True)
+    os.makedirs(raw_dir, exist_ok=True)
+    for fk in keys:
+        tar_path = os.path.join(tar_dir, f"{fk}.tar")
+        done = tar_path + ".done"
+        if os.path.exists(done):
+            print(f"[{fk}] 이미 받음")
+            continue
+        have = os.path.getsize(tar_path) if os.path.exists(tar_path) else 0
+        req = urllib.request.Request(f"{DOWN_URL}?fileSn={fk}", headers={"apikey": key})
+        if have:
+            req.add_header("Range", f"bytes={have}-")
+        try:
+            resp = urllib.request.urlopen(req, timeout=60)
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", "replace").replace(key, "***")
+            raise SystemExit(f"[{fk}] HTTP {e.code}: {body[:300]}")
+        mode = "ab" if have and resp.status == 206 else "wb"
+        total = int(resp.headers.get("Content-Length", 0)) + (have if mode == "ab" else 0)
+        got, t0, last = (have if mode == "ab" else 0), time.time(), 0
+        with open(tar_path, mode) as f:
+            while chunk := resp.read(1 << 20):
+                f.write(chunk)
+                got += len(chunk)
+                if got - last > 1 << 30:
+                    last = got
+                    print(f"[{fk}] {got / 1e9:.1f} / {total / 1e9:.1f}GB  {got / 1e6 / max(time.time() - t0, 1):.0f}MB/s", flush=True)
+        print(f"[{fk}] 받음 {got / 1e9:.2f}GB → 풀기", flush=True)
+        with tarfile.open(tar_path) as tf:
+            tf.extractall(raw_dir)
+        open(done, "w").close()
+        os.remove(tar_path)  # 88GB 를 두 번 들고 있지 않게 (풀었으면 tar 는 필요 없음)
+    merge_parts(raw_dir)
+
+
+def merge_parts(raw_dir):
+    parts = collections.defaultdict(list)
+    for p in glob.glob(os.path.join(raw_dir, "**", "*.part*"), recursive=True):
+        m = re.match(r"(.*)\.part(\d+)$", p)
+        if m:
+            parts[m[1]].append((int(m[2]), p))
+    for target, ps in parts.items():
+        with open(target, "wb") as out:
+            for _, p in sorted(ps):
+                with open(p, "rb") as f:
+                    while chunk := f.read(1 << 24):
+                        out.write(chunk)
+        for _, p in ps:
+            os.remove(p)
+        print("조각 합침:", os.path.basename(target), len(ps), "개")
+
+
+# ── 라벨 ─────────────────────────────────────────
+def read_labels(vl_zip, group):
+    """사진 이름 → open / half / closed (두 눈 모두 closed = closed, 하나라도 half · closed = half)"""
+    label = {}
+    with zipfile.ZipFile(vl_zip) as z:
+        for i in z.infolist():
+            n = zname(i)
+            if not (n.startswith(group + "/") and n.endswith("_RGB.xml")):
+                continue
+            for im in ET.fromstring(z.read(i)).iter("image"):
+                st = [([t.text for t in pg.iter("attribute") if t.get("name") == "status"] or ["open"])[0]
+                      for pg in im.iter("polygon") if pg.get("label", "").endswith("eyelid")]
+                s = set(st)
+                label[im.get("name")] = "closed" if s == {"closed"} else "half" if s & {"half", "closed"} else "open"
+    return label
+
+
+# ── eval ─────────────────────────────────────────
+def evaluate():
+    sys.path.insert(0, API_DIR)
+    os.chdir(API_DIR)
+    from services import face_service as fs  # 서버 판정 그대로 (config.py 의 CNN · EAR 기준)
+
+    label = read_labels(find("VL.zip"), "G1")
+    out_dir = os.path.join(ROOT, "eval_g1")
+    with zipfile.ZipFile(find("VS_G1.zip")) as vs:
+        items = {os.path.basename(zname(i)): i for i in vs.infolist() if "/RGB/" in zname(i) and zname(i).endswith(".jpg")}
+        meta = {}
+        for i in vs.infolist():
+            if zname(i).endswith("meta.xml"):
+                t = ET.fromstring(vs.read(i))
+                meta[zname(i).split("/")[0]] = dict(age=t.findtext("age"), gender=t.findtext("gender"), glasses=t.findtext("glasses"))
+        rng, groups, pick = random.Random(SEED), collections.defaultdict(list), []
+        for f in sorted(items):
+            lab = label.get(f)
+            if lab == "open":
+                groups[tuple(f.split("_")[3:5])].append(f)
+            elif lab:
+                pick.append(f)
+        for k in sorted(groups):
+            pick += rng.sample(groups[k], min(OPEN_PER, len(groups[k])))
+        print("라벨", len(label), "/ RGB", len(items), "/ 고른 사진", len(pick), dict(collections.Counter(label[f] for f in pick)), flush=True)
+
+        rows = []
+        for k, f in enumerate(pick, 1):
+            person, dist = f.split("_")[3:5]
+            dst = os.path.join(out_dir, person, f)
+            if not os.path.exists(dst):
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                with open(dst, "wb") as w:
+                    w.write(vs.read(items[f]))
+            thr = fs.EAR_THRESHOLD
+            n = fs._normalize(fs._real(dst, thr), thr, "microsleep")
+            rows.append(dict(file=f, person=person, dist=dist, view=f.split("_")[6], label=label[f], **meta.get(person, {}),
+                             face=n["face_found"], prob=n["eye_closed_prob"], ear=n["ear"], closed=n["is_closed"],
+                             cancel=n["is_definitely_open"]))
+            if k % 500 == 0:
+                print(k, "/", len(pick), flush=True)
+
+    out = os.path.join(ROOT, "result_g1.csv")
+    with open(out, "w", newline="", encoding="utf-8-sig") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    for line in report(rows):
+        print(line)
+    print("CSV:", out)
+
+
+def _stat(rows, lab, **cond):
+    rs = [r for r in rows if r["label"] == lab and all(str(r[k]) == str(v) for k, v in cond.items())]
+    face = [r for r in rs if str(r["face"]) == "True" and r["prob"] not in ("", None)]
+    n = len(face)
+    return dict(n=len(rs), face_rate=round(n / len(rs), 4) if rs else None,
+                closed_rate=round(sum(str(r["closed"]) == "True" for r in face) / n, 4) if n else None,
+                cancel_rate=round(sum(str(r["cancel"]) == "True" for r in face) / n, 4) if n else None)
+
+
+def report(rows):
+    yield "== 라벨별 (얼굴 찾은 사진 기준) =="
+    for lab in ("open", "half", "closed"):
+        s = _stat(rows, lab)
+        yield f"{lab:<7} n={s['n']:5d}  얼굴 {s['face_rate']:.1%} | 감음 판정 {s['closed_rate']:.1%} | 서버 취소(확실히 뜸) {s['cancel_rate']:.1%}"
+    for g in ("dist", "glasses", "view"):
+        for v in sorted({r[g] for r in rows}):
+            for lab in ("open", "closed"):
+                s = _stat(rows, lab, **{g: v})
+                if s["closed_rate"] is not None:
+                    yield f"  {lab} · {g}={v:<4} n={s['n']:5d} 감음 판정 {s['closed_rate']:.1%} | 취소 {s['cancel_rate']:.1%}"
+
+
+def load_rows():
+    return list(csv.DictReader(open(os.path.join(ROOT, "result_g1.csv"), encoding="utf-8-sig")))
+
+
+# ── crop (추가 학습용) ───────────────────────────
+def person_of(fname):
+    """NIA_EYE_G1_526_30_RGB_F_0001.jpg → 'G1_526' (번호는 그룹마다 따로라 그룹을 붙임)"""
+    p = fname.split("_")
+    return f"{p[2]}_{p[3]}"
+
+
+def eye_labels(zips):
+    """라벨 zip 들 → {사진 이름: [(status, 중심 x, 중심 y, 폭), …]} (RGB 눈꺼풀 다각형만)"""
+    out = {}
+    for path in zips:
+        with zipfile.ZipFile(path) as z:
+            for i in z.infolist():
+                if not zname(i).endswith("_RGB.xml"):
+                    continue
+                for im in ET.fromstring(z.read(i)).iter("image"):
+                    eyes = []
+                    for pg in im.iter("polygon"):
+                        if not pg.get("label", "").endswith("eyelid"):
+                            continue
+                        pts = [tuple(map(float, xy.split(","))) for xy in pg.get("points").split(";") if xy.strip()]
+                        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+                        st = ([t.text for t in pg.iter("attribute") if t.get("name") == "status"] or ["open"])[0]
+                        eyes.append((st, sum(xs) / len(xs), sum(ys) / len(ys), max(xs) - min(xs)))
+                    out[im.get("name")] = eyes
+    return out
+
+
+def val_people(vl_zip):
+    """Validation 라벨에 나오는 사람 전부 (학습에서 뺄 사람)"""
+    with zipfile.ZipFile(vl_zip) as z:
+        return {person_of(os.path.basename(zname(i))) for i in z.infolist() if zname(i).endswith("_RGB.xml")}
+
+
+_det = None
+
+
+def _init(face_task):
+    global _det
+    from mediapipe.tasks import python as mp_python
+    from mediapipe.tasks.python import vision
+    _det = vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(
+        base_options=mp_python.BaseOptions(model_asset_path=face_task), num_faces=1))
+
+
+def crop_bytes(data):
+    """jpg bytes → [('L' | 'R', 96×96 흑백 눈, 눈 중심 x, y), …] (L = 사진 왼쪽 눈) / 얼굴 없음 → None. 서버 face_service 와 같은 눈 점 · crop_eye"""
+    import cv2
+    import mediapipe as mp
+    import numpy as np
+    from eye_preprocess import crop_eye
+    bgr = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    if bgr is None:
+        return None
+    h, w = bgr.shape[:2]
+    res = _det.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)))
+    if not res.face_landmarks:
+        return None
+    lm, out = res.face_landmarks[0], []
+    for side, idx in (("L", [33, 160, 158, 133, 153, 144]), ("R", [362, 385, 387, 263, 373, 380])):  # face_service LEFT_EYE · RIGHT_EYE
+        pts = [(lm[i].x * w, lm[i].y * h) for i in idx]
+        eye = crop_eye(bgr, pts)
+        if eye is None:
+            continue
+        eye = cv2.cvtColor(eye, cv2.COLOR_BGR2GRAY)
+        interp = cv2.INTER_AREA if min(eye.shape) >= STORE else cv2.INTER_LINEAR
+        out.append((side, cv2.resize(eye, (STORE, STORE), interpolation=interp), (pts[0][0] + pts[3][0]) / 2, (pts[0][1] + pts[3][1]) / 2))
+    return out
+
+
+def crop(limit=0):
+    import hashlib
+    import json
+    from multiprocessing import Pool
+    import numpy as np
+    sys.path.insert(0, os.path.join(API_DIR, "services"))  # eye_preprocess (서버와 같은 파일)
+
+    face_task = os.path.join(API_DIR, "ml_models", "face_landmarker.task")
+    labels = eye_labels([find("TL.zip")])
+    drop = val_people(find("VL.zip"))
+    ts_zips = sorted({h for d in data_dirs() for h in glob.glob(os.path.join(d, "**", "TS_*.[zZ]ip"), recursive=True)
+                      if os.path.getsize(h) > 0})
+    if not ts_zips:
+        raise SystemExit("학습 사진 zip (TS_*.zip) 이 없습니다 — download 먼저")
+    meta, items = {}, {}  # (zip, 번호) → 나이 · 성별 · 안경 (번호는 그룹 = zip 마다 따로) / 사진 이름 → (zip 경로, zip 안 이름)
+    for zp in ts_zips:
+        with zipfile.ZipFile(zp) as z:
+            for i in z.infolist():
+                n = zname(i)
+                if n.endswith("meta.xml"):
+                    t = ET.fromstring(z.read(i))
+                    meta[(zp, t.findtext("id"))] = dict(age=t.findtext("age"), gender=t.findtext("gender"), glasses=t.findtext("glasses"))
+                elif "/RGB/" in n and n.endswith(".jpg"):
+                    items[os.path.basename(n)] = (zp, i.filename)
+
+    # 사람 단위 train / val (Validation 사람은 뺀 뒤)
+    people = sorted({person_of(f) for f in items if f in labels} - drop)
+    rng = random.Random(SEED)
+    val_set = set(rng.sample(people, round(len(people) * VAL_FRAC)))
+    # 사진 고르기: 감음 · 반쯤 전부 + 사람 · 거리마다 뜸 OPEN_PER_TRAIN 장
+    opens, pick = collections.defaultdict(list), []
+    for f in sorted(items):
+        if f not in labels or person_of(f) in drop:
+            continue
+        if all(e[0] == "open" for e in labels[f]):
+            opens[(person_of(f), f.split("_")[4])].append(f)
+        else:
+            pick.append(f)
+    for k in sorted(opens):
+        pick += rng.sample(opens[k], min(OPEN_PER_TRAIN, len(opens[k])))
+    pick.sort()
+    if limit:
+        pick = sorted(random.Random(SEED).sample(pick, min(limit, len(pick))))
+    print(f"학습 zip {len(ts_zips)}개 · 라벨 사진 {len(labels)} · RGB 사진 {len(items)} · Validation 이라 뺀 사람 {len(drop)}"
+          f" · 남은 사람 {len(people)} (val {len(val_set)}) · 쓸 사진 {len(pick)}", flush=True)
+
+    out_dir = os.path.join(ROOT, "eye_npz_test" if limit else "eye_npz")
+    os.makedirs(out_dir, exist_ok=True)
+    made, t0, zf = [], time.time(), {}
+    with Pool(max(os.cpu_count() - 1, 1), initializer=_init, initargs=(face_task,)) as pool:
+        for ci in range(0, len(pick), CHUNK):
+            part = pick[ci:ci + CHUNK]
+            name = f"crops_{hashlib.md5(('|'.join(part) + f'{STORE}{MATCH}{VAL_FRAC}').encode()).hexdigest()[:10]}.npz"
+            made.append(name)
+            if os.path.exists(os.path.join(out_dir, name)):
+                continue
+            datas = []
+            for f in part:
+                zp, inner = items[f]
+                if zp not in zf:
+                    zf[zp] = zipfile.ZipFile(zp)
+                datas.append(zf[zp].read(inner))
+            res = pool.map(crop_bytes, datas, chunksize=16)
+            cols, cnt = collections.defaultdict(list), collections.Counter(files=len(part))
+            for f, r in zip(part, res):
+                if r is None:
+                    cnt["noface"] += 1
+                    continue
+                for side, eye, cx, cy in r:
+                    near = min(labels[f], key=lambda e: (e[1] - cx) ** 2 + (e[2] - cy) ** 2, default=None)
+                    if near is None or ((near[1] - cx) ** 2 + (near[2] - cy) ** 2) ** 0.5 > near[3] * MATCH:
+                        cnt["no_match"] += 1
+                        continue
+                    pid, m = person_of(f), meta.get((items[f][0], f.split("_")[3]), {})
+                    cnt[f"eyes_{near[0]}"] += 1
+                    cols["X"].append(eye)
+                    cols["fname"].append(f)
+                    cols["side"].append(side)
+                    cols["y"].append(Y_OF.get(near[0], 0))
+                    cols["status"].append(near[0])
+                    cols["driver"].append(pid)
+                    cols["split"].append("val" if pid in val_set else "train")
+                    cols["dist"].append(f.split("_")[4])
+                    cols["view"].append(f.split("_")[6])
+                    cols["glasses"].append(m.get("glasses") == "yes")
+                    cols["gender"].append(m.get("gender", ""))
+                    cols["age"].append(int(m["age"]) // 10 * 10 if m.get("age", "").isdigit() else -1)
+            np.savez_compressed(os.path.join(out_dir, name), X=np.stack(cols["X"]),
+                                **{k: np.array(v) for k, v in cols.items() if k != "X"}, counts=json.dumps(cnt))
+            print(f"{ci + len(part)}/{len(pick)}장  {time.time() - t0:.0f}초  {dict(cnt)}", flush=True)
+    for z in zf.values():
+        z.close()
+
+    for p in glob.glob(os.path.join(out_dir, "crops_*.npz")):  # 이번 설정과 다른 묶음은 지운다 (드라이브에 섞이지 않게)
+        if os.path.basename(p) not in made:
+            os.remove(p)
+    total = collections.Counter()
+    for n in made:
+        total.update(json.loads(str(np.load(os.path.join(out_dir, n))["counts"])))
+    summary = dict(made=time.strftime("%Y-%m-%d %H:%M"), ts_zips=[os.path.basename(z) for z in ts_zips], store=STORE,
+                   open_per_train=OPEN_PER_TRAIN, val_frac=VAL_FRAC, match=MATCH, seed=SEED, dropped_val_people=len(drop),
+                   people=len(people), val_people=len(val_set), chunks=made, counts=dict(total))
+    json.dump(summary, open(os.path.join(out_dir, "summary.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    print(f"끝: {out_dir}  {dict(total)}")
+
+
+# ── wandb ────────────────────────────────────────
+def to_wandb():
+    import wandb
+
+    rows = load_rows()
+    face = [r for r in rows if r["face"] == "True" and r["prob"]]
+    run = wandb.init(project="eye-cnn", name="b_eval548_g1", id="b_eval548_g1", group="eval", job_type="eval", resume="allow",
+                     config=dict(data="AI-Hub 548 안구 움직임 Validation G1 RGB", people=65, model="eye_cnn_aihub.pt",
+                                 cnn_closed_prob=0.4, cnn_open_margin=0.1, ear_threshold=0.23, confirm_open_margin=0.03,
+                                 pick="감음 · 반쯤 감음 전부 + 사람 · 거리마다 뜸 25장 (시드 0)",
+                                 label_rule="두 눈 closed = closed, 하나라도 half · closed = half", judge="서버 face_service 그대로"))
+    table = wandb.Table(columns=["group", "value", "label", "n", "face_rate", "closed_rate", "cancel_rate"])
+    for lab in ("open", "half", "closed"):
+        s = _stat(rows, lab)
+        table.add_data("all", "all", lab, *s.values())
+        for k, v in s.items():
+            run.summary[f"{lab}_{k}"] = v
+    for g in ("dist", "glasses", "view"):
+        for v in sorted({r[g] for r in rows}):
+            for lab in ("open", "half", "closed"):
+                table.add_data(g, v, lab, *_stat(rows, lab, **{g: v}).values())
+    sweep = wandb.Table(columns=["cnn_threshold", "open_closed_rate", "half_closed_rate", "closed_closed_rate", "balanced_acc"])
+    for t in (0.4, 0.3, 0.2, 0.1, 0.05):
+        def rate(lab):
+            rs = [r for r in face if r["label"] == lab]
+            return sum(float(r["prob"]) >= t for r in rs) / len(rs)
+        sweep.add_data(t, round(rate("open"), 4), round(rate("half"), 4), round(rate("closed"), 4),
+                       round((1 - rate("open") + rate("closed")) / 2, 4))
+    c = [r for r in face if r["label"] == "closed"]
+    run.summary["closed_ear_rate"] = round(sum(float(r["ear"]) < 0.23 for r in c) / len(c), 4)
+    run.summary["closed_either_rate"] = round(sum(float(r["prob"]) >= 0.4 or float(r["ear"]) < 0.23 for r in c) / len(c), 4)
+    run.summary["cnn_balanced_acc"] = round((1 - run.summary["open_closed_rate"] + run.summary["closed_closed_rate"]) / 2, 4)
+    run.log({"eval548_g1_table": table, "eval548_g1_threshold": sweep})
+    print(run.url)
+    run.finish()
+
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("step", choices=["download", "eval", "wandb", "crop"])
+    ap.add_argument("--root", default=ROOT, help="받기 · 결과 폴더 (저장소 밖)")
+    ap.add_argument("--keys", type=int, nargs="+", default=[55882], help="download: filekey (기본 TS_G1_1)")
+    ap.add_argument("--limit", type=int, default=0, help="crop 시험용: 이만큼만 (결과는 eye_npz_test/)")
+    a = ap.parse_args()
+    ROOT = a.root
+    {"download": lambda: download(a.keys), "eval": evaluate, "wandb": to_wandb, "crop": lambda: crop(a.limit)}[a.step]()
