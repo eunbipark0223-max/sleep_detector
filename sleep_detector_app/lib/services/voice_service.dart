@@ -26,7 +26,8 @@
 //   - 안드로이드 인식기는 말이 ~3초 안 들리거나 말하다 ~1초 쉬면 혼자 끝남 → 10초 안이면 다시 켜서 계속 듣는다
 //     (켤 때마다 안드로이드가 '띠링' — 두 번째부터는 화면에 '다시 한번 말씀해 주세요')
 //   - 덧셈: 두 자리 수가 들리면 끝. 조각마다 인식기를 끄고 0.3초 쉼 (안 끄면 '바쁨' 오류로 답을 통째로 놓침)
-//   - 따라 말하기: 쉬어도 바로 이어 듣고(끄고 쉬면 문장 뒤를 놓침), 문장과 0.8 이상 비슷해지면 그 자리에서 끝,
+//     단 0 으로 끝나는 수('칠십' → '70')는 덜 들은 것 — 서버 덧셈은 일의 자리가 1~8 끼리라 답이 0 으로 안 끝남 (11/02)
+//   - 따라 말하기: 쉬어도 바로 이어 듣고(끄고 쉬면 문장 뒤를 놓침), 문장과 0.7 이상 비슷해지면 그 자리에서 끝 (11/02 0.8 → 0.7),
 //     두 번째 띠링부터 10초를 새로 줌 (처음부터 다시 말할 시간)
 //   - 멈춘 뒤 최종 결과를 최대 1.5초 기다림 (안 기다리면 중간 결과만 남음: '98' → '9')
 //
@@ -53,7 +54,7 @@ class VoiceService {
   // ── 숫자 (10/29 STT 시험으로 정함) ─────────────────────────────
   static const int defaultListenSec = 10; // 서버 voice_quiz.listen_sec 이 없을 때
   static const Duration micDelay = Duration(milliseconds: 1000); // TTS 끝 → 마이크
-  static const double doneScore = 0.8; // 따라 말하기 '다 들음' = 서버 통과 기준(REPEAT_MIN_SCORE)과 같게
+  static const double doneScore = 0.7; // 따라 말하기 '다 들음' = 서버 통과 기준(REPEAT_MIN_SCORE, 11/02 0.8 → 0.7)과 같게
   static const String guideFirst = '🎤 말씀해 주세요';
   static const String guideAgain = '🎤 다시 한번\n말씀해 주세요';
 
@@ -162,6 +163,7 @@ class VoiceService {
     var session = 0;
     var deadline = sec * 1000;
     var enough = false;
+    var busyRun = 0; // '바쁨'이 연달아 난 횟수 → 쉬는 시간을 늘림
     String? lastErr;
 
     while (watch.elapsedMilliseconds < deadline - 300 && id == _listenId) {
@@ -206,14 +208,17 @@ class VoiceService {
       }
       lastErr = _stt.lastError?.errorMsg;
       final silent = lastErr == null || lastErr == 'error_speech_timeout' || lastErr == 'error_no_match';
-      // 덧셈은 조각마다 끄고 쉼, 따라 말하기는 바로 이어 들음, 어느 쪽이든 '바쁨'이면 끄고 0.5초
-      if (!continuous || !silent) {
+      // 덧셈은 조각마다 끄고 쉼, 따라 말하기는 '말이 들린 조각' 뒤에만 바로 이어 들음, '바쁨'이면 끄고 0.5초
+      //   (11/02 주행 소음 시험: 아무 말도 못 들은 조각(no_match) 뒤에 끄지 않고 바로 켜면 '바쁨'이 연달아 남)
+      if (!continuous || !silent || !texts.containsKey(my)) {
         await _stt.cancel();
-        await Future.delayed(Duration(milliseconds: silent ? 300 : 500));
+        // '바쁨'이 연달아 나면 0.5 → 1 → 1.5초로 늘려 쉼 (11/02 주행 소음 시험: 0.5초로는 4번 연달아 나서 대답을 통째로 놓침)
+        busyRun = silent ? 0 : busyRun + 1;
+        await Future.delayed(Duration(milliseconds: silent ? 300 : 500 * min(busyRun, 3)));
       }
       if (enough || id != _listenId) break;
       if (!texts.containsKey(my) && texts.isNotEmpty && silent) break; // 말한 뒤 한 조각 내내 조용 = 끝
-      if (isAdd && RegExp(r'\d{2,}').hasMatch(joined())) break; // 두 자리 수가 들림 ('9' 만이면 이어 들음)
+      if (isAdd && _hasFullAnswer(joined())) break; // 두 자리 수가 들림 ('9' 나 '70' 이면 이어 들음)
     }
     if (_stt.isListening) await _stt.cancel();
     await Future.delayed(const Duration(milliseconds: 300)); // 마지막 조각의 늦은 최종 결과
@@ -234,6 +239,14 @@ class VoiceService {
     _speakId++;
     await _stopListening();
     if (_ttsReady) await _tts.stop();
+  }
+
+  // 덧셈 '답을 다 들었나' — 마지막 두 자리 이상 수가 0 으로 끝나지 않으면 다 들음
+  //   서버 _make_add 는 일의 자리 1~8 끼리 받아올림 없이 더함 → 답의 일의 자리는 2~9, 0 이면 '칠십…' 에서 끊긴 것
+  //   (11/02 주행 소음: 78 → '70', 84 → '80%' 에서 멈춰 오답)
+  static bool _hasFullAnswer(String text) {
+    final nums = RegExp(r'\d{2,}').allMatches(text).map((m) => m.group(0)!).toList();
+    return nums.isNotEmpty && !nums.last.endsWith('0');
   }
 
   // 따라 말하기 '다 들었나' 판단용 — 서버 voice_quiz_service.repeat_score 와 같은 계산

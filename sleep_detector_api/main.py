@@ -53,6 +53,26 @@ def _include_routers(app: FastAPI):
             print(f"⚠️ 라우터 건너뜀: {name} (담당 {owner}) — {type(e).__name__}: {e}")
 
 
+def _warm_up_eye_models():
+    """서버를 켤 때 눈 판정 모델(MediaPipe · CNN)을 미리 읽어 둔다.
+
+    처음 쓸 때 읽으면 시연의 '첫 졸음 경고'만 늦어진다 (11/02). 실패해도 서버는 그대로 켜지고,
+    CNN 이 없으면 face_service 가 EAR 만 쓴다 (torch · 모델 파일은 A · B · 팀장 PC 에만).
+    """
+    if not getattr(config, "USE_REAL_AI", True):
+        return
+    import time
+    t0 = time.perf_counter()
+    try:
+        from services import face_service
+        face_service._get_detector()
+        cnn = face_service._get_cnn() if config.USE_CNN else None
+        state = "CNN + EAR" if cnn is not None else "EAR 만 (CNN 없음)"
+        print(f"✅ 눈 판정 모델 미리 읽음: {state} ({time.perf_counter() - t0:.1f}초)")
+    except Exception as e:
+        print(f"⚠️ 눈 판정 모델 미리 읽기 실패 (첫 판정 때 다시 읽음): {type(e).__name__}: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):   # ← app: FastAPI 매개변수 필수!
     try:
@@ -67,6 +87,8 @@ async def lifespan(app: FastAPI):   # ← app: FastAPI 매개변수 필수!
 
     print(f"ℹ️  DEMO_MODE={config.DEMO_MODE}  USE_REAL_AI={config.USE_REAL_AI}  USE_CNN={config.USE_CNN}  "
           f"GEMINI_MODEL={config.GEMINI_MODEL}")
+
+    _warm_up_eye_models()
 
     yield
 
