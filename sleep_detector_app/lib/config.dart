@@ -14,7 +14,7 @@
 //   - minFaceSize = 0.15       ML Kit 최소 얼굴 크기 (조수석 · 뒷좌석 무시)
 //   - calibSec = 5 · calibRatio = 0.5 · calibMin = 0.2 · calibMax = 0.4 · calibMinFaces = 3   개인 기준
 //   - contourEarOn · useContourEar · earClosed   (🆕 10/27) ML Kit 눈 윤곽 점으로 폰에서 EAR — 반쯤 감은 눈용
-//   - headRuleOn · headDownDeg = 6 · headBaseSec · headBaseMinFrames   (🆕 10/28) 고개 숙임 → 감김과 같이 셈
+//   - headRuleOn · headDownDeg = 6 · headDownSec = 3 · headBaseSec · headBaseMinFrames   (🆕 10/28) 고개 숙임 3초 → 미세수면 의심
 //   - pingSec = 30             서버 config.PING_SEC 과 같은 값
 //   - baseUrl                  서버 주소 (에뮬레이터는 http://10.0.2.2:8000)
 //
@@ -61,14 +61,19 @@ class AppConfig {
   //   (모의 시험: 폭 30px 은 뜸 0.33 · 반쯤 0.13 · 감음 0.07, 폭 12px 은 0.41 · 0.37 · 0.33)
   static const double minEyeWidthPx = 20;
 
-  // 🆕 고개 숙임 규칙 (10/28 CNN 채택 회의) — 고개를 푹 숙이면 '감김' 과 같이 셈 (미세수면 · PERCLOS 를 그대로 탐)
+  // 🆕 고개 숙임 규칙 (10/28 CNN 채택 회의) — 고개를 푹 숙인 채 headDownSec 이어지면 미세수면 의심
+  //   headDownSec   : 숙임이 이만큼 이어져야 의심 (눈 감김 1.5초보다 김). PERCLOS 에는 눈 감김만 넣음
+  //                   10/29 시연 폰 시험: 계기판 · 내비 보기 1.0~2.3초 · 졸아서 숙이기 3.8~7.4초
+  //                   → 1.5초로는 계기판 볼 때 경고 3번 → 3초 (팀 결정)
   //   headDownDeg   : 평소 고개 각도(ML Kit headEulerAngleX)보다 이만큼 숙이면 숙임. ML Kit 은 숙이면 X 가 내려감
   //                   10/28 KPI ① 측정: 평소 눈 뜬 프레임 최대 3.4° · 고개 돌림 최대 4.1° / 고개 숙임 8.0~20.5° → 가운데 6°
   //   headBaseSec   : 평소 각도 = 최근 이 시간 동안 '눈 뜨고 숙이지 않은' 프레임 각도의 중간값 (폰 위치 · 사람마다 달라서 고정값 못 씀)
   //   headBaseMinFrames : 평소 각도를 낼 최소 프레임 수 (출발 직후 · 자세를 바꾼 직후에는 규칙을 쉼)
-  //   한계 (발표): 내비 등을 1.5초 넘게 내려다봐도 경고 · 고개는 그대로 두고 눈만 내리깔면 각도로는 못 잡음 (ML Kit 이 '감음' 으로 봄)
+  //   한계 (발표): 내비 등을 3초 넘게 내려다봐도 경고 · 고개는 그대로 두고 눈만 내리깔면 각도로는 못 잡음 (ML Kit 이 '감음' 으로 봄)
   static const bool headRuleOn = true;
   static const double headDownDeg = 6.0;
+  static const double headDownSec = 3.0;
+  static const double headUpResetSec = 0.5; // 이만큼 계속 고개를 들어야 숙임 시간을 처음부터 (흔들림 1~2프레임은 숙임으로 이어 셈)
   static const int headBaseSec = 60;
   static const int headBaseMinFrames = 20;
 
