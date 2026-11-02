@@ -25,9 +25,12 @@ import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
+import '../config.dart';
 import '../services/api_service.dart';
 import '../services/eye_monitor.dart';
+import '../services/voice_service.dart';
 import '../theme.dart';
 import 'warning_screen.dart';
 
@@ -58,6 +61,14 @@ class _DriveScreenState extends State<DriveScreen> {
   DateTime _lastFrameAt = DateTime.now();
   bool _restarting = false; // 다시 켜는 중인지 (두 번 겹쳐 켜지 않게)
 
+  // 30초마다 서버에 "운전 중이에요" 알리기 (ping) → 지금 단계 · 휴게 알림 받기
+  Timer? _pingTimer;
+  String _restMessage = ''; // 휴게 배너 글 (비어 있으면 배너 없음)
+
+  // 위치 (경고 기록용만 — 속도 · 정차 판단에는 안 씀). ping 때마다 미리 받아 두고, 졸음 전송 때 바로 붙인다
+  double? _lat;
+  double? _lng;
+
   @override
   void initState() {
     super.initState();
@@ -77,6 +88,58 @@ class _DriveScreenState extends State<DriveScreen> {
 
     // 2초마다 카메라가 살아 있는지 확인한다
     _watchdog = Timer.periodic(const Duration(seconds: 2), (_) => _checkCamera());
+
+    // 30초마다 ping
+    _pingTimer = Timer.periodic(const Duration(seconds: AppConfig.pingSec), (_) => _ping());
+
+    _initLocation(); // 위치 권한 묻고 첫 위치 받기
+  }
+
+  // 출발할 때 위치 권한을 한 번 묻는다 (졸음 전송 때 묻으면 경고가 늦어지므로)
+  Future<void> _initLocation() async {
+    try {
+      final perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) await Geolocator.requestPermission();
+    } catch (_) {}
+    await _updateLocation();
+  }
+
+  // 지금 위치를 받아 둔다. 권한이 없거나 못 잡으면 예전 값 그대로 (위치 없이도 졸음 전송은 됨)
+  Future<void> _updateLocation() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return;
+      final perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
+      // ① 마지막으로 알던 위치를 먼저 바로 넣어 둔다 (새 위치를 잡는 데 몇 초 걸려서, 그 사이에 졸아도 위치가 붙게)
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null) {
+        _lat = last.latitude;
+        _lng = last.longitude;
+      }
+      // ② 새 위치로 바꾼다 (터널 · 실내 등에서 10초 안에 못 잡으면 ①의 값 그대로)
+      final p = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 10)));
+      _lat = p.latitude;
+      _lng = p.longitude;
+    } catch (_) {}
+  }
+
+  // ping: 최근 30초 감은 비율을 보내고, 서버가 알려 준 단계로 화면 색을 맞춘다
+  //   (1단계 자동 해제 · 관리자 조치완료도 여기서 반영됨)
+  Future<void> _ping() async {
+    _updateLocation(); // 위치도 30초마다 새로 받아 둠 (기다리지 않음)
+    try {
+      final status = await ApiService.sendPing(_eye.currentPerclos);
+      if (!mounted) return;
+      setState(() {
+        _stage = status.stage;
+        if (status.restDue) _restMessage = status.restMessage; // 연속 운전 2시간 → 휴게 배너
+      });
+      // 휴게 알림은 서버가 한 번만 true 로 보내 줌 → 한 번만 읽기
+      if (status.restDue) VoiceService.speak(status.restMessage);
+    } catch (_) {
+      // ping 실패는 조용히 넘어간다 (30초 뒤 다시 보냄)
+    }
   }
 
   // 측정 화면(D)이 카메라를 늦게 정리하면, 막 켠 운행 화면 카메라까지 같이 꺼질 때가 있다.
@@ -154,6 +217,8 @@ class _DriveScreenState extends State<DriveScreen> {
 
   @override
   void dispose() {
+    VoiceService.stop(); // 말하기 멈춤
+    _pingTimer?.cancel(); // ping 끄기
     _watchdog?.cancel(); // 카메라 지킴이 끄기
     _controller?.dispose(); // 카메라 끄기
     _eye.close(); // 눈 감시 도구 끄기
@@ -174,6 +239,8 @@ class _DriveScreenState extends State<DriveScreen> {
         closedSec: closedSec,
         perclos: perclos,
         eyeOpenProb: eyeOpenProb,
+        lat: _lat, // 미리 받아 둔 위치 (없으면 빈칸으로 보냄)
+        lng: _lng,
       );
       if (!mounted) return;
       setState(() {
@@ -196,11 +263,11 @@ class _DriveScreenState extends State<DriveScreen> {
     }
   }
 
-  // 얼굴이 3초 이상 안 보임
-  // TODO: 다음 단계에서 🔊 '카메라를 확인하세요'
+  // 얼굴이 3초 이상 안 보임 → 글 + 🔊
   void _onCheckCamera() {
     if (!mounted) return;
     setState(() => _notice = '카메라를 확인하세요');
+    VoiceService.speak('카메라를 확인하세요');
   }
 
   // 프레임마다 오는 눈 뜸 확률 · PERCLOS (0단계 화면 표시용)
@@ -229,6 +296,26 @@ class _DriveScreenState extends State<DriveScreen> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
+            // 휴게 배너 (연속 운전 2시간) — [닫기]로 숨김
+            if (_restMessage.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+                child: Row(
+                  children: [
+                    const Icon(Icons.local_cafe, color: AppColors.textPrimary),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(_restMessage,
+                          style: const TextStyle(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w700)),
+                    ),
+                    IconButton(
+                      onPressed: () => setState(() => _restMessage = ''),
+                      icon: const Icon(Icons.close, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 16),
             Icon(_stageIcon(_stage), size: 72, color: fg),
             const SizedBox(height: 12),
@@ -270,29 +357,29 @@ class _DriveScreenState extends State<DriveScreen> {
     );
   }
 
-  // 단계별 큰 글자 (0 정상 · 1 주의 · 2 휴식 권고 · 3 긴급)
+  // 단계별 큰 글자 (0 정상 · 1 주의 · 2 휴식 권고 · 3 긴급) — 경고 화면 문구와 같은 말로 맞춤
   String _stageTitle(int stage) {
     switch (stage) {
       case 1:
-        return '졸음이 감지됐어요';
+        return '졸음 주의!\n정신 차리고 운전하세요';
       case 2:
-        return '가까운 졸음쉼터에서 쉬어 가세요';
+        return '가까운 졸음쉼터로\n이동하세요';
       case 3:
-        return '즉시 안전한 곳에 정차하세요';
+        return '관리자에게 알렸습니다.\n정차해 주세요';
       default:
         return '안전 운전 중이에요';
     }
   }
 
-  // 단계별 아이콘
+  // 단계별 아이콘 (경고 화면과 같은 아이콘, 0단계만 눈)
   IconData _stageIcon(int stage) {
     switch (stage) {
       case 1:
-        return Icons.warning_amber_rounded;
+        return Icons.notifications_active;
       case 2:
-        return Icons.local_cafe_outlined;
+        return Icons.local_cafe;
       case 3:
-        return Icons.report_gmailerrorred;
+        return Icons.warning_rounded;
       default:
         return Icons.remove_red_eye_outlined;
     }
