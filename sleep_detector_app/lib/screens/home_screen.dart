@@ -73,10 +73,12 @@ class _HomeScreenState extends State<HomeScreen> {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => (widget.driveBuilder ?? (t) => DriveScreen(threshold: t))(t)),
     );
+    if (mounted) _reload(); // 운행 중 새로 생긴 경고가 '최근 경고'에 바로 보이게
   }
 
-  void _photoTest() {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UploadScreen()));
+  Future<void> _photoTest() async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UploadScreen()));
+    if (mounted) _reload(); // 사진 1장 테스트로 생긴 경고도 마찬가지
   }
 
   @override

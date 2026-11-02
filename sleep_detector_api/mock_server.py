@@ -114,7 +114,8 @@ def add_user(email: str, name: str, role: str = "user", phone: Optional[str] = N
     for u in USERS.values():
         if u["email"] == email:
             return u
-    user = {"id": _next["user"], "email": email, "name": name, "role": role, "phone": phone, "vehicle_no": vehicle_no}
+    user = {"id": _next["user"], "email": email, "name": name, "role": role, "phone": phone, "vehicle_no": vehicle_no,
+            "created_at": datetime.now().isoformat(timespec="seconds")}  # 내 정보 '가입일' (진짜 서버 /users/me 와 같은 칸)
     USERS[user["id"]] = user
     _next["user"] += 1
     return user
