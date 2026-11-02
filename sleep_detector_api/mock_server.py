@@ -449,6 +449,7 @@ class StatusUpdate(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+    history: Optional[list] = None   # 앱이 보내는 이전 대화 [{role, text}] (진짜 chat_service 가 쓴다)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -779,16 +780,99 @@ def admin_stats_hourly(admin: dict = Depends(require_admin)):
 
 
 # ═══════════════════════════════════════════════════════════════
-# chat — 규정 도우미 (RAG 대신 고정 대답)
+# chat — 규정 도우미 (knowledge/*.txt 진짜 규정 원문)
+#   - .env 에 GEMINI_API_KEY 가 있으면 진짜 chat_service (RAG + Gemini 답변)
+#   - 없으면 knowledge/*.txt 를 같은 방식(rag_service 의 읽기 · 자르기)으로 읽어, 글자 겹침으로 질문과 가까운 규정 원문만 보여 준다
+#     (AI 답변은 없음 → 앱에 "AI 답변 아님 — 규정 원문"으로 표시). 키 없이도 돌아야 하는 가짜 버전 규칙을 지킴
 # ═══════════════════════════════════════════════════════════════
+import math
+from collections import Counter
+
+_KB = {"chunks": None, "df": None}
+
+
+def _grams(text: str) -> set:
+    t = re.sub(r"[^0-9A-Za-z가-힣]", "", text)
+    return {t[i:i + 2] for i in range(len(t) - 1)}
+
+
+def _load_knowledge():
+    """knowledge/*.txt → 호 단위 조각 (진짜 서버와 같은 rag_service 읽기 · 자르기, 외부 호출 없음). 한 번만 읽는다."""
+    if _KB["chunks"] is None:
+        try:
+            from services import rag_service
+            chunks = [c["metadata"] for c in rag_service._chunk(rag_service._read_docs())]
+        except Exception as e:
+            print(f"[mock chat] knowledge 읽기 실패 → 고정 규정만 사용: {type(e).__name__}: {e}")
+            chunks = []
+        df = Counter()
+        for m in chunks:
+            m["_grams"] = _grams(m["title"] + " " + m["content"])
+            df.update(m["_grams"])
+        _KB["chunks"], _KB["df"] = chunks, df
+    return _KB["chunks"], _KB["df"]
+
+
+def _real_ai_available() -> bool:
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(os.path.join(BASE_DIR, ".env"), override=True)   # 서버를 켠 뒤에 .env 에 키를 넣어도 읽도록 (빈 값으로 먼저 읽혀 있을 수 있음)
+    except Exception:
+        pass
+    return len(os.getenv("GEMINI_API_KEY", "")) > 10
+
+
+def search_knowledge(query: str, k: int = 4):
+    """질문과 글자(두 글자씩)가 많이 겹치는 규정 조각 k개. 같은 문서가 k 를 다 채우지 않게 문서당 2개까지."""
+    chunks, df = _load_knowledge()
+    q = _grams(query)
+    if not chunks or not q:
+        return []
+    n = len(chunks)
+    scored = []
+    for m in chunks:
+        common = q & m["_grams"]
+        if not common:
+            continue
+        score = sum(math.log(1 + n / df[g]) for g in common) / (len(m["_grams"]) ** 0.3)
+        scored.append((score, m))
+    scored.sort(key=lambda x: -x[0])
+    out, per_file = [], Counter()
+    for _, m in scored:
+        if per_file[m["file"]] >= 2:
+            continue
+        per_file[m["file"]] += 1
+        out.append({"title": m["title"], "source": m["source"], "content": m["content"], "is_real": True})
+        if len(out) == k:
+            break
+    return out
+
+
 @app.get("/chat/hello")
 def chat_hello():
-    return {"message": "안녕하세요. 졸음운전 · 휴게시간 규정을 물어보세요. (모의 서버)"}
+    if _real_ai_available():
+        try:
+            from services import chat_service
+            return {"message": chat_service.hello()}
+        except Exception:
+            pass
+    return {"message": "안녕하세요, 졸음 가드 규정 도우미예요. 졸음운전 · 연속 운전 휴게시간 규정을 물어보세요. (규정 원문 검색)"}
 
 
 @app.post("/chat")
 def chat(body: ChatRequest, user: dict = Depends(current_user)):
-    return {"success": True, "answer": f"[모의 답변] '{body.message}' 에 대한 규정 안내는 RAG 가 연결되면 표시됩니다.", "sources": MOCK_REGULATIONS[:1]}
+    if _real_ai_available():
+        try:
+            from services import chat_service
+            return {"success": True, **chat_service.answer(body.message, body.history or [])}
+        except Exception as e:
+            print(f"[mock chat] 진짜 chat_service 실패 → 규정 원문 검색으로: {type(e).__name__}: {e}")
+    found = search_knowledge(body.message)
+    if not found:
+        return {"success": True, "is_real": False, "sources": [],
+                "answer": "질문과 관련된 규정을 찾지 못했어요. 졸음운전 · 휴게시간 · 휴대전화 사용 같은 낱말로 물어봐 주세요."}
+    return {"success": True, "is_real": False, "sources": found,
+            "answer": f"AI 답변 없이, 질문과 가장 가까운 규정 원문 {len(found)}건을 보여 드려요. (아래 규정을 눌러 원문을 확인하세요)"}
 
 
 # ═══════════════════════════════════════════════════════════════
