@@ -61,11 +61,11 @@ REST_SEC = int(os.getenv("MOCK_REST_SEC", "10"))              # 휴식 시간 (�
 QUIZ_GAP_SEC = int(os.getenv("MOCK_QUIZ_GAP_SEC", "20"))      # 음성 퀴즈 최소 간격 (진짜 120)
 DRIVE_LIMIT_MIN = 120                                         # 연속 운전 휴게 알림
 CALIB_FRAMES = 5                                              # 개인 기준 측정 사진 수
-LISTEN_SEC = 7                                                # 음성 퀴즈 듣는 시간
+LISTEN_SEC = 10                                               # 음성 퀴즈 듣는 시간 (10/29 STT 시험으로 7 → 10)
 REPEAT_MIN_SCORE = 0.8                                        # 따라 말하기 통과 유사도
 VOICE_QUIZ_MAX_TRIES = 2
 MAX_PHOTO_BYTES = 10 * 1024 * 1024
-DEFAULT_EAR_THRESHOLD = 0.20
+DEFAULT_EAR_THRESHOLD = 0.23                                  # 개인 기준이 없을 때 서버 EAR 기준 (진짜 서버 config.EAR_THRESHOLD 와 같게)
 
 STAGE_LABELS = {0: "정상", 1: "주의", 2: "휴식 권고", 3: "긴급"}
 EVENT_STATUSES = ["미확인", "확인", "조치완료", "휴식완료"]
