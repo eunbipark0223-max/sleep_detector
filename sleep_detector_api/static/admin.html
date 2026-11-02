@@ -6,9 +6,11 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
 화면 모양: 「관리자 (2).html」 확정본 (사이드바 · 통계 카드 · 차트 · 경고 표 · 상세 모달 · 기사 연락 모달)
 
 [이 파일이 하는 일]
-  - 대시보드: 오늘 전체 경고 · 3단계 긴급(조치 필요) · 등록된 기사 · 휴게 미준수(오늘) 카드 (누르면 목록으로),
+  - 대시보드: 오늘 전체 경고 · 긴급(조치 필요: 3단계 + 음성 응답 없음, 미처리) · 등록된 기사 · 휴게 미준수(오늘) 카드 (누르면 목록으로),
     단계별 경고 · 시간대별 졸음 차트 (서버 /admin/stats/*)
-  - 졸음 경고: 표 + 필터 칩(전체 · 미확인 · 3단계 · 휴게 미준수 · 음성 응답 없음)
+  - 긴급 알림: 새 3단계 · "음성 응답 없음"이 생기면 빨간 배너 + 알림음(삐 3번) + 탭 제목 깜빡임. [알림음 켜짐] 버튼으로 끌 수 있음
+    (브라우저는 화면을 한 번 누르기 전에는 소리를 막아서, 그때는 배너에 안내가 나옴)
+  - 졸음 경고: 표 + 필터 칩(전체 · 미확인 · 긴급 · 3단계 · 휴게 미준수 · 음성 응답 없음)
     · 3단계 / "음성 응답 없음"(reason no_response) 미처리 줄은 연한 빨강으로 표시
     · [상세 보기 및 조치] → 모달: 사진 · 위치 · Agent 보고서(상황 · 단계 이유 · 법규 · 권장 조치) · 운전 중 퀴즈 · 휴식 기록
     · [확인했어요] / [조치완료] → PATCH /events/{id}/status → 3단계 해제
@@ -79,6 +81,14 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     .topbar { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 8px; font-size: 14px; color: var(--text-sub); }
     .topbar button { border: 1px solid var(--border); background: var(--surface); border-radius: 20px; min-height: 40px; padding: 0 16px; font-weight: 700; color: var(--text-sub); cursor: pointer; }
     .topbar button:hover { border-color: var(--brand); color: var(--brand); }
+    /* 긴급 알림 배너: 새 3단계 · 음성 응답 없음이 생기면 위에 붙어서 보인다 */
+    .urgent-banner { position: sticky; top: 0; z-index: 60; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--stage-3-solid); color: #fff; padding: 12px 16px; border-radius: 12px; margin-bottom: 12px; font-size: 15px; font-weight: 700; box-shadow: 0 4px 14px rgba(198,40,40,.35); }
+    .urgent-banner[hidden] { display: none; }
+    .urgent-banner .ub-text { flex: 1 1 240px; line-height: 1.5; }
+    .urgent-banner .ub-text small { display: block; font-weight: 500; opacity: .92; }
+    .urgent-banner button { min-height: 40px; padding: 0 16px; border-radius: 20px; border: 2px solid #fff; background: transparent; color: #fff; font-weight: 700; cursor: pointer; }
+    .urgent-banner button.primary { background: #fff; color: var(--stage-3-text); }
+    .urgent-banner button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
     .view { display: none; }
     .view.active { display: block; }
     .page-title { font-size: 26px; font-weight: 800; margin-bottom: 22px; }
@@ -227,7 +237,13 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
   </aside>
 
   <main class="main-content" id="main" tabindex="-1">
-    <div class="topbar"><span id="updated">불러오는 중…</span><button type="button" id="refreshBtn">새로고침</button></div>
+    <div class="urgent-banner" id="urgentBanner" role="alert" hidden>
+      <span data-icon="warning" data-size="26" aria-hidden="true"></span>
+      <span class="ub-text" id="ubText"></span>
+      <button type="button" class="primary" id="ubView">바로 보기</button>
+      <button type="button" id="ubClose">닫기</button>
+    </div>
+    <div class="topbar"><span id="updated">불러오는 중…</span><button type="button" id="soundBtn" aria-pressed="true">알림음 켜짐</button><button type="button" id="refreshBtn">새로고침</button></div>
 
     <!-- 대시보드 -->
     <section class="view" id="view-dashboard" aria-labelledby="t-dashboard">
@@ -312,6 +328,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     const FILTERS = [
       ['all', '전체', () => true],
       ['unchecked', '미확인', (e) => e.status === '미확인'],
+      ['urgent', '긴급', (e) => isOpenUrgent(e)],
       ['s3', '3단계', (e) => e.stage === 3],
       ['rest', '휴게 미준수', (e) => e.reason === 'rest_overdue'],
       ['noreply', '음성 응답 없음', (e) => e.reason === 'no_response'],
@@ -400,7 +417,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + view));
       document.querySelectorAll('.menu-item').forEach((b) => { if (b.dataset.view === view) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
       $('main').scrollTop = 0;
-      document.title = (lastUrgent ? '(' + lastUrgent + ') ' : '') + '졸음 가드 관리자';
+      updateTitle();
       if (focusTitle) $('t-' + view).focus({ preventScroll: true });
       renderAll(true);
     }
@@ -414,7 +431,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       const urgent = events.filter(isOpenUrgent).length;
       const cards = [
         ['오늘 전체 경고', events.filter((e) => isToday(e.created_at)).length, '건', false, null, () => goHazards('all')],
-        ['3단계 긴급 (조치 필요)', urgent, '건', urgent > 0, 'alert', () => goHazards('s3')],
+        ['긴급 (조치 필요)', urgent, '건', urgent > 0, 'alert', () => goHazards('urgent')],
         ['등록된 기사', drivers().length, '명', false, null, () => go('drivers')],
         ['휴게 미준수 (오늘)', events.filter((e) => e.reason === 'rest_overdue' && isToday(e.created_at)).length, '건', false, null, () => goHazards('rest')],
       ];
@@ -528,16 +545,61 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
 
     // ── 사이드바 배지 · 안내 ──────────────────────────────────
     function renderChrome() {
-      const urgent = events.filter(isOpenUrgent).length;
+      const openUrgent = events.filter(isOpenUrgent);
+      const urgent = openUrgent.length;
       const badge = $('menuBadge');
       badge.textContent = String(urgent);
       badge.style.display = urgent > 0 ? 'inline-flex' : 'none';
       badge.setAttribute('aria-label', '긴급 ' + urgent + '건');
-      document.title = (urgent ? '(' + urgent + ') ' : '') + '졸음 가드 관리자';
-      if (!loaded) return;                             // 첫 불러오기 전에는 비교하지 않음 (처음 열자마자 '새 경고' 알림이 뜨지 않게)
-      if (lastUrgent !== null && urgent > lastUrgent) toast('새 긴급 경고가 들어왔어요. 지금 ' + urgent + '건이에요.');
       lastUrgent = urgent;
+      updateTitle();
+      // 새로 생긴 긴급 경고(번호로 구분)만 알린다. 첫 불러오기 전에는 비교하지 않음 (처음 열자마자 '새 경고' 알림이 뜨지 않게)
+      const fresh = loaded ? openUrgent.filter((e) => !seenUrgent.has(e.id)) : [];
+      openUrgent.forEach((e) => seenUrgent.add(e.id));
+      if (fresh.length) raiseAlert(fresh, urgent);
     }
+
+    // ── 긴급 알림: 새 3단계 · "음성 응답 없음" → 알림음 · 탭 제목 깜빡임 · 빨간 배너 ──────
+    const seenUrgent = new Set();
+    let blinkTimer = null, blinkOn = false, soundOn = true, audioCtx = null;
+    try { soundOn = localStorage.getItem('adminSound') !== 'off'; } catch (e) { /* 저장소를 못 쓰면 켜 둔다 */ }
+    function updateTitle() { document.title = blinkOn ? '🚨 새 긴급 경고! · 졸음 가드' : (lastUrgent ? '(' + lastUrgent + ') ' : '') + '졸음 가드 관리자'; }
+    function stopBlink() { clearInterval(blinkTimer); blinkTimer = null; blinkOn = false; updateTitle(); }
+    function startBlink() { if (blinkTimer) return; blinkOn = true; updateTitle(); blinkTimer = setInterval(() => { blinkOn = !blinkOn; updateTitle(); }, 1000); }
+    function dismissAlert() { $('urgentBanner').hidden = true; stopBlink(); }
+    // 브라우저는 화면을 한 번 누르기 전에는 소리를 막는다 → 첫 클릭 · 키 입력 때 소리를 열어 둔다
+    function unlockAudio() {
+      if (!audioCtx) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) audioCtx = new AC(); }
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    }
+    ['pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, unlockAudio));
+    function beep() {                                  // 삐-삐-삐 (높은 음 3번). 소리가 막혀 있으면 false
+      if (!soundOn) return true;
+      if (!audioCtx || audioCtx.state !== 'running') return false;
+      [0, 0.28, 0.56].forEach((offset) => {
+        const t = audioCtx.currentTime + offset;
+        const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+        osc.type = 'square'; osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.0001, t); gain.gain.exponentialRampToValueAtTime(0.18, t + 0.02); gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+        osc.connect(gain); gain.connect(audioCtx.destination); osc.start(t); osc.stop(t + 0.22);
+      });
+      return true;
+    }
+    function raiseAlert(fresh, total) {
+      const s3 = fresh.filter((e) => e.stage === 3).length, nr = fresh.filter((e) => e.reason === 'no_response').length;
+      const names = [...new Set(fresh.map((e) => e.user_name || '기사'))].slice(0, 3).join(' · ');
+      const kinds = [s3 ? '3단계 ' + s3 + '건' : '', nr ? '음성 응답 없음 ' + nr + '건' : ''].filter(Boolean).join(' · ');
+      const audible = beep();
+      const msg = '새 긴급 경고 ' + fresh.length + '건 — ' + names + ' (' + kinds + ')';
+      const box = $('ubText'); box.textContent = msg;
+      if (!audible) box.append(h('small', null, '소리가 나려면 화면을 한 번 눌러 주세요. 지금 처리할 긴급 경고는 모두 ' + total + '건이에요.'));
+      else box.append(h('small', null, '지금 처리할 긴급 경고는 모두 ' + total + '건이에요.'));
+      $('urgentBanner').hidden = false;
+      sayLive(msg);
+      startBlink();
+    }
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) stopBlink(); }); // 탭으로 돌아오면 깜빡임은 멈춘다 (배너는 남음)
+    function syncSoundBtn() { const b = $('soundBtn'); b.setAttribute('aria-pressed', String(soundOn)); b.textContent = soundOn ? '알림음 켜짐' : '알림음 꺼짐'; }
 
     // 바뀐 것만 다시 그림 (10초마다 불러와도 포커스 · 스크롤 유지)
     function renderAll(force) {
@@ -715,6 +777,15 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     fillIcons();
     document.querySelectorAll('.menu-item').forEach((b) => b.addEventListener('click', () => go(b.dataset.view)));
     $('refreshBtn').addEventListener('click', () => refreshAll(true));
+    $('ubView').addEventListener('click', () => { dismissAlert(); goHazards('urgent'); });
+    $('ubClose').addEventListener('click', dismissAlert);
+    $('soundBtn').addEventListener('click', () => {
+      soundOn = !soundOn;
+      try { localStorage.setItem('adminSound', soundOn ? 'on' : 'off'); } catch (e) { /* 저장 못 해도 이번 화면에서는 적용 */ }
+      syncSoundBtn();
+      if (soundOn) beep();                             // 켤 때 한 번 들려 줘서 소리가 나는지 알 수 있게
+    });
+    syncSoundBtn();
     $('logoutBtn').addEventListener('click', () => { clearToken(); location.href = 'admin_login.html'; });
     $('driverSearch').addEventListener('input', (ev) => { driverQuery = ev.target.value; renderAll(true); });
     showView(location.hash.slice(1), false);

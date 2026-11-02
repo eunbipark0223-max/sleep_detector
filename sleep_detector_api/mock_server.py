@@ -62,7 +62,7 @@ QUIZ_GAP_SEC = int(os.getenv("MOCK_QUIZ_GAP_SEC", "20"))      # 음성 퀴즈 �
 DRIVE_LIMIT_MIN = 120                                         # 연속 운전 휴게 알림
 CALIB_FRAMES = 5                                              # 개인 기준 측정 사진 수
 LISTEN_SEC = 10                                               # 음성 퀴즈 듣는 시간 (10/29 STT 시험으로 7 → 10)
-REPEAT_MIN_SCORE = 0.8                                        # 따라 말하기 통과 유사도
+REPEAT_MIN_SCORE = 0.7                                        # 따라 말하기 통과 유사도 (11/02 STT 시험 결과 0.8 → 0.7, 진짜 서버 config 와 같게)
 VOICE_QUIZ_MAX_TRIES = 2
 MAX_PHOTO_BYTES = 10 * 1024 * 1024
 DEFAULT_EAR_THRESHOLD = 0.23                                  # 개인 기준이 없을 때 서버 EAR 기준 (진짜 서버 config.EAR_THRESHOLD 와 같게)
@@ -114,7 +114,8 @@ def add_user(email: str, name: str, role: str = "user", phone: Optional[str] = N
     for u in USERS.values():
         if u["email"] == email:
             return u
-    user = {"id": _next["user"], "email": email, "name": name, "role": role, "phone": phone, "vehicle_no": vehicle_no}
+    user = {"id": _next["user"], "email": email, "name": name, "role": role, "phone": phone, "vehicle_no": vehicle_no,
+            "created_at": datetime.now().isoformat(timespec="seconds")}  # 내 정보 '가입일' (진짜 서버 /users/me 와 같은 칸)
     USERS[user["id"]] = user
     _next["user"] += 1
     return user
@@ -614,7 +615,7 @@ def drive_resume(user: dict = Depends(current_user)):
 # ═══════════════════════════════════════════════════════════════
 @app.post("/detect")
 async def detect(
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),  # 없으면 = 고개를 떨궈 얼굴을 놓친 채 감김 (진짜 서버와 같음, 10/28)
     reason: str = Form(""),
     closed_sec: str = Form(""),
     perclos: str = Form(""),
@@ -623,10 +624,12 @@ async def detect(
     longitude: str = Form(""),
     user: dict = Depends(current_user),
 ):
-    photo = await file.read()
-    if len(photo) > MAX_PHOTO_BYTES:
+    if file is None and not reason:
+        raise HTTPException(status_code=400, detail="사진이 필요합니다 (사진 없이는 운행 중 졸음 의심만 보낼 수 있음)")
+    photo = await file.read() if file is not None else None
+    if photo is not None and len(photo) > MAX_PHOTO_BYTES:
         raise HTTPException(status_code=413, detail="사진은 10MB 이하여야 합니다")
-    if not photo:
+    if photo is not None and not photo:
         raise HTTPException(status_code=400, detail="사진이 비어 있습니다")
     st = state_of(user["id"])
     reason = reason if reason in ("microsleep", "perclos") else "microsleep"  # 비어 있으면 '사진 1장 테스트'
@@ -634,8 +637,8 @@ async def detect(
     perclos_v = to_float(perclos)
     open_prob = to_float(eye_open_prob)
     lat, lng = to_float(latitude), to_float(longitude)
-    ear = 0.16  # 서버 EAR 확인 (가짜 고정값)
-    base = {"success": True, "ear": ear, "eye_open_prob": open_prob, "method": "ear", "perclos": perclos_v,
+    ear = 0.16 if photo is not None else None  # 서버 EAR 확인 (가짜 고정값) — 사진이 없으면 확인 없이 앱 판단대로
+    base = {"success": True, "ear": ear, "eye_open_prob": open_prob, "method": "ear" if photo is not None else "mlkit", "perclos": perclos_v,
             "ear_threshold": st["ear_threshold"]}
 
     if SCENARIO["name"] == "normal":  # 확인 판정이 '취소' — 사진은 바로 버림
@@ -657,14 +660,18 @@ async def detect(
 
     # ④⑤⑥ 가짜 요약 · 규정 · Agent
     ai = make_ai_text(stage, reason, count, closed, perclos_v or 0.0, drive_min_of(st), lat, lng)
-    ai["report"]["eye"] = {"closed_sec": closed, "perclos": perclos_v, "eye_open_prob": open_prob, "ear": ear}
+    ai["report"]["eye"] = {"closed_sec": closed, "perclos": perclos_v, "eye_open_prob": open_prob, "ear": ear, "photo": photo is not None}
 
-    # ⑦ 저장 (사진 uploads/events/ + 경고 1줄)
-    photo_name = f"{uuid.uuid4().hex}.jpg"
-    with open(os.path.join(EVENT_DIR, photo_name), "wb") as f:
-        f.write(photo)
+    # ⑦ 저장 (사진 uploads/events/ + 경고 1줄, 사진 없이 온 경고는 photo_path 없음)
+    photo_path = None
+    if photo is not None:
+        photo_name = f"{uuid.uuid4().hex}.jpg"
+        with open(os.path.join(EVENT_DIR, photo_name), "wb") as f:
+            f.write(photo)
+        photo_path = f"uploads/events/{photo_name}"
     event = add_event(user["id"], stage, reason, ai["report"], summary=ai["summary"], guidance=ai["guidance"], ear=ear,
-                      eye_closed_prob=None if open_prob is None else round(1 - open_prob, 3), perclos=perclos_v, photo_path=f"uploads/events/{photo_name}", lat=lat, lng=lng)
+                      eye_closed_prob=None if open_prob is None else round(1 - open_prob, 3), method=base["method"], perclos=perclos_v,
+                      photo_path=photo_path, lat=lat, lng=lng)
 
     # ⑧ 음성 퀴즈 1문제 (최소 간격 안이면 null)
     voice_quiz = None

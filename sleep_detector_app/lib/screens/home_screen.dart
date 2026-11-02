@@ -7,6 +7,7 @@
 // [이 파일이 하는 일]
 //   - [운행 시작] → calibration_screen (내 눈 기준 측정) → drive_screen
 //   - [사진 1장 테스트] → upload_screen
+//   - [가까운 졸음쉼터] → map_screen (B 의 카카오맵 지도)
 //   - 최근 경고 2~3건 (GET /events/my)
 //
 // [연결됨]
@@ -23,6 +24,7 @@ import '../services/api_service.dart';
 import '../theme.dart';
 import 'calibration_screen.dart';
 import 'drive_screen.dart';
+import 'map_screen.dart';
 import 'upload_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -73,10 +75,16 @@ class _HomeScreenState extends State<HomeScreen> {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => (widget.driveBuilder ?? (t) => DriveScreen(threshold: t))(t)),
     );
+    if (mounted) _reload(); // 운행 중 새로 생긴 경고가 '최근 경고'에 바로 보이게
   }
 
-  void _photoTest() {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UploadScreen()));
+  void _openMap() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MapScreen()));
+  }
+
+  Future<void> _photoTest() async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UploadScreen()));
+    if (mounted) _reload(); // 사진 1장 테스트로 생긴 경고도 마찬가지
   }
 
   @override
@@ -99,6 +107,18 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: _photoTest,
             icon: const Icon(Icons.photo_camera_outlined),
             label: const Text('사진 1장 테스트'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+              foregroundColor: AppColors.primary,
+              side: const BorderSide(color: AppColors.cardBorder),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: _openMap,
+            icon: const Icon(Icons.local_cafe_outlined),
+            label: const Text('가까운 졸음쉼터'),
             style: OutlinedButton.styleFrom(
               minimumSize: const Size.fromHeight(48),
               foregroundColor: AppColors.primary,

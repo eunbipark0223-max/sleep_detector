@@ -7,6 +7,7 @@
 # [이 파일이 하는 일]
 #   - FastAPI 앱을 만들고 routers/ 의 라우터를 등록한다 (user · detect · event · admin · chat · quiz)
 #   - 서버 시작 때 DB 테이블 자동 생성 (수업 코드 그대로)
+#   - 서버 시작 때 눈 판정 모델 미리 읽기 · 30일 지난 졸음 사진 정리 (그 뒤 24시간마다)
 #   - static/ (관리자 웹) 과 uploads/events/ (졸음 확정 사진) 를 정적 파일로 연결
 #   - 실행: python main.py  →  http://127.0.0.1:8000/docs
 #
@@ -18,6 +19,7 @@
 #
 # 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 # ═══════════════════════════════════════════════════════════════
+import asyncio
 import importlib
 import os
 from contextlib import asynccontextmanager
@@ -90,8 +92,13 @@ async def lifespan(app: FastAPI):   # ← app: FastAPI 매개변수 필수!
 
     _warm_up_eye_models()
 
+    # 졸음 확정 사진 30일 자동 삭제 (D, services/photo_cleanup.py) — 시작 때 한 번 + 24시간마다
+    from services import photo_cleanup
+    cleanup_task = asyncio.create_task(photo_cleanup.daily_loop())
+
     yield
 
+    cleanup_task.cancel()
     print("서버 종료")
 
 
