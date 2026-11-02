@@ -27,6 +27,7 @@ import 'package:flutter/material.dart';
 import '../models/sleep_response.dart';
 import '../services/voice_service.dart';
 import '../theme.dart';
+import 'quiz_screen.dart';
 import 'rest_screen.dart';
 
 class WarningScreen extends StatefulWidget {
@@ -67,7 +68,17 @@ class _WarningScreenState extends State<WarningScreen> {
     final voice = widget.response.driverVoice; // 기사 음성 보고 ("최근 10분 동안 2번 졸았습니다…")
     if (voice.isNotEmpty) await VoiceService.speak(voice);
     if (!mounted) return;
-    // TODO(퀴즈): D님 quiz_screen 이 올라오면 여기서 엶 (3단계 반복보다 위에 둘 것)
+    // 운전 중 음성 퀴즈 (D님 QuizScreen) — 서버가 2분 간격으로만 보내서 없을 수도 있음
+    final quiz = widget.response.voiceQuiz;
+    if (quiz != null) {
+      final newStage = await Navigator.push<int>(
+        context,
+        MaterialPageRoute(builder: (_) => QuizScreen(quiz: quiz, stage: _stage)),
+      );
+      if (!mounted) return;
+      if (newStage != null) setState(() => _stage = newStage); // 2번 실패하면 단계가 올라옴
+    }
+    // 3단계 30초 반복은 퀴즈가 끝난 뒤에 시작
     if (_stage == 3) {
       _repeat = Timer.periodic(const Duration(seconds: 30), (_) {
         VoiceService.speak('관리자에게 알렸습니다. 정차해 주세요.');
