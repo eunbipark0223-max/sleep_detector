@@ -29,6 +29,7 @@ import os
 import re
 import shutil
 import threading
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -55,6 +56,8 @@ GEMINI_EMBEDDING_MODEL = _cfg("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
 KNOWLEDGE_DIR = Path(_cfg("KNOWLEDGE_DIR", BASE_DIR / "knowledge"))
 CHROMA_DIR = BASE_DIR / "chroma_db"
 COLLECTION = "sleep_regulations"
+EMBED_BATCH = 90       # 색인 만들 때 한 번에 임베딩할 문단 수 (무료 한도 분당 100 아래)
+EMBED_WAIT_SEC = 61
 CHUNKER_VERSION = "v4"  # 자르는 규칙을 바꾸면 올린다 → 색인 다시 만들기 (v4: 벌칙 · 처벌 조문 topic "penalty")
 
 CORE_QUERY = "졸음운전 휴게시간 휴식 규정"
@@ -236,14 +239,20 @@ def build_index(force=False):
             chunks = _chunk(_read_docs())
             if not chunks:
                 raise RuntimeError(f"{KNOWLEDGE_DIR} 에 규정 문서(.txt)가 없습니다")
+            docs = [Document(page_content=c["page_content"], metadata=c["metadata"]) for c in chunks]
             store = Chroma.from_documents(
-                [Document(page_content=c["page_content"], metadata=c["metadata"]) for c in chunks],
+                docs[:EMBED_BATCH],
                 _embeddings(),
                 collection_name=COLLECTION,
                 persist_directory=str(CHROMA_DIR),
                 collection_metadata={"hnsw:space": "cosine"},
                 client_settings=Settings(anonymized_telemetry=False, is_persistent=True),
             )
+            # Gemini 임베딩 무료 한도 = 분당 100개 → 문단이 100개를 넘으면 나눠서, 사이에 1분 쉼 (첫 색인 때만)
+            for i in range(EMBED_BATCH, len(docs), EMBED_BATCH):
+                print(f"[rag_service] 임베딩 무료 한도 때문에 1분 쉬고 이어서 ({i}/{len(docs)})")
+                time.sleep(EMBED_WAIT_SEC)
+                store.add_documents(docs[i:i + EMBED_BATCH])
             fp_file.write_text(fp)
             print(f"[rag_service] 색인 새로 만듦: 문단 {len(chunks)}개")
         else:
