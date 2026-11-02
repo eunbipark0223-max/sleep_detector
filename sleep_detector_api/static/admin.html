@@ -6,9 +6,9 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
 화면 모양: 「관리자 (2).html」 확정본 (사이드바 · 통계 카드 · 차트 · 경고 표 · 상세 모달 · 기사 연락 모달)
 
 [이 파일이 하는 일]
-  - 대시보드: 오늘 전체 경고 · 3단계 긴급(조치 필요) · 등록된 기사 · 휴게 미준수(오늘) 카드 (누르면 목록으로),
+  - 대시보드: 오늘 전체 경고 · 긴급(조치 필요: 3단계 + 음성 응답 없음, 미처리) · 등록된 기사 · 휴게 미준수(오늘) 카드 (누르면 목록으로),
     단계별 경고 · 시간대별 졸음 차트 (서버 /admin/stats/*)
-  - 졸음 경고: 표 + 필터 칩(전체 · 미확인 · 3단계 · 휴게 미준수 · 음성 응답 없음)
+  - 졸음 경고: 표 + 필터 칩(전체 · 미확인 · 긴급 · 3단계 · 휴게 미준수 · 음성 응답 없음)
     · 3단계 / "음성 응답 없음"(reason no_response) 미처리 줄은 연한 빨강으로 표시
     · [상세 보기 및 조치] → 모달: 사진 · 위치 · Agent 보고서(상황 · 단계 이유 · 법규 · 권장 조치) · 운전 중 퀴즈 · 휴식 기록
     · [확인했어요] / [조치완료] → PATCH /events/{id}/status → 3단계 해제
@@ -312,6 +312,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     const FILTERS = [
       ['all', '전체', () => true],
       ['unchecked', '미확인', (e) => e.status === '미확인'],
+      ['urgent', '긴급', (e) => isOpenUrgent(e)],
       ['s3', '3단계', (e) => e.stage === 3],
       ['rest', '휴게 미준수', (e) => e.reason === 'rest_overdue'],
       ['noreply', '음성 응답 없음', (e) => e.reason === 'no_response'],
@@ -414,7 +415,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       const urgent = events.filter(isOpenUrgent).length;
       const cards = [
         ['오늘 전체 경고', events.filter((e) => isToday(e.created_at)).length, '건', false, null, () => goHazards('all')],
-        ['3단계 긴급 (조치 필요)', urgent, '건', urgent > 0, 'alert', () => goHazards('s3')],
+        ['긴급 (조치 필요)', urgent, '건', urgent > 0, 'alert', () => goHazards('urgent')],
         ['등록된 기사', drivers().length, '명', false, null, () => go('drivers')],
         ['휴게 미준수 (오늘)', events.filter((e) => e.reason === 'rest_overdue' && isToday(e.created_at)).length, '건', false, null, () => goHazards('rest')],
       ];
