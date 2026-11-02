@@ -50,6 +50,8 @@ class _DriveScreenState extends State<DriveScreen> {
   CameraController? _controller; // 앞 카메라
 
   int _stage = 0; // 지금 단계 (0 정상 ~ 3 긴급)
+  // 지금 단계를 경고 화면에도 알려 주는 스피커 (ping 으로 해제되면 경고 화면이 반복 음성을 멈추고 닫힘)
+  final ValueNotifier<int> _liveStage = ValueNotifier<int>(0);
   double? _eyeOpenProb; // 지금 눈 뜸 확률 (모르면 null)
   double _perclos = 0; // 최근 30초 눈 감은 비율
   String _notice = ''; // 화면에 보여 줄 안내 글
@@ -84,6 +86,7 @@ class _DriveScreenState extends State<DriveScreen> {
     final t = widget.threshold;
     if (t != null) _eye.threshold = t;
 
+    _startDrive(); // 서버에 "새로 출발해요" (지난 운행의 단계 · 졸음 기록을 0 으로)
     _startCamera(); // 카메라 켜기
 
     // 2초마다 카메라가 살아 있는지 확인한다
@@ -93,6 +96,24 @@ class _DriveScreenState extends State<DriveScreen> {
     _pingTimer = Timer.periodic(const Duration(seconds: AppConfig.pingSec), (_) => _ping());
 
     _initLocation(); // 위치 권한 묻고 첫 위치 받기
+  }
+
+  // 운행 시작 — 안 부르면 서버가 지난 운행의 단계를 기억하고 있어서 첫 ping 에 빨간 화면으로 시작한다
+  //   (내 눈 기준은 지우지 않음 — 측정 화면 다음에 불러도 됨)
+  Future<void> _startDrive() async {
+    try {
+      await ApiService.startDrive();
+      if (!mounted) return;
+      _setStage(0);
+    } catch (_) {
+      // 실패해도 운행은 계속 (다음 ping 에서 서버 단계를 받음)
+    }
+  }
+
+  // 단계를 바꾸고 경고 화면에도 알린다
+  void _setStage(int stage) {
+    setState(() => _stage = stage);
+    _liveStage.value = stage;
   }
 
   // 출발할 때 위치 권한을 한 번 묻는다 (졸음 전송 때 묻으면 경고가 늦어지므로)
@@ -131,10 +152,8 @@ class _DriveScreenState extends State<DriveScreen> {
     try {
       final status = await ApiService.sendPing(_eye.currentPerclos);
       if (!mounted) return;
-      setState(() {
-        _stage = status.stage;
-        if (status.restDue) _restMessage = status.restMessage; // 연속 운전 2시간 → 휴게 배너
-      });
+      if (status.restDue) _restMessage = status.restMessage; // 연속 운전 2시간 → 휴게 배너
+      _setStage(status.stage);
       // 휴게 알림은 서버가 한 번만 true 로 보내 줌 → 한 번만 읽기
       if (status.restDue) VoiceService.speak(status.restMessage);
     } catch (_) {
@@ -220,6 +239,7 @@ class _DriveScreenState extends State<DriveScreen> {
     VoiceService.stop(); // 말하기 멈춤
     _pingTimer?.cancel(); // ping 끄기
     _watchdog?.cancel(); // 카메라 지킴이 끄기
+    _liveStage.dispose();
     _controller?.dispose(); // 카메라 끄기
     _eye.close(); // 눈 감시 도구 끄기
     super.dispose();
@@ -243,16 +263,14 @@ class _DriveScreenState extends State<DriveScreen> {
         lng: _lng,
       );
       if (!mounted) return;
-      setState(() {
-        _stage = res.stage;
-        _notice = res.isSleep ? '졸음 확정 (${res.stage}단계)' : '서버 확인: 눈 뜸 → 취소';
-      });
+      _notice = res.isSleep ? '졸음 확정 (${res.stage}단계)' : '서버 확인: 눈 뜸 → 취소';
+      _setStage(res.stage);
       // 졸음이 맞고 1단계 이상이면 경고 화면을 띄운다 (이미 떠 있으면 또 띄우지 않는다)
       if (res.isSleep && res.stage >= 1 && !_warningOpen) {
         _warningOpen = true;
         await Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => WarningScreen(response: res)),
+          MaterialPageRoute(builder: (_) => WarningScreen(response: res, liveStage: _liveStage)),
         );
         _warningOpen = false; // 경고 화면이 닫히면(뒤로 가기) 다시 띄울 수 있게
       }
