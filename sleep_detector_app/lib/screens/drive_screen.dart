@@ -201,10 +201,10 @@ class _DriveScreenState extends State<DriveScreen> {
           padding: const EdgeInsets.all(20),
           children: [
             const SizedBox(height: 16),
-            Icon(Icons.remove_red_eye_outlined, size: 72, color: fg),
+            Icon(_stageIcon(_stage), size: 72, color: fg),
             const SizedBox(height: 12),
             Text(
-              '안전 운전 중이에요',
+              _stageTitle(_stage),
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: fg),
             ),
@@ -239,6 +239,34 @@ class _DriveScreenState extends State<DriveScreen> {
         ),
       ),
     );
+  }
+
+  // 단계별 큰 글자 (0 정상 · 1 주의 · 2 휴식 권고 · 3 긴급)
+  String _stageTitle(int stage) {
+    switch (stage) {
+      case 1:
+        return '졸음이 감지됐어요';
+      case 2:
+        return '가까운 졸음쉼터에서 쉬어 가세요';
+      case 3:
+        return '즉시 안전한 곳에 정차하세요';
+      default:
+        return '안전 운전 중이에요';
+    }
+  }
+
+  // 단계별 아이콘
+  IconData _stageIcon(int stage) {
+    switch (stage) {
+      case 1:
+        return Icons.warning_amber_rounded;
+      case 2:
+        return Icons.local_cafe_outlined;
+      case 3:
+        return Icons.report_gmailerrorred;
+      default:
+        return Icons.remove_red_eye_outlined;
+    }
   }
 
   // 표의 한 줄 (왼쪽 이름 · 오른쪽 값)
