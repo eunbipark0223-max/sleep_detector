@@ -20,6 +20,7 @@
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
 
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
@@ -52,6 +53,11 @@ class _DriveScreenState extends State<DriveScreen> {
   bool _sending = false; // 서버에 보내는 중인지 (같은 졸음을 두 번 보내지 않게)
   bool _warningOpen = false; // 경고 화면이 떠 있는지 (또 띄우지 않게)
 
+  // 카메라 지킴이: 사진(프레임)이 마지막으로 들어온 시각을 기억했다가, 오래 안 들어오면 카메라를 다시 켠다
+  Timer? _watchdog;
+  DateTime _lastFrameAt = DateTime.now();
+  bool _restarting = false; // 다시 켜는 중인지 (두 번 겹쳐 켜지 않게)
+
   @override
   void initState() {
     super.initState();
@@ -68,6 +74,24 @@ class _DriveScreenState extends State<DriveScreen> {
     if (t != null) _eye.threshold = t;
 
     _startCamera(); // 카메라 켜기
+
+    // 2초마다 카메라가 살아 있는지 확인한다
+    _watchdog = Timer.periodic(const Duration(seconds: 2), (_) => _checkCamera());
+  }
+
+  // 측정 화면(D)이 카메라를 늦게 정리하면, 막 켠 운행 화면 카메라까지 같이 꺼질 때가 있다.
+  // 이때는 오류 없이 사진만 안 들어오므로, 3초 넘게 사진이 없으면 카메라를 다시 켠다.
+  Future<void> _checkCamera() async {
+    if (!mounted || _restarting || _controller == null) return;
+    if (DateTime.now().difference(_lastFrameAt).inSeconds < 3) return;
+    _restarting = true;
+    final old = _controller;
+    setState(() => _controller = null);
+    try {
+      await old?.dispose();
+    } catch (_) {}
+    await _startCamera();
+    _restarting = false;
   }
 
   // 앞 카메라를 켠다.
@@ -114,9 +138,13 @@ class _DriveScreenState extends State<DriveScreen> {
       return;
     }
     setState(() => _controller = controller);
+    _lastFrameAt = DateTime.now(); // 지킴이 시계를 새로 시작
     try {
       // 프레임이 올 때마다 A님 눈 감시 도구에 넘긴다 (바쁘면 A님 코드가 알아서 버림)
-      await controller.startImageStream((image) => _eye.processFrame(image, front));
+      await controller.startImageStream((image) {
+        _lastFrameAt = DateTime.now(); // 사진이 들어왔다고 지킴이에게 알림
+        _eye.processFrame(image, front);
+      });
     } catch (e) {
       await controller.dispose();
       if (mounted) setState(() => _controller = null);
@@ -126,6 +154,7 @@ class _DriveScreenState extends State<DriveScreen> {
 
   @override
   void dispose() {
+    _watchdog?.cancel(); // 카메라 지킴이 끄기
     _controller?.dispose(); // 카메라 끄기
     _eye.close(); // 눈 감시 도구 끄기
     super.dispose();
