@@ -51,6 +51,7 @@ dependencies:
   speech_to_text: ^7.5.0    # 운전 중 음성 퀴즈 답 듣기 (voice_service)
   google_mlkit_face_detection: ^0.15.1   # 폰 안에서 눈 뜸 확률 (eye_monitor, A) — Android minSdk 21 이상
   image: ^4.12.0                        # 졸음 의심 순간 프레임 → jpg 변환 (camera_image_utils)
+  url_launcher: ^6.3.3      # 졸음쉼터 [길찾기] → 카카오맵 앱 · 폰 브라우저 (map_screen)
 
 dev_dependencies:
   flutter_test:
@@ -73,6 +74,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/rest_areas.json   # 졸음쉼터 (map_screen, notebooks/rest_areas_json.py 로 만듦)
 
   # To add assets to your application, add an assets section, like this:
   # assets:
