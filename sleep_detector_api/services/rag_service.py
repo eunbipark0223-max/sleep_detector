@@ -55,12 +55,14 @@ GEMINI_EMBEDDING_MODEL = _cfg("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
 KNOWLEDGE_DIR = Path(_cfg("KNOWLEDGE_DIR", BASE_DIR / "knowledge"))
 CHROMA_DIR = BASE_DIR / "chroma_db"
 COLLECTION = "sleep_regulations"
-CHUNKER_VERSION = "v3"  # 자르는 규칙을 바꾸면 올린다 → 색인 다시 만들기
+CHUNKER_VERSION = "v4"  # 자르는 규칙을 바꾸면 올린다 → 색인 다시 만들기 (v4: 벌칙 · 처벌 조문 topic "penalty")
 
 CORE_QUERY = "졸음운전 휴게시간 휴식 규정"
 
 # 질문 단어로 법령 / 일반 자료를 고른다 (노션 「문제 1」, 12개 질의 중 12개가 정답 유형을 놓치지 않음)
-LAW_WORDS = ("규정", "법", "조항", "의무", "위반", "허용", "금지", "되나", "근거", "보장")
+LAW_WORDS = ("규정", "법", "조항", "의무", "위반", "허용", "금지", "되나", "근거", "보장",
+             # 11/02: 규정을 묻는 낱말 — '연장 운행하면 쉬는 시간은 어떻게 돼?' 가 '어떻게' 때문에 일반 자료로만 가서 법령을 못 찾았음
+             "쉬는 시간", "휴게시간", "휴식시간", "연장", "처벌", "벌금", "벌칙", "과태료", "정해져")
 GUIDE_WORDS = ("통계", "치사율", "예방", "방법", "주기", "어떻게", "찾", "요령", "건수")
 
 # 차종 → 함께 검색할 vehicle 값 ("all" = 모든 운전자에게 적용)
@@ -102,6 +104,7 @@ def _read_docs():
             "date": fields[2].split(" [")[0],
             "url": fields[3],
             "doc_type": "law" if is_law else "guide",
+            "summary": "원문 전재가 아니라" in body[:300],  # 일반 자료 중 요약본 (도로교통공단 — 원문 이용 조건 미확인)
             "paras": [p.strip() for p in re.split(r"\n\s*\n", body) if p.strip()],
         })
     return docs
@@ -135,9 +138,11 @@ def _with_meta(c):
     d, text, parent = c["doc"], c["text"], c["parent"]
     whole = f"{parent}\n{text}"
     if d["doc_type"] == "law":
-        if "휴대용 전화" in text or "영상표시장치" in text:
+        if "벌칙" in d["article"] or "처벌" in d["article"]:
+            topic = "penalty"  # 도로교통법 제154조 제3호도 '과로' 를 담고 있어서, 졸음 근거(drowsy = 제45조) 고정에 섞이지 않게 먼저 가름
+        elif "휴대용 전화" in text or "영상표시장치" in text:
             topic = "phone"
-        elif "휴게" in text or "휴식" in whole:
+        elif "휴게시간" in text or "휴식" in whole:  # '휴게' 만 보면 제21조 제3호 '화물자동차 휴게소'(밤샘주차) 까지 휴게 규정이 됨
             topic = "rest"
         elif "과로" in text:
             topic = "drowsy"
@@ -162,7 +167,7 @@ def _with_meta(c):
         topic, vehicle = "guide", "all"
         section = SECTION.match(text)
         title = f"{d['name']} — {section.group(1)}" if section else d["name"]
-        source = f"{d['date']} 발행 자료 요약 ({d['url']})"
+        source = f"{d['date']} 발행 자료{' 요약' if d['summary'] else ''} ({d['url']})"
         content = text
     return {
         "page_content": f"[{title}] {content}",  # 긴 표지 유지 (노션 「문제 3」 5-3)
