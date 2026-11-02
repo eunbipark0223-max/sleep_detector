@@ -7,6 +7,7 @@
 # [이 파일이 하는 일]
 #   - POST /users/signup · /users/login · /users/google  ·  GET /users/me
 #   - 프로필 사진 POST · GET · DELETE /users/me/photo (수업 그대로, profile_screen)
+#   - PATCH /users/me  {phone, vehicle_no} — 기사 연락용 전화번호 · 차량번호 (profile_screen 에서 입력, 관리자 웹 연락 창에 보임)
 #
 # [수업에서 바꾼 것]
 #   - 요청 · 응답 이름: schema 의 SignupRequest · LoginRequest · GoogleLoginRequest · UserResponse · LoginResponse (D)
@@ -33,7 +34,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import config
-from schema.request  import SignupRequest, LoginRequest, GoogleLoginRequest
+from schema.request  import SignupRequest, LoginRequest, GoogleLoginRequest, ProfileUpdate
 from schema.response import UserResponse, LoginResponse
 from database.db_connection import get_session
 from models.models import User
@@ -154,8 +155,7 @@ def google_login_handler(
 
     return _login_response(user)
 
-@router.get("/users/me", status_code=status.HTTP_200_OK)
-def get_me_handler(user: User = Depends(get_current_user)):
+def _me_dict(user: User) -> dict:
     return {
         "id"        : user.id,
         "email"     : user.email,
@@ -163,8 +163,28 @@ def get_me_handler(user: User = Depends(get_current_user)):
         "role"      : user.role,
         "provider"  : user.provider,
         "photo_url" : user.photo_url,
+        "phone"     : user.phone,
+        "vehicle_no": user.vehicle_no,
         "created_at": user.created_at.isoformat() if user.created_at else None,
     }
+
+@router.get("/users/me", status_code=status.HTTP_200_OK)
+def get_me_handler(user: User = Depends(get_current_user)):
+    return _me_dict(user)
+
+@router.patch("/users/me", status_code=status.HTTP_200_OK)
+def update_me_handler(
+    body   : ProfileUpdate,
+    session: Session = Depends(get_session),
+    user   : User    = Depends(get_current_user),
+):
+    """내 전화번호 · 차량번호 저장. 안 보낸 칸은 그대로, ''(빈 글자)면 지움. 형식이 틀리면 422(문구는 화면에 그대로 보여 줘도 됨)."""
+    if "phone" in body.model_fields_set and body.phone is not None:
+        user.phone = body.phone or None
+    if "vehicle_no" in body.model_fields_set and body.vehicle_no is not None:
+        user.vehicle_no = body.vehicle_no or None
+    session.commit()
+    return _me_dict(user)
 
 @router.post("/users/me/photo", status_code=status.HTTP_200_OK)
 async def upload_my_photo_handler(

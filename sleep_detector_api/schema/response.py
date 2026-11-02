@@ -33,6 +33,8 @@ class UserResponse(BaseModel):
     email: str
     name: str
     role: str  # user / admin
+    phone: Optional[str] = None        # 기사 연락처 (관리자가 경고를 보고 전화할 때). 안 적었으면 null
+    vehicle_no: Optional[str] = None   # 차량번호. 안 적었으면 null
 
 
 class LoginResponse(BaseModel):
@@ -92,6 +94,8 @@ class SleepEventResponse(BaseModel):
 class AdminEventResponse(SleepEventResponse):
     user_name: str = ""
     user_email: str = ""
+    user_phone: str = ""                     # 기사 전화번호 (없으면 빈 값)
+    user_vehicle_no: str = ""                # 기사 차량번호 (없으면 빈 값)
     address: str = ""                        # 카카오 도로명 주소 (실패하면 빈 값)
     urgent: bool = False                     # 3단계 또는 음성 응답 없음 → 빨간 줄
 

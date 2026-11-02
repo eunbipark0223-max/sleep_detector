@@ -13,6 +13,7 @@
 #
 # [주의]
 #   - 칸을 새로 추가하지 않는다. 새 정보는 report JSON 안에 넣는다 (파일 구조 3장)
+#     단 하나 예외: users 에 phone · vehicle_no (기사 연락용, 팀장 결정 10/29 — 관리자가 경고를 보고 바로 전화하려고)
 #   - 칸 이름은 schema/response.py 의 SleepEventResponse (D) 와 같다 — 바꾸면 앱 · 관리자 웹까지 바뀜
 #   - 표는 서버가 시작할 때 자동으로 만든다 (main.py). 칸을 바꿨으면 MySQL 에서 표를 지우고 다시 시작
 #
@@ -147,6 +148,17 @@ class User(Base):
     )
     photo_url: Mapped[str | None] = mapped_column(
         String(255),
+        nullable=True,
+    )
+    # 관리자가 졸음 경고를 보고 기사에게 바로 연락할 때 쓴다 (기사가 프로필 화면에서 직접 입력, 선택).
+    # 🔴 이미 만들어진 DB 에는 create_all 이 칸을 추가해 주지 않는다 → 각자 MySQL 에서 한 번만:
+    #    ALTER TABLE users ADD COLUMN phone VARCHAR(20) NULL, ADD COLUMN vehicle_no VARCHAR(20) NULL;
+    phone: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+    )
+    vehicle_no: Mapped[str | None] = mapped_column(
+        String(20),
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(

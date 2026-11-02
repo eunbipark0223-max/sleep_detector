@@ -13,6 +13,7 @@
 //   - POST /users/google  {email, name, firebase_uid}            → 로그인과 같은 응답 (구글 로그인 뒤 서버 JWT 로 통일)
 //   - GET  /users/me      Authorization: Bearer 토큰              → 내 정보 (토큰이 틀리면 401)
 //   - POST · GET · DELETE /users/me/photo                        → 프로필 사진 올리기(멀티파트 file) · 받기(토큰 필요) · 지우기
+//   - PATCH /users/me     {phone?, vehicle_no?}                  → 내 전화번호 · 차량번호 저장 (빠진 칸은 그대로, '' 면 지움, 형식이 틀리면 422)
 //
 // [쓰는 법]
 //   - 실패는 AuthException(message) 으로 던진다 — message 는 화면에 그대로 보여 줘도 되는 글 (서버 detail · 422 메시지)
@@ -128,6 +129,20 @@ class AuthService {
       return null;
     }
     throw _error(res);
+  }
+
+  // ── 연락처 · 차량번호 (서버: PATCH /users/me) ─────────────────────────────
+  /// 내 전화번호 · 차량번호 저장 (관리자가 경고를 보고 바로 연락할 때 쓴다).
+  /// 넘기지 않은(null) 칸은 그대로 두고, 빈 글자('')를 넘기면 서버가 지운다. 돌려받는 것은 바뀐 내 정보.
+  /// 형식이 틀리면(422) 서버 문구가 AuthException 으로 온다 (예: '전화번호 형식이 올바르지 않아요 (예: 010-1234-5678)').
+  static Future<Map<String, dynamic>> updateProfile({String? phone, String? vehicleNo}) async {
+    final body = <String, dynamic>{
+      'phone': ?phone,
+      'vehicle_no': ?vehicleNo,
+    };
+    final res = await _send(() async => http.patch(_uri('/users/me'), headers: await authHeaders(), body: jsonEncode(body)));
+    if (res.statusCode != 200) throw _error(res);
+    return _decode(res);
   }
 
   // ── 프로필 사진 (서버: POST · GET · DELETE /users/me/photo) ──────────────

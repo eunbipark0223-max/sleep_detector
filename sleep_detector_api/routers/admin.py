@@ -6,7 +6,8 @@
 #
 # [이 파일이 하는 일]
 #   - GET /admin/events — 졸음 경고 목록 (사진 · 위치 · 단계 · 보고서 · 상태)
-#   - GET /admin/users — 기사 목록
+#   - GET /admin/users — 기사 목록 (+ 전화번호 · 차량번호). /admin/events 한 줄에도 user_phone · user_vehicle_no 가 붙음 (연락 창)
+#     전화번호는 개인정보 → 관리자 API 에서만 내려보냄 (기사용 /events/my 에는 없음)
 #   - GET /admin/stats/* — (P2) 단계별 · 시간대별 통계
 #
 # [주의]
@@ -85,6 +86,8 @@ def _admin_row(event: SleepEvent, user: Optional[User]) -> AdminEventResponse:
     row = AdminEventResponse.from_event(event)
     row.user_name = user.name if user else ""
     row.user_email = user.email if user else ""
+    row.user_phone = (user.phone or "") if user else ""
+    row.user_vehicle_no = (user.vehicle_no or "") if user else ""
     row.address = get_road_address(event.latitude, event.longitude)
     row.urgent = event.stage == 3 or event.reason == "no_response"  # 빨간 줄
     return row
@@ -117,7 +120,8 @@ def admin_users(db: Session = Depends(get_db), _admin: User = Depends(require_ad
     out = []
     for user in db.execute(select(User).order_by(User.id)).scalars().all():
         count, last = counts.get(user.id, (0, None))
-        out.append(AdminUserResponse(id=user.id, email=user.email, name=user.name, role=user.role, event_count=count, last_event_at=last))
+        out.append(AdminUserResponse(id=user.id, email=user.email, name=user.name, role=user.role, phone=user.phone, vehicle_no=user.vehicle_no,
+                                     event_count=count, last_event_at=last))
     return out
 
 
