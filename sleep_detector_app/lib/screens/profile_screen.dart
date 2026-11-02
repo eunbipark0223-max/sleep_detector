@@ -5,7 +5,7 @@
 // 수업 원본: road_hazard_app/lib/screens/profile_screen.dart (🟢 그대로)
 //
 // [이 파일이 하는 일]
-//   - 신고 건수 → 경고 건수, 내 기준 표시만 추가
+//   - 신고 건수 → 경고 건수 (fetchMyEvents 로 센다, 못 받으면 '—'), 내 기준 표시만 추가
 //   - AuthService.me() 로 내 정보(이름 · 이메일 · 역할 · 가입 방식 · 가입일)를 보여 준다
 //   - 프로필 사진: 아바타를 누르면 [갤러리에서 선택 · 사진 찍기 · 사진 삭제] (서버 /users/me/photo)
 //   - 연락처 · 차량: 전화번호 · 차량번호를 보여 주고 [수정] 으로 적는다 (서버 PATCH /users/me). 관리자 웹의 '기사에게 연락' 창에 나온다
@@ -18,7 +18,6 @@
 //   - 생성자의 pickPhoto 는 테스트 · 미리보기에서 사진 고르기를 바꿔 끼우는 입구다 (비우면 image_picker)
 //
 // [연결 대기]
-//   - 경고 건수: 홈 · 운행 기록과 같은 fetchMyEvents 로 셀 수 있다 (아직 안 붙임, 지금은 '—')
 //   - 내 눈 기준: A 의 eye_monitor 개인 기준을 저장하는 곳이 정해지면 보여 준다 (지금은 '측정 전')
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
@@ -28,6 +27,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../theme.dart';
 import 'login_screen.dart';
@@ -120,6 +120,8 @@ class _BodyState extends State<_Body> {
   bool _busy = false; // 올리거나 지우는 중
   late Map<String, dynamic> _user = Map<String, dynamic>.of(widget.user); // 저장하면 이 복사본의 전화번호 · 차량번호를 바꾼다
 
+  int? _eventCount; // 내 경고 건수 (못 받으면 null → '—')
+
   Map<String, dynamic> get user => _user;
 
   @override
@@ -127,6 +129,16 @@ class _BodyState extends State<_Body> {
     super.initState();
     final url = user['photo_url'];
     if (url is String && url.isNotEmpty) _loadPhoto();
+    _loadEventCount();
+  }
+
+  // 홈 · 운행 기록과 같은 fetchMyEvents 로 센다. 못 받아도 오류 안내 없이 '—' 로 둔다
+  Future<void> _loadEventCount() async {
+    try {
+      final events = await ApiService.fetchMyEvents();
+      if (!mounted) return;
+      setState(() => _eventCount = events.length);
+    } catch (_) {/* '—' 그대로 */}
   }
 
   // 사진을 못 받아도(404 · 연결 오류) 화면은 이름 첫 글자로 보여 주면 되므로 오류 안내는 띄우지 않는다
@@ -315,9 +327,9 @@ class _BodyState extends State<_Body> {
           note: '졸음 경고가 났을 때 관리자가 바로 연락하는 데만 써요.',
         ),
         const SizedBox(height: 12),
-        const _Section(title: '운전 기록', rows: [
-          _Row(label: '경고 건수', value: '—'),
-          _Row(label: '내 눈 기준', value: '측정 전'),
+        _Section(title: '운전 기록', rows: [
+          _Row(label: '경고 건수', value: _eventCount == null ? '—' : '$_eventCount건'),
+          const _Row(label: '내 눈 기준', value: '측정 전'),
         ]),
       ],
     );

@@ -20,9 +20,12 @@
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/sleep_response.dart';
+import '../services/voice_service.dart';
 import '../theme.dart';
 import 'rest_screen.dart';
 
@@ -37,11 +40,40 @@ class WarningScreen extends StatefulWidget {
 
 class _WarningScreenState extends State<WarningScreen> {
   late int _stage; // 지금 화면의 단계 (정차 후 돌려받은 단계로 바뀜)
+  Timer? _repeat; // 3단계 30초 반복 음성
+  String _restMessage = ''; // 휴식 뒤 서버가 준 안내 (예: 주의 단계로 다시 출발합니다). 있으면 이전 단계의 요약 · 안내 · 음성 보고 대신 보여 준다
 
   @override
   void initState() {
     super.initState();
     _stage = widget.response.stage;
+    _speakWarning();
+  }
+
+  @override
+  void dispose() {
+    VoiceService.stop(); // 말하기 멈춤
+    _repeat?.cancel(); // 3단계 반복 멈춤
+    super.dispose();
+  }
+
+  // 🔔 알람 → 고정 문구(1·2단계) → 기사 음성 보고 → (3단계) 30초마다 반복
+  Future<void> _speakWarning() async {
+    await VoiceService.alarm(); // 시작음
+    if (!mounted) return;
+    // 1·2단계 고정 문구 (3단계는 고정 문구 없이 음성 보고만 — 기획안 8-7)
+    if (_stage == 1) await VoiceService.speak('일어나세요');
+    if (_stage == 2) await VoiceService.speak('계속 졸고 있습니다. 가까운 졸음쉼터로 이동하세요');
+    if (!mounted) return;
+    final voice = widget.response.driverVoice; // 기사 음성 보고 ("최근 10분 동안 2번 졸았습니다…")
+    if (voice.isNotEmpty) await VoiceService.speak(voice);
+    if (!mounted) return;
+    // TODO(퀴즈): D님 quiz_screen 이 올라오면 여기서 엶 (3단계 반복보다 위에 둘 것)
+    if (_stage == 3) {
+      _repeat = Timer.periodic(const Duration(seconds: 30), (_) {
+        VoiceService.speak('관리자에게 알렸습니다. 정차해 주세요.');
+      });
+    }
   }
 
   // 단계별 큰 글씨 한 줄
@@ -83,7 +115,13 @@ class _WarningScreenState extends State<WarningScreen> {
     if (result == null || !mounted) return;
     final s = result['stage'];
     final newStage = s is num ? s.toInt() : int.tryParse('$s');
-    if (newStage != null) setState(() => _stage = newStage); // 돌려받은 단계로 색 바꾸기
+    if (newStage == null) return;
+    final m = result['message'];
+    setState(() {
+      _stage = newStage; // 돌려받은 단계로 색 바꾸기
+      // 단계가 바뀌었으면 처음 경고의 요약 · 안내 · 음성 보고는 지금 단계와 맞지 않으니 서버 안내로 바꾼다
+      if (newStage != widget.response.stage) _restMessage = m is String ? m : '';
+    });
   }
 
   // [규정 보기] — 아래에서 올라오는 창에 규정 목록
@@ -142,6 +180,7 @@ class _WarningScreenState extends State<WarningScreen> {
     final r = widget.response;
     final bg = AppColors.stage(_stage);
     final fg = AppColors.onStage(_stage);
+    final stageChanged = _stage != r.stage; // 휴식 뒤 단계가 바뀌었으면 처음 경고의 글은 숨긴다
 
     return Scaffold(
       backgroundColor: bg,
@@ -166,12 +205,16 @@ class _WarningScreenState extends State<WarningScreen> {
             ),
             const SizedBox(height: 16),
             // 요약
-            if (r.summary.isNotEmpty)
+            if (stageChanged && _restMessage.isNotEmpty)
+              Text(_restMessage,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: fg))
+            else if (!stageChanged && r.summary.isNotEmpty)
               Text(r.summary,
                   textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: fg)),
             const SizedBox(height: 20),
             // 안내
-            if (r.guidance.isNotEmpty)
+            if (!stageChanged && r.guidance.isNotEmpty)
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -183,7 +226,7 @@ class _WarningScreenState extends State<WarningScreen> {
               ),
             const SizedBox(height: 12),
             // 기사 음성 보고 문장 (보라 카드)
-            if (r.driverVoice.isNotEmpty)
+            if (!stageChanged && r.driverVoice.isNotEmpty)
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -208,8 +251,9 @@ class _WarningScreenState extends State<WarningScreen> {
               onPressed: _showRegulations,
               style: OutlinedButton.styleFrom(
                 foregroundColor: fg,
-                side: BorderSide(color: fg),
+                side: BorderSide(color: fg, width: 2),
                 minimumSize: const Size.fromHeight(50),
+                textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700), // 주황 · 빨강 바탕에서도 글자가 또렷하게
               ),
               child: const Text('규정 보기'),
             ),

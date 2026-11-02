@@ -74,9 +74,11 @@ def _drive_text(drive_min):
 
 def _template_voice(stage, facts, guidance):
     n = int(facts.get("sleep_count_10min") or 1)
-    sec = max(1, round(float(facts.get("last_closed_sec") or 0)))
+    closed = float(facts.get("last_closed_sec") or 0)
     if stage == 1:
-        return f"졸음이 감지됐습니다. 약 {sec}초 동안 눈을 감았습니다. {guidance}"
+        if closed <= 0:   # 피로 누적(PERCLOS) — 한 번에 감은 초가 없음 → 없는 '1초' 를 말하지 않게 (11/02 KPI ⑥)
+            return f"졸음이 감지됐습니다. 최근 눈을 자주 감고 있습니다. {guidance}"
+        return f"졸음이 감지됐습니다. 약 {max(1, round(closed))}초 동안 눈을 감았습니다. {guidance}"
     if stage == 2:
         drive = f" 운행 {_drive_text(facts.get('drive_min'))}입니다." if int(facts.get("drive_min") or 0) >= 1 else ""
         return f"최근 10분 동안 {n}번 졸았습니다.{drive} {guidance}"
@@ -94,8 +96,28 @@ def _allowed_numbers(facts):
     return ok
 
 
+_NATIVE = {"한": 1, "두": 2, "세": 3, "네": 4, "다섯": 5, "여섯": 6, "일곱": 7, "여덟": 8, "아홉": 9, "열": 10, "스무": 20}
+# 한글로 쓴 숫자 + 단위만 본다 (11/02 KPI ⑥ — 아라비아 숫자만 검사해서 '세 번 졸았습니다' 가 그대로 통과했음)
+#   고유어(한 · 두 · 세 …) + 번 · 회 · 시간 · 분 · 초, 한자어(일 · 이 · 삼 · 십 …) + 분 · 초 — '이번 휴식' 같은 말은 안 잡히게
+_KO_COUNT = re.compile(r"(열한|열두|열세|열네|다섯|여섯|일곱|여덟|아홉|스무|[한두세네열])\s*(번|회|차례|시간|분|초)")
+_KO_SINO = re.compile(r"(?<![가-힣])([일이삼사오육칠팔구십백]+)\s*(분|초)(?![가-힣])")
+_IDIOMS = re.compile(r"다시\s*한\s*번|한\s*번\s*더")   # '다시 한번' · '한 번 더' 는 숫자가 아님
+
+
+def _korean_numbers(s):
+    """음성 보고 속 한글 숫자: '세 번' → 3, '십 분' → 10, '이 초' → 2"""
+    from services.voice_quiz_service import extract_numbers
+    s = _IDIOMS.sub(" ", s)
+    out = []
+    for word, _unit in _KO_COUNT.findall(s):
+        out.append(_NATIVE[word] if word in _NATIVE else 10 + _NATIVE[word[1:]])
+    for word, _unit in _KO_SINO.findall(s):
+        out += extract_numbers(word)
+    return out
+
+
 def _check_voice(text, facts):
-    """숫자가 facts 와 다르거나, 너무 길거나, 비어 있으면 None (→ 템플릿)"""
+    """숫자가 facts 와 다르거나, 너무 길거나, 비어 있으면 None (→ 템플릿). 한글로 쓴 숫자('세 번')도 검사"""
     if not isinstance(text, str):
         return None
     s = " ".join(text.split()).strip("\"'“”‘’ ")
@@ -103,6 +125,8 @@ def _check_voice(text, facts):
         return None
     allowed = _allowed_numbers(facts)
     if any(x not in allowed for x in re.findall(r"\d+(?:\.\d+)?", s)):
+        return None
+    if any(str(n) not in allowed for n in _korean_numbers(s)):
         return None
     return s
 

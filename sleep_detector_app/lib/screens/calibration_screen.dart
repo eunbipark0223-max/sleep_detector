@@ -22,8 +22,10 @@
 //   - 측정 중에는 뒤로 가기를 막는다 (5초면 끝남)
 //   - 서버 기준(EAR)은 이 화면이 서버로 직접 보낸다 — 받는 쪽이 따로 할 일 없음
 //
-// [연결 대기 — 'TODO(연결)' 로 찾을 수 있다]
-//   - C 의 voice_service.speak()  (지금 voice_service.dart 는 주석뿐 — 안내가 소리로 나오지 않는다)
+// [연결됨]
+//   - 팀장의 VoiceService.speak()  (11/02 — 안내가 소리로 나온다)
+//
+// [연결 대기]
 //   - 홈의 [운행 시작] → 이 화면 → 운행 화면 (C 의 DriveScreen 이 생기면 home_screen 에서 이어 붙인다)
 //   - 생성자의 capture · calibrateApp · sendServer · speak · photoCount · interval · finishDelay 는
 //     테스트 · 미리보기에서 바꿔 끼우는 입구다 (비우면 전면 카메라 · EyeMonitor · ApiService)
@@ -39,6 +41,7 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../services/api_service.dart';
 import '../services/eye_monitor.dart';
+import '../services/voice_service.dart';
 import '../theme.dart';
 
 class CalibrationScreen extends StatefulWidget {
@@ -90,8 +93,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
 
   bool get _usesCamera => widget.capture == null;
 
-  // TODO(연결): C 의 voice_service 가 생기면 `VoiceService.speak` 로 바꾼다 (지금은 소리 없이 넘어간다)
-  static Future<void> _defaultSpeak(String text) async {}
+  static Future<void> _defaultSpeak(String text) => VoiceService.speak(text);
 
   static Future<double> _defaultCalibrateApp(List<String> paths) async {
     final monitor = EyeMonitor();
