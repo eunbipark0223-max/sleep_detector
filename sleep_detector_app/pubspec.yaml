@@ -76,7 +76,7 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/rest_areas.json   # 졸음쉼터 (map_screen, notebooks/rest_areas_json.py 로 만듦)
+    - assets/rest_areas.json   # 졸음쉼터 (rest_area_service · map_screen, notebooks/rest_areas_json.py 로 만듦)
 
   # To add assets to your application, add an assets section, like this:
   # assets:
