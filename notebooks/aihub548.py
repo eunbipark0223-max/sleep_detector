@@ -79,13 +79,18 @@ def zname(info):
 
 
 WEB_DIR = r"D:\033.안구 움직임 영상 데이터"  # AI-Hub 웹 화면에서 받은 폴더 (VL · VS_G1 은 여기로 받았음)
+EXTRA_DIR = r"D:\aihub548_extra"  # 동시에 받은 묶음 (TL · VS_G2 · VS_U) — 받는 중 조각 파일이 섞이지 않게 폴더를 나눔
+
+
+def data_dirs():
+    return (ROOT, WEB_DIR, EXTRA_DIR)
 
 
 def find(pattern):
-    """ROOT · WEB_DIR 아래에서 파일 하나 찾기 (API 로 받은 구조 · 브라우저로 받은 구조 둘 다)"""
-    hits = sorted(h for d in (ROOT, WEB_DIR) for h in glob.glob(os.path.join(d, "**", pattern), recursive=True))
+    """ROOT · WEB_DIR · EXTRA_DIR 아래에서 파일 하나 찾기 (API 로 받은 구조 · 브라우저로 받은 구조 둘 다)"""
+    hits = sorted(h for d in data_dirs() for h in glob.glob(os.path.join(d, "**", pattern), recursive=True))
     if not hits:
-        raise SystemExit(f"{ROOT} · {WEB_DIR} 아래에 {pattern} 이 없습니다 (download 먼저, 또는 --root)")
+        raise SystemExit(f"{' · '.join(data_dirs())} 아래에 {pattern} 이 없습니다 (download 먼저, 또는 --root)")
     return hits[0]
 
 
@@ -328,7 +333,7 @@ def crop(limit=0):
     face_task = os.path.join(API_DIR, "ml_models", "face_landmarker.task")
     labels = eye_labels([find("TL.zip")])
     drop = val_people(find("VL.zip"))
-    ts_zips = sorted({h for d in (ROOT, WEB_DIR) for h in glob.glob(os.path.join(d, "**", "TS_*.[zZ]ip"), recursive=True)
+    ts_zips = sorted({h for d in data_dirs() for h in glob.glob(os.path.join(d, "**", "TS_*.[zZ]ip"), recursive=True)
                       if os.path.getsize(h) > 0})
     if not ts_zips:
         raise SystemExit("학습 사진 zip (TS_*.zip) 이 없습니다 — download 먼저")
