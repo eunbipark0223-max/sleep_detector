@@ -12,6 +12,8 @@
 //   -   → nextQuiz 가 오면 한 번 더 → stage 로 색 갱신 (stageUp 이면 한 단계 위)
 //   - 3단계: 관리자 조치완료 전까지 30초마다 '관리자에게 알렸습니다. 정차해 주세요.'
 //   - 2단계 [정차했어요] → rest_screen
+//   - 경고 화면이 떠 있어도 운행 화면은 감지를 계속함 (11/03) → 새 확정(liveResponse)이 오면 내용 · 색 · 음성을 새 단계로
+//     퀴즈 · 휴식 화면이 위에 떠 있는 동안만 detectPaused = true (운행 화면이 감지를 멈춤)
 //
 // [주의]
 //   - 화면 터치로 답하지 않는다 (답은 말로만)
@@ -39,7 +41,13 @@ class WarningScreen extends StatefulWidget {
   /// 사진 1장 테스트처럼 운행 중이 아니면 null
   final ValueListenable<int>? liveStage;
 
-  const WarningScreen({super.key, required this.response, this.liveStage});
+  /// 경고 화면이 떠 있는 동안 운행 화면이 새로 확정한 졸음 (오면 내용 · 색 · 음성을 새 단계로)
+  final ValueListenable<SleepResponse?>? liveResponse;
+
+  /// 퀴즈 · 휴식 화면을 띄운 동안 true → 운행 화면이 감지를 멈춤 (끝나면 false, 운행 화면이 판정 기록을 비움)
+  final ValueNotifier<bool>? detectPaused;
+
+  const WarningScreen({super.key, required this.response, this.liveStage, this.liveResponse, this.detectPaused});
 
   @override
   State<WarningScreen> createState() => _WarningScreenState();
@@ -47,20 +55,26 @@ class WarningScreen extends StatefulWidget {
 
 class _WarningScreenState extends State<WarningScreen> {
   late int _stage; // 지금 화면의 단계 (정차 후 돌려받은 단계로 바뀜)
+  late SleepResponse _res; // 지금 보여 주는 경고 (경고 화면이 떠 있는 동안 새 확정이 오면 바뀜)
+  int _speakId = 0; // 새 경고가 와서 소리를 다시 시작하면 이전 소리 순서는 멈춤
   Timer? _repeat; // 3단계 30초 반복 음성
   String _restMessage = ''; // 휴식 뒤 서버가 준 안내 (예: 주의 단계로 다시 출발합니다). 있으면 이전 단계의 요약 · 안내 · 음성 보고 대신 보여 준다
 
   @override
   void initState() {
     super.initState();
-    _stage = widget.response.stage;
+    _res = widget.response;
+    _stage = _res.stage;
     widget.liveStage?.addListener(_onLiveStage);
+    widget.liveResponse?.addListener(_onLiveResponse);
     _speakWarning();
   }
 
   @override
   void dispose() {
     widget.liveStage?.removeListener(_onLiveStage);
+    widget.liveResponse?.removeListener(_onLiveResponse);
+    widget.detectPaused?.value = false;
     VoiceService.stop(); // 말하기 멈춤
     _repeat?.cancel(); // 3단계 반복 멈춤
     super.dispose();
@@ -86,6 +100,29 @@ class _WarningScreenState extends State<WarningScreen> {
     if (s == 3) _startRepeat();
   }
 
+  // 경고 화면이 떠 있는 동안 또 졸음 확정 (예: 1단계 화면을 띄운 채 다시 졸아 2단계) → 새 경고로 바꾸고 소리 처음부터
+  void _onLiveResponse() {
+    final r = widget.liveResponse!.value;
+    if (!mounted || r == null || identical(r, _res)) return;
+    VoiceService.stop();
+    setState(() {
+      _res = r;
+      _stage = r.stage;
+      _restMessage = '';
+    });
+    _speakWarning();
+  }
+
+  // 퀴즈 · 휴식 화면을 띄우는 동안 운행 화면 감지 멈춤
+  Future<T?> _pushPaused<T>(Widget page) async {
+    widget.detectPaused?.value = true;
+    try {
+      return await Navigator.push<T>(context, MaterialPageRoute(builder: (_) => page));
+    } finally {
+      widget.detectPaused?.value = false;
+    }
+  }
+
   // 3단계 30초 반복 시작 (이미 돌고 있으면 그대로)
   void _startRepeat() {
     _repeat ??= Timer.periodic(const Duration(seconds: 30), (_) {
@@ -95,22 +132,21 @@ class _WarningScreenState extends State<WarningScreen> {
 
   // 🔔 알람 → 고정 문구(1·2단계) → 기사 음성 보고 → (3단계) 30초마다 반복
   Future<void> _speakWarning() async {
+    final id = ++_speakId;
+    bool stale() => !mounted || id != _speakId; // 그 사이 새 경고가 왔으면 이 순서는 그만
     await VoiceService.alarm(); // 시작음
-    if (!mounted) return;
+    if (stale()) return;
     // 1·2단계 고정 문구 (3단계는 고정 문구 없이 음성 보고만 — 기획안 8-7)
     if (_stage == 1) await VoiceService.speak('일어나세요');
     if (_stage == 2) await VoiceService.speak('계속 졸고 있습니다. 가까운 졸음쉼터로 이동하세요');
-    if (!mounted) return;
-    final voice = widget.response.driverVoice; // 기사 음성 보고 ("최근 10분 동안 2번 졸았습니다…")
+    if (stale()) return;
+    final voice = _res.driverVoice; // 기사 음성 보고 ("최근 10분 동안 2번 졸았습니다…")
     if (voice.isNotEmpty) await VoiceService.speak(voice);
-    if (!mounted) return;
+    if (stale()) return;
     // 운전 중 음성 퀴즈 (D님 QuizScreen) — 서버가 2분 간격으로만 보내서 없을 수도 있음
-    final quiz = widget.response.voiceQuiz;
+    final quiz = _res.voiceQuiz;
     if (quiz != null) {
-      final newStage = await Navigator.push<int>(
-        context,
-        MaterialPageRoute(builder: (_) => QuizScreen(quiz: quiz, stage: _stage)),
-      );
+      final newStage = await _pushPaused<int>(QuizScreen(quiz: quiz, stage: _stage));
       if (!mounted) return;
       // 퀴즈 중에 해제됐으면 (조치완료 · 1단계 자동 해제) 이제 경고 화면을 닫는다
       if (widget.liveStage?.value == 0) {
@@ -121,7 +157,7 @@ class _WarningScreenState extends State<WarningScreen> {
       if (newStage != null) setState(() => _stage = newStage); // 2번 실패하면 단계가 올라옴
     }
     // 3단계 30초 반복은 퀴즈가 끝난 뒤에 시작
-    if (_stage == 3) _startRepeat();
+    if (_stage == 3 && !stale()) _startRepeat();
   }
 
   // 단계별 큰 글씨 한 줄
@@ -156,10 +192,7 @@ class _WarningScreenState extends State<WarningScreen> {
   Future<void> _goRest() async {
     // RestScreen 은 닫힐 때 서버 응답(Map: stage · status · message)을 돌려줘요.
     // 휴식 시작에 실패해서 닫히면 null 이 와요.
-    final result = await Navigator.push<Map<String, dynamic>>(
-      context,
-      MaterialPageRoute(builder: (_) => const RestScreen()),
-    );
+    final result = await _pushPaused<Map<String, dynamic>>(const RestScreen());
     if (result == null || !mounted) return;
     final s = result['stage'];
     final newStage = s is num ? s.toInt() : int.tryParse('$s');
@@ -168,16 +201,16 @@ class _WarningScreenState extends State<WarningScreen> {
     setState(() {
       _stage = newStage; // 돌려받은 단계로 색 바꾸기
       // 단계가 바뀌었으면 처음 경고의 요약 · 안내 · 음성 보고는 지금 단계와 맞지 않으니 서버 안내로 바꾼다
-      if (newStage != widget.response.stage) _restMessage = m is String ? m : '';
+      if (newStage != _res.stage) _restMessage = m is String ? m : '';
     });
   }
 
   // [규정 보기] — 아래에서 올라오는 창에 규정 목록 (regulation_screen 의 공용 카드)
-  void _showRegulations() => showRegulationSheet(context, widget.response.regulations);
+  void _showRegulations() => showRegulationSheet(context, _res.regulations);
 
   @override
   Widget build(BuildContext context) {
-    final r = widget.response;
+    final r = _res;
     final bg = AppColors.stage(_stage);
     final fg = AppColors.onStage(_stage);
     final stageChanged = _stage != r.stage; // 휴식 뒤 단계가 바뀌었으면 처음 경고의 글은 숨긴다

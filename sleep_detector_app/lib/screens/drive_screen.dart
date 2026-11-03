@@ -8,6 +8,8 @@
 //   - 전면 카메라 미리보기 + startImageStream → eye_monitor.processFrame
 //   - onSuspect → camera_image_utils.toJpg → api_service.sendDetect (위도 · 경도 포함)
 //   -   → 응답 isSleep 이면 warning_screen 을 이 화면 위에 겹쳐 띄움 (Stack, 카메라 · 판정은 계속)
+//   -   → 경고 화면이 떠 있어도 감지 · 전송은 계속 (11/03) — 또 확정되면 떠 있는 경고 화면을 새 단계로 바꿈 (liveResponse)
+//         퀴즈 · 휴식 화면이 떠 있는 동안만 멈춤 (detectPaused), 끝나면 · 경고 화면이 닫히면 판정 기록을 비움 (eye_monitor.reset)
 //   - 30초마다 sendPing → stage 로 화면 색 (1단계 자동 해제 · 조치완료 반영), restDue 면 휴게 배너 + 🔊 1번
 //   - onCheckCamera → 🔊 '카메라를 확인하세요'
 //   - 화면 꺼짐 방지 (wakelock_plus), 0단계 화면에 눈 뜸 확률 · 내 기준 표시
@@ -28,6 +30,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../config.dart';
+import '../models/sleep_response.dart';
 import '../services/api_service.dart';
 import '../services/eye_monitor.dart';
 import '../services/voice_service.dart';
@@ -56,7 +59,11 @@ class _DriveScreenState extends State<DriveScreen> {
   double _perclos = 0; // 최근 30초 눈 감은 비율
   String _notice = ''; // 화면에 보여 줄 안내 글
   bool _sending = false; // 서버에 보내는 중인지 (같은 졸음을 두 번 보내지 않게)
-  bool _warningOpen = false; // 경고 화면이 떠 있는지 (또 띄우지 않게)
+  bool _warningOpen = false; // 경고 화면이 떠 있는지 (또 띄우지 않게 — 대신 _liveResponse 로 넘김)
+  // 경고 화면이 떠 있는 동안 새로 확정된 졸음 → 경고 화면이 내용 · 색 · 음성을 새 단계로 바꿈
+  final ValueNotifier<SleepResponse?> _liveResponse = ValueNotifier<SleepResponse?>(null);
+  // 경고 화면이 퀴즈 · 휴식 화면을 띄운 동안 true → 감지 · 전송을 멈춤
+  final ValueNotifier<bool> _detectPaused = ValueNotifier<bool>(false);
 
   // 카메라 지킴이: 사진(프레임)이 마지막으로 들어온 시각을 기억했다가, 오래 안 들어오면 카메라를 다시 켠다
   Timer? _watchdog;
@@ -87,6 +94,7 @@ class _DriveScreenState extends State<DriveScreen> {
     if (t != null) _eye.threshold = t;
 
     _startCamera(); // 카메라 켜기
+    _detectPaused.addListener(_onPauseChanged);
 
     // 2초마다 카메라가 살아 있는지 확인한다
     _watchdog = Timer.periodic(const Duration(seconds: 2), (_) => _checkCamera());
@@ -227,6 +235,9 @@ class _DriveScreenState extends State<DriveScreen> {
     _pingTimer?.cancel(); // ping 끄기
     _watchdog?.cancel(); // 카메라 지킴이 끄기
     _liveStage.dispose();
+    _liveResponse.dispose();
+    _detectPaused.removeListener(_onPauseChanged);
+    _detectPaused.dispose();
     _controller?.dispose(); // 카메라 끄기
     _eye.close(); // 눈 감시 도구 끄기
     super.dispose();
@@ -235,7 +246,7 @@ class _DriveScreenState extends State<DriveScreen> {
   // 졸음 의심 (눈을 오래 감음 / 최근 30초 중 많이 감음) → 서버에 보내서 확인받기
   Future<void> _onSuspect(String reason, double closedSec, double perclos,
       double eyeOpenProb, Uint8List? frame) async {
-    if (!mounted || _sending) return;
+    if (!mounted || _sending || _detectPaused.value) return; // 퀴즈 · 휴식 중에는 보내지 않음
     _sending = true;
     setState(() => _notice = '서버 확인 중…');
     try {
@@ -251,22 +262,35 @@ class _DriveScreenState extends State<DriveScreen> {
       );
       if (!mounted) return;
       _notice = res.isSleep ? '졸음 확정 (${res.stage}단계)' : '서버 확인: 눈 뜸 → 취소';
+      final confirmed = res.isSleep && res.stage >= 1;
+      // 경고 화면이 이미 떠 있으면 새 경고를 넘긴다 (단계보다 먼저 — 경고 화면이 새 단계로 한 번에 바뀌게)
+      if (confirmed && _warningOpen) _liveResponse.value = res;
       _setStage(res.stage);
-      // 졸음이 맞고 1단계 이상이면 경고 화면을 띄운다 (이미 떠 있으면 또 띄우지 않는다)
-      if (res.isSleep && res.stage >= 1 && !_warningOpen) {
+      // 졸음이 맞고 1단계 이상이면 경고 화면을 띄운다 — 기다리지 않음 (경고 화면이 떠 있는 동안에도 감지는 계속)
+      if (confirmed && !_warningOpen) {
         _warningOpen = true;
-        await Navigator.push(
+        _liveResponse.value = res;
+        Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => WarningScreen(response: res, liveStage: _liveStage)),
-        );
-        _warningOpen = false; // 경고 화면이 닫히면(뒤로 가기) 다시 띄울 수 있게
-        _eye.reset(); // 경고 · 퀴즈 · 휴식 동안 쌓인 눈 감김으로 돌아오자마자 의심이 나지 않게 (11/03)
+          MaterialPageRoute(
+            builder: (_) => WarningScreen(
+                response: res, liveStage: _liveStage, liveResponse: _liveResponse, detectPaused: _detectPaused),
+          ),
+        ).then((_) {
+          _warningOpen = false; // 경고 화면이 닫히면(뒤로 가기 · 해제) 다시 띄울 수 있게
+          _eye.reset(); // 경고 화면 동안 쌓인 눈 감김으로 돌아오자마자 의심이 나지 않게 (11/03)
+        });
       }
     } catch (e) {
       if (mounted) setState(() => _notice = '서버 연결 실패: $e');
     } finally {
       _sending = false;
     }
+  }
+
+  // 퀴즈 · 휴식 화면이 닫혀 감지를 다시 시작할 때 — 그동안 쌓인 눈 감김(쉬면서 감은 눈 등)은 세지 않음
+  void _onPauseChanged() {
+    if (!_detectPaused.value) _eye.reset();
   }
 
   // 얼굴이 3초 이상 안 보임 → 글 + 🔊
