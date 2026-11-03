@@ -8,6 +8,7 @@
 #   - 10분 안 졸음 기록 → 규칙 단계 (1번=1, 2번=2, 3번 이상=3)
 #   - set_stage — 지금 단계와 새 단계 중 큰 값만 저장 (올리기만, 퀴즈로 올라간 단계 유지)
 #   - 1단계 10분간 졸음 없으면 0단계 / 관리자 조치완료면 reset
+#   - 운행 시작(start_drive): 0 · 1단계만 0단계로. 2 · 3단계 · 10분 졸음 기록은 유지 (다시 시작으로 경고를 끌 수 없게)
 #   - 개인 기준 EAR, 음성 보고용 facts (10분 졸음 횟수 · 마지막 closed_sec · 운행 분 · 단계)
 #   - 휴식 시작 시각 · 운전 중 퀴즈 실패 횟수 · 마지막 퀴즈 시각 · 마지막 ping 시각
 #
@@ -74,13 +75,17 @@ def _prune_old_sleeps(state: dict, now: datetime) -> None:
 
 
 def start_drive(user_id: int) -> dict:
-    """운행 시작 (/drive/start) -> 단계 및 기록 초기화"""
+    """운행 시작 (/drive/start) -> 0 · 1단계만 0단계로, 2 · 3단계는 유지
+
+    다시 시작으로 경고를 끌 수 없게 (11/03 시연 폰 시험에서 재시작으로 3단계가 풀림, 팀장 결정):
+      - 2단계는 쉬어야만, 3단계는 관리자만 해제
+      - 10분 졸음 기록(sleep_times)도 지우지 않음 — 지우면 2단계에서 다시 졸아도 3단계로 안 올라감 (10분 지나면 저절로 빠짐)
+    """
     state = get_state(user_id)
     now = datetime.now()
-    state["sleep_times"] = []
-    _change_stage(state, 0)
-    state["last_sleep_at"] = None
-    state["last_closed_sec"] = 0.0
+    _prune_old_sleeps(state, now)
+    if state["stage"] < 2:
+        _change_stage(state, 0)
     state["drive_started_at"] = now
     state["rest_started_at"] = None
     state["quiz_fails"] = 0
