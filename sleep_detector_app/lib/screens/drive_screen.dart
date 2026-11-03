@@ -294,6 +294,8 @@ class _DriveScreenState extends State<DriveScreen> {
     setState(() {
       _eyeOpenProb = eyeOpenProb;
       _perclos = perclos;
+      // 얼굴이 다시 잡히면 "카메라를 확인하세요" 안내를 지운다
+      if (eyeOpenProb != null && _notice == '카메라를 확인하세요') _notice = '';
     });
   }
 
