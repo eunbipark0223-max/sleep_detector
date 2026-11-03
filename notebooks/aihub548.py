@@ -28,6 +28,8 @@
 #   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py download --keys 55882
 #   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py eval [--set val_g1 | val | train]
 #     val_g1 = Validation G1 65명 (첫 시험) · val = Validation 전부 151명 · train = TS_G1_1 (Validation 사람 뺌, 지금 모델이 안 본 사람)
+#   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py eval --set val --model eye_cnn_548.pt
+#     (eye_cnn.ipynb 7번에서 학습한 모델로 같은 시험 → result_val_eye_cnn_548.csv, 지금 모델 result_val.csv 와 비교)
 #   set PYTHONUTF8=1 && sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py wandb
 #     (PYTHONUTF8: 사용자 폴더 이름이 한글이면 wandb 가 cp949 로 읽다 실패함)
 #   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py crop --limit 300   (시험: 결과는 eye_npz_test/)
@@ -186,14 +188,21 @@ EVAL_SETS = {
 }
 
 
-def evaluate(which="val_g1"):
-    """지금 서버 판정(face_service 그대로)으로 548 시험 — 감음 · 반쯤 전부 + 사람 · 거리마다 뜸 OPEN_PER 장"""
+def evaluate(which="val_g1", model=""):
+    """지금 서버 판정(face_service 그대로)으로 548 시험 — 감음 · 반쯤 전부 + 사람 · 거리마다 뜸 OPEN_PER 장
+    model: 다른 CNN 파일로 시험 (ml_models/ 안 이름 또는 경로, 서버 config.py 는 안 바꿈) → 결과 CSV 이름 뒤에 모델 이름"""
     import tempfile
     sys.path.insert(0, API_DIR)
     os.chdir(API_DIR)
     from services import face_service as fs  # 서버 판정 그대로 (config.py 의 CNN · EAR 기준)
 
     label_zip, group, img_zips, drop_val, out_name = EVAL_SETS[which]
+    if model:
+        fs.CNN_MODEL_PATH = os.path.abspath(model if os.path.exists(model) else os.path.join(API_DIR, "ml_models", model))
+        if not os.path.exists(fs.CNN_MODEL_PATH):
+            raise SystemExit(f"모델 파일이 없습니다: {fs.CNN_MODEL_PATH}")
+        out_name = out_name.replace(".csv", f"_{os.path.splitext(os.path.basename(model))[0]}.csv")
+        print("CNN 모델:", fs.CNN_MODEL_PATH, flush=True)
     label = read_labels(find(label_zip), group)
     drop = val_people(find("VL.zip")) if drop_val else set()
     zips, items, meta = {}, {}, {}  # 사진 이름 → (zip, 안 이름) / (zip, 번호) → 사람 정보
@@ -494,6 +503,7 @@ if __name__ == "__main__":
     ap.add_argument("--keys", type=int, nargs="+", default=[55882], help="download: filekey (기본 TS_G1_1)")
     ap.add_argument("--limit", type=int, default=0, help="crop 시험용: 이만큼만 (결과는 eye_npz_test/)")
     ap.add_argument("--set", default="val_g1", choices=list(EVAL_SETS), help="eval: 시험할 묶음 (val_g1 · val · train)")
+    ap.add_argument("--model", default="", help="eval: 다른 CNN 파일 (예: eye_cnn_548.pt, ml_models/ 안) — 결과는 result_<묶음>_<모델>.csv")
     a = ap.parse_args()
     ROOT = a.root
-    {"download": lambda: download(a.keys), "eval": lambda: evaluate(a.set), "wandb": to_wandb, "crop": lambda: crop(a.limit)}[a.step]()
+    {"download": lambda: download(a.keys), "eval": lambda: evaluate(a.set, a.model), "wandb": to_wandb, "crop": lambda: crop(a.limit)}[a.step]()
