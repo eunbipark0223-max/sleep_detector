@@ -9,7 +9,7 @@
 //   - 프레임마다: 분석 중이면 그 프레임은 버림(_busy) → 두 눈 평균 눈 뜸 확률
 //   -   → 감김 / 뜸 / 모름 (확률 null · 얼굴 없음 = 모름, 감김으로 세지 않음)
 //   - 연속 감김 1.5초 이상 → 미세수면 의심 (다시 떠야 다음 졸음을 셈)
-//   - 최근 30초 PERCLOS 15% 이상 → 피로 누적 의심 (모름은 빼고 계산, 내려갔다 다시 넘어야 셈)
+//   - 최근 30초 PERCLOS 15% 이상 → 피로 누적 의심 (모름은 빼고 계산, 내려갔다 다시 넘어야 셈, 직전 의심 뒤 30초 안에는 안 냄)
 //   - 감긴 프레임을 잠깐 들고 있다가 의심이 확정되면 그 프레임을 넘김 (이미 눈을 뜬 뒤 찍지 않게)
 //   - 모름이 3초 이어지면 카메라 확인 신호
 //   - 🆕 (AppConfig.headRuleOn) 고개 숙임이 3초 이어지면 → 미세수면 의심 (reason 그대로 microsleep)
@@ -87,6 +87,8 @@ class EyeMonitor {
   DateTime? _unknownStartTime;
   bool _microsleepTriggered = false;
   bool _perclosTriggered = false;
+  // 마지막 미세수면 · PERCLOS 의심 시각 — 이후 30초 창에는 같은 눈 감김이 남아 있으므로 PERCLOS 를 다시 내지 않음
+  DateTime? _lastSuspectAt;
   bool _cameraWarnTriggered = false;
 
   // 최근 30초 PERCLOS 계산용 큐 ("모름" 제외)
@@ -296,6 +298,7 @@ class EyeMonitor {
     if (sec < AppConfig.headDownSec || _headTriggered || _microsleepTriggered) return;
 
     _headTriggered = true;
+    _lastSuspectAt = now;
     _microsleepTriggered = true; // 고개를 든 채 눈을 감고 있어도 같은 졸음 → 미세수면 다시 안 냄 (눈을 떠야 다음)
     _perclosTriggered = true;
     final target = _headFrame;
@@ -383,6 +386,7 @@ class EyeMonitor {
         if (_headDown) _headTriggered = true; // 숙인 채 눈 감김으로 이미 경고 → 같은 숙임으로 다시 안 냄
         // 같은 감김이 눈 뜬 직후 PERCLOS 로 한 번 더 잡히지 않게 — PERCLOS 도 기준 아래로 내려갔다 다시 넘어야 셈
         _perclosTriggered = true;
+        _lastSuspectAt = now;
         // 이번 감김 동안 찍은 프레임만 보냄 — 얼굴을 놓친 채 시작된 감김이면 몇 분 전 사진이 갈 수 있어서 (10/28 팀장 확인)
         final target = _frameInStreak ? _lastClosedFrame : null;
         final jpg = target == null
@@ -407,9 +411,15 @@ class EyeMonitor {
     final bool hasEnoughWindow = _windowStart != null &&
         now.difference(_windowStart!).inSeconds >= AppConfig.perclosWindowSec;
 
+    // 직전 의심 뒤 30초 안이면 창에 같은 눈 감김이 남아 있음 → 또 세지 않음
+    //   11/03 시연 폰 시험: 15% 근처를 오가며 PERCLOS 가 17초에 3번 → 0단계에서 3단계까지 올라감
+    final bool inCooldown = _lastSuspectAt != null &&
+        now.difference(_lastSuspectAt!).inSeconds < AppConfig.perclosWindowSec;
+
     if (hasEnoughWindow && perclos >= AppConfig.perclosThreshold) {
-      if (!_perclosTriggered && !_microsleepTriggered) {
+      if (!_perclosTriggered && !_microsleepTriggered && !inCooldown) {
         _perclosTriggered = true; // 기준 아래로 내려갔다 다시 넘어야 셈
+        _lastSuspectAt = now;
         final targetFrame = _lastClosedFrame ?? frame;
         final jpg = targetFrame == null
             ? null
