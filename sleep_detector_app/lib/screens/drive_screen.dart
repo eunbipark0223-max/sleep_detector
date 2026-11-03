@@ -86,7 +86,6 @@ class _DriveScreenState extends State<DriveScreen> {
     final t = widget.threshold;
     if (t != null) _eye.threshold = t;
 
-    _startDrive(); // 서버에 "새로 출발해요" (지난 운행의 단계 · 졸음 기록을 0 으로)
     _startCamera(); // 카메라 켜기
 
     // 2초마다 카메라가 살아 있는지 확인한다
@@ -96,18 +95,6 @@ class _DriveScreenState extends State<DriveScreen> {
     _pingTimer = Timer.periodic(const Duration(seconds: AppConfig.pingSec), (_) => _ping());
 
     _initLocation(); // 위치 권한 묻고 첫 위치 받기
-  }
-
-  // 운행 시작 — 안 부르면 서버가 지난 운행의 단계를 기억하고 있어서 첫 ping 에 빨간 화면으로 시작한다
-  //   (내 눈 기준은 지우지 않음 — 측정 화면 다음에 불러도 됨)
-  Future<void> _startDrive() async {
-    try {
-      await ApiService.startDrive();
-      if (!mounted) return;
-      _setStage(0);
-    } catch (_) {
-      // 실패해도 운행은 계속 (다음 ping 에서 서버 단계를 받음)
-    }
   }
 
   // 단계를 바꾸고 경고 화면에도 알린다
@@ -294,6 +281,8 @@ class _DriveScreenState extends State<DriveScreen> {
     setState(() {
       _eyeOpenProb = eyeOpenProb;
       _perclos = perclos;
+      // 얼굴이 다시 잡히면 "카메라를 확인하세요" 안내를 지운다
+      if (eyeOpenProb != null && _notice == '카메라를 확인하세요') _notice = '';
     });
   }
 
