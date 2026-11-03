@@ -34,6 +34,8 @@
 #   ... team [--model ...]   팀 사진 (D:\aihub173\kpi_eye\images · images_cond) 서버 판정 → 묶음 × 라벨 요약
 #   ... eval|team ... --tta   좌우 반전 평균 (결과 이름 끝 _tta)
 #   ... wrong --csv result_val_eye_cnn_548.csv   틀린 사진의 눈만 모은 그림 → D:\aihub548\wrong_*.png (저장소 X)
+#   ... extra [--dir D:\cew\faces\dataset_B_FacialImages] [--model ...]   외부 사진 시험 (CEW: ClosedFace · OpenFace, 학습에 안 씀)
+#       CEW = Closed Eyes in the Wild (NUAA, Song 외 Pattern Recognition 2014) — 저장소 밖 D:\cew 에만
 #   set PYTHONUTF8=1 && sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py wandb
 #     (PYTHONUTF8: 사용자 폴더 이름이 한글이면 wandb 가 cp949 로 읽다 실패함)
 #   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py crop --limit 300   (시험: 결과는 eye_npz_test/)
@@ -367,6 +369,56 @@ def team(model="", tta=False):
     print("CSV:", out)
 
 
+def extra(folder, model="", tta=False, pad=0.4):
+    """학습 · 기준값 고르기에 한 번도 안 쓴 외부 얼굴 사진 시험 (예: CEW) — 하위 폴더 이름에 closed / open 이 들어 있으면 그게 라벨
+    얼굴이 사진에 꽉 찬 데이터라 사방을 pad 비율만큼 가장자리 색으로 늘려 MediaPipe 에 넣음 (두 라벨 똑같이). 결과 CSV 는 그 폴더 옆에만"""
+    import tempfile
+    import cv2
+    import numpy as np
+    sys.path.insert(0, API_DIR)
+    os.chdir(API_DIR)
+    from services import face_service as fs
+    suffix = use_model(fs, model, tta) if model or tta else os.path.splitext(os.path.basename(fs.CNN_MODEL_PATH))[0]
+    rows, tmp = [], os.path.join(tempfile.gettempdir(), "extra_eval.jpg")
+    for sub in sorted(os.listdir(folder)):
+        lab = next((l for l in ("closed", "open") if l in sub.lower()), "")
+        if not lab or not os.path.isdir(os.path.join(folder, sub)):
+            continue
+        for f in sorted(os.listdir(os.path.join(folder, sub))):
+            if not f.lower().endswith((".jpg", ".png")):
+                continue
+            img = cv2.imdecode(np.fromfile(os.path.join(folder, sub, f), np.uint8), cv2.IMREAD_COLOR)
+            if img is None:
+                continue
+            b = int(max(img.shape[:2]) * pad)
+            cv2.imencode(".jpg", cv2.copyMakeBorder(img, b, b, b, b, cv2.BORDER_REPLICATE), [cv2.IMWRITE_JPEG_QUALITY, 95])[1].tofile(tmp)  # imwrite 는 한글 경로에서 실패
+            thr = fs.EAR_THRESHOLD
+            n = fs._normalize(fs._real(tmp, thr), thr, "microsleep")
+            rows.append(dict(file=f"{sub}/{f}", label=lab, face=n["face_found"], prob=n["eye_closed_prob"], ear=n["ear"],
+                             closed=n["is_closed"], cancel=n["is_definitely_open"]))
+    os.remove(tmp)
+    out = os.path.join(os.path.dirname(os.path.abspath(folder)), f"extra_{os.path.basename(os.path.abspath(folder))}_{suffix}.csv")
+    with open(out, "w", newline="", encoding="utf-8-sig") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    print(f"== 외부 사진 {folder} ({suffix}) ==")
+    rate = {}
+    for lab in ("open", "closed"):
+        rs = [r for r in rows if r["label"] == lab]
+        ok = [r for r in rs if r["face"] and r["prob"] is not None]
+        rate[lab] = sum(r["closed"] for r in ok) / max(len(ok), 1)
+        print(f"  {lab:<6} {len(rs)}장 · 얼굴 · CNN {len(ok)} ({len(ok) / max(len(rs), 1):.1%}) · 감음 판정 {rate[lab]:.1%} · 서버 취소 {sum(r['cancel'] for r in ok) / max(len(ok), 1):.1%}"
+              f" · EAR < 기준 {sum(r['ear'] < fs.EAR_THRESHOLD for r in ok) / max(len(ok), 1):.1%}")
+    if all(any(r["label"] == l for r in rows) for l in ("open", "closed")):
+        print(f"  CNN 균형 정확도 (기준 {fs.CNN_CLOSED_PROB}) = {(1 - rate['open'] + rate['closed']) / 2:.1%}")
+        for th in (0.2, 0.3, 0.4, 0.5, 0.6):
+            o = [r["prob"] >= th for r in rows if r["label"] == "open" and r["face"] and r["prob"] is not None]
+            c = [r["prob"] >= th for r in rows if r["label"] == "closed" and r["face"] and r["prob"] is not None]
+            print(f"    기준 {th}: 뜬 눈 → 감음 {sum(o) / len(o):.1%} · 감은 눈 → 감음 {sum(c) / len(c):.1%} · 균형 {(1 - sum(o) / len(o) + sum(c) / len(c)) / 2:.1%}")
+    print("CSV:", out)
+
+
 def wrong(csv_name, n=48):
     """eval 결과 CSV → 틀린 사진(감은 눈을 뜸으로 · 뜬 눈을 감음으로, 확신하고 틀린 것부터)의 **눈만** 모은 그림 (저장소 밖에만)
     사진은 zip 에서 한 장씩 꺼내 서버와 같은 MediaPipe · crop_eye 로 두 눈만 자름 (얼굴 전체는 저장하지 않음)"""
@@ -633,7 +685,8 @@ def to_wandb():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("step", choices=["download", "eval", "wandb", "crop", "team", "wrong"])
+    ap.add_argument("step", choices=["download", "eval", "wandb", "crop", "team", "wrong", "extra"])
+    ap.add_argument("--dir", default=r"D:\cew\faces\dataset_B_FacialImages", help="extra: 외부 사진 폴더 (하위 폴더 이름에 closed / open)")
     ap.add_argument("--root", default=ROOT, help="받기 · 결과 폴더 (저장소 밖)")
     ap.add_argument("--keys", type=int, nargs="+", default=[55882], help="download: filekey (기본 TS_G1_1)")
     ap.add_argument("--limit", type=int, default=0, help="crop 시험용: 이만큼만 (결과는 eye_npz_test/)")
@@ -645,4 +698,4 @@ if __name__ == "__main__":
     a = ap.parse_args()
     ROOT = a.root
     {"download": lambda: download(a.keys), "eval": lambda: evaluate(a.set, a.model, a.tta), "wrong": lambda: wrong(a.csv), "wandb": to_wandb, "crop": lambda: crop(a.limit, a.color),
-     "team": lambda: team(a.model, a.tta)}[a.step]()
+     "team": lambda: team(a.model, a.tta), "extra": lambda: extra(a.dir, a.model, a.tta)}[a.step]()
