@@ -49,8 +49,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   late Future<List<SleepEvent>?> _recent = _fetch();
 
-  DateTime? _driveEndedAt; // 이 앱에서 운행 화면이 닫힌 때 (앱을 다시 켜면 비어 있다)
-
   // 화면(FutureBuilder)이 받기 전에 요청이 먼저 실패해도 '처리 안 된 오류'로 새지 않게 ignore() 를 붙인다
   Future<List<SleepEvent>?> _fetch() {
     final future = (widget.loadEvents ?? _defaultLoad)();
@@ -73,9 +71,9 @@ class _HomeScreenState extends State<HomeScreen> {
   ///   - 조치완료는 모든 단계를 0 으로 되돌린다 (그 경고보다 오래된 경고도 풀림)
   ///   - 1단계: 마지막 졸음 뒤 10분 동안 (그 뒤 자동 해제)
   ///   - 휴식 뒤 1단계로 다시 출발한 시간은 기록에 없어서 0단계로 본다
-  ///   - driveEndedAt: 이 앱에서 운행을 끝낸 때. 서버는 다음 운행을 시작할 때 0단계로 되돌리므로, 그 전의 1 · 2단계는 세지 않는다 (3단계는 조치완료 전까지 그대로)
+  ///   - 운행을 끝내도 단계는 이어진다 (서버가 운행 시작 때 2 · 3단계를 유지, 11/03) — 1단계는 10분이면 저절로 풀림
   /// 가장 높은 단계를 돌려준다. 못 받았거나 경고가 없으면 0 (정상).
-  static int currentStage(List<SleepEvent>? events, {DateTime? now, DateTime? driveEndedAt}) {
+  static int currentStage(List<SleepEvent>? events, {DateTime? now}) {
     if (events == null) return 0;
     final t = now ?? DateTime.now();
     // 관리자 [조치완료]는 그 기사의 단계를 전부 0 으로 되돌린다 → 조치완료된 경고(와 그보다 오래된 경고)는 세지 않는다
@@ -88,7 +86,6 @@ class _HomeScreenState extends State<HomeScreen> {
       if (e.status == '조치완료') continue;
       if (resetAt != null && !e.createdAt.isAfter(resetAt)) continue;
       final s = e.stage.clamp(0, 3);
-      if (s < 3 && driveEndedAt != null && !e.createdAt.isAfter(driveEndedAt)) continue; // 끝난 운행의 1 · 2단계
       final age = t.difference(e.createdAt);
       final active = switch (s) {
         3 => true,
@@ -111,7 +108,6 @@ class _HomeScreenState extends State<HomeScreen> {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => (widget.driveBuilder ?? (t) => DriveScreen(threshold: t))(t)),
     );
-    _driveEndedAt = DateTime.now();
     if (mounted) _reload(); // 운행 중 새로 생긴 경고가 '최근 경고'에 바로 보이게
   }
 
@@ -134,8 +130,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           FutureBuilder<List<SleepEvent>?>(
             future: _recent,
-            builder: (context, snapshot) =>
-                _StatusCard(stage: currentStage(snapshot.data, driveEndedAt: _driveEndedAt)),
+            builder: (context, snapshot) => _StatusCard(stage: currentStage(snapshot.data)),
           ),
           const SizedBox(height: 16),
           FilledButton.icon(
