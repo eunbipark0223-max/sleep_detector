@@ -120,7 +120,8 @@ class _EyeLiveScreenState extends State<EyeLiveScreen> {
       final x = _eye.lastHeadX, base = _eye.headBase;
       debugPrint('[eye_live] $_t 상태 확률 ${prob?.toStringAsFixed(2) ?? "모름"} · PERCLOS ${(perclos * 100).toStringAsFixed(0)}% · '
           '고개 ${x?.toStringAsFixed(1) ?? "-"} · 평소 ${base?.toStringAsFixed(1) ?? "-"} · '
-          '숙인 정도 ${x != null && base != null ? (base - x).toStringAsFixed(1) : "-"} · ${_eye.isHeadDown ? "숙임" : "-"}');
+          '숙인 정도 ${x != null && base != null ? (base - x).toStringAsFixed(1) : "-"} · ${_eye.isHeadDown ? "숙임" : "-"} · '
+          '처리 ${_eye.avgProcessMs.toStringAsFixed(0)}ms ${_eye.processedFps.toStringAsFixed(1)}fps');
     }
   }
 

@@ -79,7 +79,7 @@ class EyeMonitor {
   late final FaceDetector _detector;
   bool _busy = false;
 
-  // 개인 맞춤 눈 감김 기준 (기본값 0.3)
+  // 눈 감김 기준 (기본값 AppConfig.eyeClosedProb, calibrate 하면 개인 기준)
   double threshold = AppConfig.eyeClosedProb;
 
   // 상태 추적용 변수

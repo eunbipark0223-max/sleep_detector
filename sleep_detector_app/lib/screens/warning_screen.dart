@@ -22,17 +22,23 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/sleep_response.dart';
 import '../services/voice_service.dart';
 import '../theme.dart';
+import 'quiz_screen.dart';
 import 'rest_screen.dart';
 
 class WarningScreen extends StatefulWidget {
   final SleepResponse response; // 서버가 보내 준 결과
 
-  const WarningScreen({super.key, required this.response});
+  /// 운행 화면이 알려 주는 지금 단계 (ping). 해제되면 반복 음성을 멈추고, 0단계면 이 화면을 닫는다.
+  /// 사진 1장 테스트처럼 운행 중이 아니면 null
+  final ValueListenable<int>? liveStage;
+
+  const WarningScreen({super.key, required this.response, this.liveStage});
 
   @override
   State<WarningScreen> createState() => _WarningScreenState();
@@ -47,14 +53,43 @@ class _WarningScreenState extends State<WarningScreen> {
   void initState() {
     super.initState();
     _stage = widget.response.stage;
+    widget.liveStage?.addListener(_onLiveStage);
     _speakWarning();
   }
 
   @override
   void dispose() {
+    widget.liveStage?.removeListener(_onLiveStage);
     VoiceService.stop(); // 말하기 멈춤
     _repeat?.cancel(); // 3단계 반복 멈춤
     super.dispose();
+  }
+
+  // 운행 화면의 ping 이 단계를 바꿔 알려 줌 (1단계 자동 해제 · 관리자 조치완료 · 휴식 완료)
+  void _onLiveStage() {
+    final s = widget.liveStage!.value;
+    if (!mounted || s == _stage) return;
+    if (s < 3) {
+      _repeat?.cancel(); // 3단계가 풀리면 30초 반복 멈춤
+      _repeat = null;
+    }
+    if (s == 0) {
+      // 완전 해제 → 소리 멈추고 경고 화면 닫기 (퀴즈 · 휴식 화면이 위에 떠 있으면 닫지 않음)
+      VoiceService.stop();
+      if (ModalRoute.of(context)?.isCurrent ?? false) {
+        Navigator.of(context).pop();
+        return;
+      }
+    }
+    setState(() => _stage = s);
+    if (s == 3) _startRepeat();
+  }
+
+  // 3단계 30초 반복 시작 (이미 돌고 있으면 그대로)
+  void _startRepeat() {
+    _repeat ??= Timer.periodic(const Duration(seconds: 30), (_) {
+      VoiceService.speak('관리자에게 알렸습니다. 정차해 주세요.');
+    });
   }
 
   // 🔔 알람 → 고정 문구(1·2단계) → 기사 음성 보고 → (3단계) 30초마다 반복
@@ -68,12 +103,24 @@ class _WarningScreenState extends State<WarningScreen> {
     final voice = widget.response.driverVoice; // 기사 음성 보고 ("최근 10분 동안 2번 졸았습니다…")
     if (voice.isNotEmpty) await VoiceService.speak(voice);
     if (!mounted) return;
-    // TODO(퀴즈): D님 quiz_screen 이 올라오면 여기서 엶 (3단계 반복보다 위에 둘 것)
-    if (_stage == 3) {
-      _repeat = Timer.periodic(const Duration(seconds: 30), (_) {
-        VoiceService.speak('관리자에게 알렸습니다. 정차해 주세요.');
-      });
+    // 운전 중 음성 퀴즈 (D님 QuizScreen) — 서버가 2분 간격으로만 보내서 없을 수도 있음
+    final quiz = widget.response.voiceQuiz;
+    if (quiz != null) {
+      final newStage = await Navigator.push<int>(
+        context,
+        MaterialPageRoute(builder: (_) => QuizScreen(quiz: quiz, stage: _stage)),
+      );
+      if (!mounted) return;
+      // 퀴즈 중에 해제됐으면 (조치완료 · 1단계 자동 해제) 이제 경고 화면을 닫는다
+      if (widget.liveStage?.value == 0) {
+        VoiceService.stop();
+        Navigator.of(context).pop();
+        return;
+      }
+      if (newStage != null) setState(() => _stage = newStage); // 2번 실패하면 단계가 올라옴
     }
+    // 3단계 30초 반복은 퀴즈가 끝난 뒤에 시작
+    if (_stage == 3) _startRepeat();
   }
 
   // 단계별 큰 글씨 한 줄

@@ -6,7 +6,7 @@
 //
 // [이 파일이 하는 일]
 //   - 눈 판정을 앱이 하므로 판정 숫자는 여기 한곳에만 둔다
-//   - eyeClosedProb = 0.25     두 눈 평균 눈 뜸 확률이 이보다 작으면 '감김' (개인 기준이 없을 때, 10/27 0.3 → 0.2, 10/28 KPI ① → 0.25)
+//   - eyeClosedProb = 0.4      두 눈 평균 눈 뜸 확률이 이보다 작으면 '감김' (개인 기준이 없을 때, 10/27 0.3 → 0.2, 10/28 0.25, 11/02 0.4 확정)
 //   - closedSec = 1.5          감김이 이만큼 이어지면 미세수면 의심
 //   - perclosWindowSec = 30    PERCLOS 계산 구간
 //   - perclosThreshold = 0.15  감김 비율이 이 이상이면 피로 누적 의심
@@ -26,8 +26,9 @@
 class AppConfig {
   // 눈 감김 판정 기본 기준 (개인 기준 측정 전/실패 시 기본값)
   //   ML Kit 뜸 확률은 완전히 감음(≈0.01) · 뜸(≈0.99) 양 끝으로 갈려서 0.2 · 0.3 결과가 거의 같음 (ML Kit 동작 확인, 예비 시험)
-  //   10/28 KPI ① (팀 영상 프레임 178장): 0.2 → 완전히 감음 놓침 1.7% · 0.25 → 0% (오탐 둘 다 0%) → 0.25
-  static const double eyeClosedProb = 0.25;
+  //   11/02 0.4 확정: 뜬 눈 확률이 0.99 라 개인 기준이 5명 모두 상한 0.4 → 측정 성공 · 실패와 상관없이 같은 기준으로 통일
+  //   KPI ① (0.25 → 0.4): 기본 놓침 0/159 · 오탐 0/160 같음, 반쯤 감음 42 → 49/109, 선글라스 놓침 10 → 8/10, 고개 돌림 오탐 0 → 1/20 (서버가 취소)
+  static const double eyeClosedProb = 0.4;
 
   // 미세수면: 연속 감김 시간 기준 (초)
   static const double closedSec = 1.5;
@@ -54,7 +55,9 @@ class AppConfig {
   //   useContourEar : EAR 을 '감김' 판정에도 씀 (뜸 확률 < 기준 또는 EAR < earClosed)
   //                   🔴 시연 폰에서 ① 처리 속도 ② 반쯤 감은 눈 EAR 이 뜬 눈보다 확실히 낮은지 확인한 뒤에만 true
   //   earClosed     : 출발점. ML Kit 윤곽 EAR 은 서버 MediaPipe EAR 과 숫자 크기가 다를 수 있음 → 측정 후 확정
-  static const bool contourEarOn = true;
+  //   11/02 끔: useContourEar 를 안 쓰기로 해서 계산만 남아 있었음. 시연 폰 1번씩 비교 86ms · 9.5fps → 76ms · 10.1fps
+  //   (폰 EAR 을 다시 재려면 true — tools/eye_measure_main.dart 의 phone_ear 칸이 이 값으로 나옴)
+  static const bool contourEarOn = false;
   static const bool useContourEar = false;
   static const double earClosed = 0.2;
   // 눈 폭(눈꼬리 사이)이 이보다 작으면 폰 EAR 을 안 씀 — 윤곽 점이 정수 픽셀이라 작은 눈은 뜸/감음 구분이 안 됨
