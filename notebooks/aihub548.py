@@ -34,8 +34,9 @@
 #   ... team [--model ...]   팀 사진 (D:\aihub173\kpi_eye\images · images_cond) 서버 판정 → 묶음 × 라벨 요약
 #   ... eval|team ... --tta   좌우 반전 평균 (결과 이름 끝 _tta)
 #   ... wrong --csv result_val_eye_cnn_548.csv   틀린 사진의 눈만 모은 그림 → D:\aihub548\wrong_*.png (저장소 X)
-#   ... extra [--dir D:\cew\faces\dataset_B_FacialImages] [--model ...]   외부 사진 시험 (CEW: ClosedFace · OpenFace, 학습에 안 씀)
-#       CEW = Closed Eyes in the Wild (NUAA, Song 외 Pattern Recognition 2014) — 저장소 밖 D:\cew 에만
+#   ... extra [--dir D:\aihub71421\sel] [--model ...]   외부 사진 시험 (하위 폴더 closed · open, 학습에 안 씀)
+#       기본 = AI-Hub 71421 「디스플레이 중심 안구 움직임」 Validation 13명 (한국인 · 스마트폰 · 차량 LCD 등, 라벨: 홍채 없음 + 눈꺼풀 세로/가로 < 0.15 = 감음)
+#       (참고: CEW 는 --dir D:\cew\faces\dataset_B_FacialImages --pad 0.4 — 외국인 얼굴이라 판단에는 안 씀, 11/03)
 #   set PYTHONUTF8=1 && sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py wandb
 #     (PYTHONUTF8: 사용자 폴더 이름이 한글이면 wandb 가 cp949 로 읽다 실패함)
 #   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py crop --limit 300   (시험: 결과는 eye_npz_test/)
@@ -379,7 +380,7 @@ def extra(folder, model="", tta=False, pad=0.4):
     os.chdir(API_DIR)
     from services import face_service as fs
     suffix = use_model(fs, model, tta) if model or tta else os.path.splitext(os.path.basename(fs.CNN_MODEL_PATH))[0]
-    rows, tmp = [], os.path.join(tempfile.gettempdir(), "extra_eval.jpg")
+    rows, tmp = [], os.path.join(tempfile.gettempdir(), "extra_eval.png")
     for sub in sorted(os.listdir(folder)):
         lab = next((l for l in ("closed", "open") if l in sub.lower()), "")
         if not lab or not os.path.isdir(os.path.join(folder, sub)):
@@ -391,7 +392,9 @@ def extra(folder, model="", tta=False, pad=0.4):
             if img is None:
                 continue
             b = int(max(img.shape[:2]) * pad)
-            cv2.imencode(".jpg", cv2.copyMakeBorder(img, b, b, b, b, cv2.BORDER_REPLICATE), [cv2.IMWRITE_JPEG_QUALITY, 95])[1].tofile(tmp)  # imwrite 는 한글 경로에서 실패
+            if b:
+                img = cv2.copyMakeBorder(img, b, b, b, b, cv2.BORDER_REPLICATE)
+            cv2.imencode(".png", img)[1].tofile(tmp)  # imwrite 는 한글 경로에서 실패. png = 원본 화질 그대로
             thr = fs.EAR_THRESHOLD
             n = fs._normalize(fs._real(tmp, thr), thr, "microsleep")
             rows.append(dict(file=f"{sub}/{f}", label=lab, face=n["face_found"], prob=n["eye_closed_prob"], ear=n["ear"],
@@ -416,6 +419,16 @@ def extra(folder, model="", tta=False, pad=0.4):
             o = [r["prob"] >= th for r in rows if r["label"] == "open" and r["face"] and r["prob"] is not None]
             c = [r["prob"] >= th for r in rows if r["label"] == "closed" and r["face"] and r["prob"] is not None]
             print(f"    기준 {th}: 뜬 눈 → 감음 {sum(o) / len(o):.1%} · 감은 눈 → 감음 {sum(c) / len(c):.1%} · 균형 {(1 - sum(o) / len(o) + sum(c) / len(c)) / 2:.1%}")
+    if rows[0]["file"].split("/")[-1].startswith("NIA22EYE"):  # 71421: 이름 = …_사람_T_S_기기_rgb_상태_자세_… → 나눠 보기
+        for k, (pos, names) in {"사람": (2, None), "기기": (5, {"S": "스마트폰", "T": "태블릿", "L": "노트북", "V": "차량 LCD", "M": "모니터"}),
+                                "상태": (7, {"F": "집중", "S": "졸림", "D": "집중결핍", "A": "집중하락", "N": "태만"})}.items():
+            line = []
+            for v in sorted({r["file"].split("/")[-1].split("_")[pos] for r in rows}):
+                g = [r for r in rows if r["file"].split("/")[-1].split("_")[pos] == v and r["face"] and r["prob"] is not None]
+                o = [r["closed"] for r in g if r["label"] == "open"]
+                c = [r["closed"] for r in g if r["label"] == "closed"]
+                line.append(f"{(names or {}).get(v, v)} 감음 {sum(c)}/{len(c)} · 뜬눈오판 {sum(o)}/{len(o)}")
+            print(f"  {k}: " + " | ".join(line))
     print("CSV:", out)
 
 
@@ -686,7 +699,8 @@ def to_wandb():
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("step", choices=["download", "eval", "wandb", "crop", "team", "wrong", "extra"])
-    ap.add_argument("--dir", default=r"D:\cew\faces\dataset_B_FacialImages", help="extra: 외부 사진 폴더 (하위 폴더 이름에 closed / open)")
+    ap.add_argument("--dir", default=r"D:\aihub71421\sel", help="extra: 외부 사진 폴더 (하위 폴더 이름에 closed / open)")
+    ap.add_argument("--pad", type=float, default=0.0, help="extra: 얼굴이 꽉 찬 사진이면 사방을 이 비율만큼 늘림 (CEW 0.4, 얼굴 전체 사진은 0)")
     ap.add_argument("--root", default=ROOT, help="받기 · 결과 폴더 (저장소 밖)")
     ap.add_argument("--keys", type=int, nargs="+", default=[55882], help="download: filekey (기본 TS_G1_1)")
     ap.add_argument("--limit", type=int, default=0, help="crop 시험용: 이만큼만 (결과는 eye_npz_test/)")
@@ -698,4 +712,4 @@ if __name__ == "__main__":
     a = ap.parse_args()
     ROOT = a.root
     {"download": lambda: download(a.keys), "eval": lambda: evaluate(a.set, a.model, a.tta), "wrong": lambda: wrong(a.csv), "wandb": to_wandb, "crop": lambda: crop(a.limit, a.color),
-     "team": lambda: team(a.model, a.tta), "extra": lambda: extra(a.dir, a.model, a.tta)}[a.step]()
+     "team": lambda: team(a.model, a.tta), "extra": lambda: extra(a.dir, a.model, a.tta, a.pad)}[a.step]()
