@@ -13,6 +13,7 @@
 //   - 신호 기록: 미세수면 · PERCLOS 의심 (감김 초 · 확률 · 사진 크기) · 카메라 확인
 //   - 마지막 의심 사진 (서버로 갈 jpg) → 얼굴이 바로 서 있는지 (회전) 확인
 //   - [다음 단계] 버튼 → 로그에 '== N. 동작 시작 ==' + 0.5초마다 상태 한 줄 (PC: adb logcat -s flutter -v raw)
+//   - 프레임마다 [eye_frame] 한 줄 · 동작 버튼 [eye_mark] → tools/eye_replay.py 로 1.5초 · 15% 를 바꿔 경고 횟수 계산
 //
 // [시험 순서]
 //   1. 정면 10초 (평소 각도 · 처리 속도 확인)   2. 눈 2초 감기 → 미세수면
@@ -113,6 +114,8 @@ class _EyeLiveScreenState extends State<EyeLiveScreen> {
       _prob = prob;
       _perclos = perclos;
     });
+    // 프레임마다 한 줄 (tools/eye_replay.py 가 기준값을 바꿔 다시 계산): 시각 ms, 눈 뜸 확률 (모름은 빈칸), 숙임 0/1
+    debugPrint('[eye_frame] ${DateTime.now().difference(_start).inMilliseconds},${prob?.toStringAsFixed(3) ?? ""},${_eye.isHeadDown ? 1 : 0}');
     // 0.5초마다 상태 한 줄 (로그에만) → 단계 표시와 맞춰 어떤 동작에서 무엇이 나왔는지 봄
     final now = DateTime.now();
     if (now.difference(_lastStateLog).inMilliseconds >= 500) {
@@ -128,6 +131,14 @@ class _EyeLiveScreenState extends State<EyeLiveScreen> {
   DateTime _lastStateLog = DateTime.now();
   int _step = 0;
   static const _steps = ['정면 10초', '눈 2초 감기', '눈 뜬 채 고개 4초 숙이기', '화면 밖으로 4초 떨구기', '얼굴 가리기 4초', '계기판 잠깐 보기', '30초 자주 깜빡이기'];
+
+  // 거치 시험 중 지금 하는 동작 표시 → 경고가 어떤 동작에서 났는지 맞춰 봄
+  static const _marks = ['계기판', '고개 돌림', '하품', '기타'];
+
+  void _mark(String label) {
+    debugPrint('[eye_mark] ${DateTime.now().difference(_start).inMilliseconds},$label');
+    _add('✏️ $label');
+  }
 
   void _nextStep() {
     if (_step >= _steps.length) return;
@@ -181,6 +192,24 @@ class _EyeLiveScreenState extends State<EyeLiveScreen> {
                     child: Text(_step >= _steps.length
                         ? '시험 끝'
                         : '다음: ${_step + 1}. ${_steps[_step]} (누르고 시작)'),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Row(
+                    children: [
+                      for (final m in _marks)
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(padding: EdgeInsets.zero),
+                              onPressed: () => _mark(m),
+                              child: Text(m, style: const TextStyle(fontSize: 12)),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 const Divider(height: 1),
