@@ -26,7 +26,8 @@
 #
 # [실행] 서버 venv (mediapipe 1.1.0 · opencv · torch) 로, 저장소 폴더에서:
 #   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py download --keys 55882
-#   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py eval
+#   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py eval [--set val_g1 | val | train]
+#     val_g1 = Validation G1 65명 (첫 시험) · val = Validation 전부 151명 · train = TS_G1_1 (Validation 사람 뺌, 지금 모델이 안 본 사람)
 #   set PYTHONUTF8=1 && sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py wandb
 #     (PYTHONUTF8: 사용자 폴더 이름이 한글이면 wandb 가 cp949 로 읽다 실패함)
 #   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py crop --limit 300   (시험: 결과는 eye_npz_test/)
@@ -88,7 +89,8 @@ def data_dirs():
 
 def find(pattern):
     """ROOT · WEB_DIR · EXTRA_DIR 아래에서 파일 하나 찾기 (API 로 받은 구조 · 브라우저로 받은 구조 둘 다)"""
-    hits = sorted(h for d in data_dirs() for h in glob.glob(os.path.join(d, "**", pattern), recursive=True))
+    hits = sorted(h for d in data_dirs() for h in glob.glob(os.path.join(d, "**", pattern), recursive=True)
+                  if os.path.getsize(h) > 0)  # 브라우저로 받다 멈춘 0바이트 파일은 건너뜀
     if not hits:
         raise SystemExit(f"{' · '.join(data_dirs())} 아래에 {pattern} 이 없습니다 (download 먼저, 또는 --root)")
     return hits[0]
@@ -159,13 +161,13 @@ def merge_parts(raw_dir):
 
 
 # ── 라벨 ─────────────────────────────────────────
-def read_labels(vl_zip, group):
-    """사진 이름 → open / half / closed (두 눈 모두 closed = closed, 하나라도 half · closed = half)"""
+def read_labels(label_zip, group=None):
+    """사진 이름 → open / half / closed (두 눈 모두 closed = closed, 하나라도 half · closed = half). group 을 주면 그 그룹 폴더만"""
     label = {}
-    with zipfile.ZipFile(vl_zip) as z:
+    with zipfile.ZipFile(label_zip) as z:
         for i in z.infolist():
             n = zname(i)
-            if not (n.startswith(group + "/") and n.endswith("_RGB.xml")):
+            if not n.endswith("_RGB.xml") or (group and not n.startswith(group + "/")):
                 continue
             for im in ET.fromstring(z.read(i)).iter("image"):
                 st = [([t.text for t in pg.iter("attribute") if t.get("name") == "status"] or ["open"])[0]
@@ -176,48 +178,67 @@ def read_labels(vl_zip, group):
 
 
 # ── eval ─────────────────────────────────────────
-def evaluate():
+EVAL_SETS = {
+    # 이름: (라벨 zip, 라벨 그룹, 사진 zip 들, Validation 사람 빼기, 결과 CSV)
+    "val_g1": ("VL.zip", "G1", ["VS_G1.zip"], False, "result_g1.csv"),  # 11/02 첫 시험 (65명)
+    "val": ("VL.zip", None, ["VS_G1.zip", "VS_G2.zip", "VS_U.zip"], False, "result_val.csv"),  # Validation 전부 (151명)
+    "train": ("TL.zip", None, ["TS_G1_1.[zZ]ip"], True, "result_train.csv"),  # 학습용 묶음 — 지금 모델은 548 을 안 봤으니 시험지로도 됨 (Validation 사람 뺌)
+}
+
+
+def evaluate(which="val_g1"):
+    """지금 서버 판정(face_service 그대로)으로 548 시험 — 감음 · 반쯤 전부 + 사람 · 거리마다 뜸 OPEN_PER 장"""
+    import tempfile
     sys.path.insert(0, API_DIR)
     os.chdir(API_DIR)
     from services import face_service as fs  # 서버 판정 그대로 (config.py 의 CNN · EAR 기준)
 
-    label = read_labels(find("VL.zip"), "G1")
-    out_dir = os.path.join(ROOT, "eval_g1")
-    with zipfile.ZipFile(find("VS_G1.zip")) as vs:
-        items = {os.path.basename(zname(i)): i for i in vs.infolist() if "/RGB/" in zname(i) and zname(i).endswith(".jpg")}
-        meta = {}
-        for i in vs.infolist():
-            if zname(i).endswith("meta.xml"):
-                t = ET.fromstring(vs.read(i))
-                meta[zname(i).split("/")[0]] = dict(age=t.findtext("age"), gender=t.findtext("gender"), glasses=t.findtext("glasses"))
-        rng, groups, pick = random.Random(SEED), collections.defaultdict(list), []
-        for f in sorted(items):
-            lab = label.get(f)
-            if lab == "open":
-                groups[tuple(f.split("_")[3:5])].append(f)
-            elif lab:
-                pick.append(f)
-        for k in sorted(groups):
-            pick += rng.sample(groups[k], min(OPEN_PER, len(groups[k])))
-        print("라벨", len(label), "/ RGB", len(items), "/ 고른 사진", len(pick), dict(collections.Counter(label[f] for f in pick)), flush=True)
+    label_zip, group, img_zips, drop_val, out_name = EVAL_SETS[which]
+    label = read_labels(find(label_zip), group)
+    drop = val_people(find("VL.zip")) if drop_val else set()
+    zips, items, meta = {}, {}, {}  # 사진 이름 → (zip, 안 이름) / (zip, 번호) → 사람 정보
+    for pattern in img_zips:
+        zp = find(pattern)
+        zips[zp] = zipfile.ZipFile(zp)
+        for i in zips[zp].infolist():
+            n = zname(i)
+            if "/RGB/" in n and n.endswith(".jpg"):
+                items[os.path.basename(n)] = (zp, i)
+            elif n.endswith("meta.xml"):
+                t = ET.fromstring(zips[zp].read(i))
+                meta[(zp, t.findtext("id"))] = dict(age=t.findtext("age"), gender=t.findtext("gender"), glasses=t.findtext("glasses"))
+    rng, groups, pick = random.Random(SEED), collections.defaultdict(list), []
+    for f in sorted(items):
+        lab = label.get(f)
+        if not lab or person_of(f) in drop:
+            continue
+        if lab == "open":
+            groups[(person_of(f), f.split("_")[4])].append(f)
+        else:
+            pick.append(f)
+    for k in sorted(groups):
+        pick += rng.sample(groups[k], min(OPEN_PER, len(groups[k])))
+    print(f"[{which}] 라벨 {len(label)} / RGB {len(items)} / 뺀 Validation 사람 {len(drop)} / 고른 사진 {len(pick)}",
+          dict(collections.Counter(label[f] for f in pick)), flush=True)
 
-        rows = []
-        for k, f in enumerate(pick, 1):
-            person, dist = f.split("_")[3:5]
-            dst = os.path.join(out_dir, person, f)
-            if not os.path.exists(dst):
-                os.makedirs(os.path.dirname(dst), exist_ok=True)
-                with open(dst, "wb") as w:
-                    w.write(vs.read(items[f]))
-            thr = fs.EAR_THRESHOLD
-            n = fs._normalize(fs._real(dst, thr), thr, "microsleep")
-            rows.append(dict(file=f, person=person, dist=dist, view=f.split("_")[6], label=label[f], **meta.get(person, {}),
-                             face=n["face_found"], prob=n["eye_closed_prob"], ear=n["ear"], closed=n["is_closed"],
-                             cancel=n["is_definitely_open"]))
-            if k % 500 == 0:
-                print(k, "/", len(pick), flush=True)
+    rows, tmp = [], os.path.join(tempfile.gettempdir(), "aihub548_eval.jpg")  # 사진은 한 장씩 임시 파일에만 (저장소 · 드라이브에 안 남김)
+    for k, f in enumerate(pick, 1):
+        zp, info = items[f]
+        with open(tmp, "wb") as w:
+            w.write(zips[zp].read(info))
+        thr = fs.EAR_THRESHOLD
+        n = fs._normalize(fs._real(tmp, thr), thr, "microsleep")
+        rows.append(dict(file=f, person=person_of(f), dist=f.split("_")[4], view=f.split("_")[6], label=label[f],
+                         **{"age": "", "gender": "", "glasses": "", **meta.get((zp, f.split("_")[3]), {})},
+                         face=n["face_found"], prob=n["eye_closed_prob"], ear=n["ear"], closed=n["is_closed"],
+                         cancel=n["is_definitely_open"]))
+        if k % 1000 == 0:
+            print(k, "/", len(pick), flush=True)
+    os.remove(tmp)
+    for z in zips.values():
+        z.close()
 
-    out = os.path.join(ROOT, "result_g1.csv")
+    out = os.path.join(ROOT, out_name)
     with open(out, "w", newline="", encoding="utf-8-sig") as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[0]))
         w.writeheader()
@@ -228,7 +249,7 @@ def evaluate():
 
 
 def _stat(rows, lab, **cond):
-    rs = [r for r in rows if r["label"] == lab and all(str(r[k]) == str(v) for k, v in cond.items())]
+    rs = [r for r in rows if r["label"] == lab and all(str(r.get(k) or '') == str(v) for k, v in cond.items())]
     face = [r for r in rs if str(r["face"]) == "True" and r["prob"] not in ("", None)]
     n = len(face)
     return dict(n=len(rs), face_rate=round(n / len(rs), 4) if rs else None,
@@ -242,7 +263,7 @@ def report(rows):
         s = _stat(rows, lab)
         yield f"{lab:<7} n={s['n']:5d}  얼굴 {s['face_rate']:.1%} | 감음 판정 {s['closed_rate']:.1%} | 서버 취소(확실히 뜸) {s['cancel_rate']:.1%}"
     for g in ("dist", "glasses", "view"):
-        for v in sorted({r[g] for r in rows}):
+        for v in sorted({str(r.get(g) or '') for r in rows}):  # meta.xml 이 없는 사람은 빈칸
             for lab in ("open", "closed"):
                 s = _stat(rows, lab, **{g: v})
                 if s["closed_rate"] is not None:
@@ -447,7 +468,7 @@ def to_wandb():
         for k, v in s.items():
             run.summary[f"{lab}_{k}"] = v
     for g in ("dist", "glasses", "view"):
-        for v in sorted({r[g] for r in rows}):
+        for v in sorted({str(r.get(g) or '') for r in rows}):  # meta.xml 이 없는 사람은 빈칸
             for lab in ("open", "half", "closed"):
                 table.add_data(g, v, lab, *_stat(rows, lab, **{g: v}).values())
     sweep = wandb.Table(columns=["cnn_threshold", "open_closed_rate", "half_closed_rate", "closed_closed_rate", "balanced_acc"])
@@ -472,6 +493,7 @@ if __name__ == "__main__":
     ap.add_argument("--root", default=ROOT, help="받기 · 결과 폴더 (저장소 밖)")
     ap.add_argument("--keys", type=int, nargs="+", default=[55882], help="download: filekey (기본 TS_G1_1)")
     ap.add_argument("--limit", type=int, default=0, help="crop 시험용: 이만큼만 (결과는 eye_npz_test/)")
+    ap.add_argument("--set", default="val_g1", choices=list(EVAL_SETS), help="eval: 시험할 묶음 (val_g1 · val · train)")
     a = ap.parse_args()
     ROOT = a.root
-    {"download": lambda: download(a.keys), "eval": evaluate, "wandb": to_wandb, "crop": lambda: crop(a.limit)}[a.step]()
+    {"download": lambda: download(a.keys), "eval": lambda: evaluate(a.set), "wandb": to_wandb, "crop": lambda: crop(a.limit)}[a.step]()
