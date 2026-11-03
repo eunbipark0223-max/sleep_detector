@@ -28,11 +28,22 @@
 #   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py download --keys 55882
 #   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py eval [--set val_g1 | val | train]
 #     val_g1 = Validation G1 65명 (첫 시험) · val = Validation 전부 151명 · train = TS_G1_1 (Validation 사람 뺌, 지금 모델이 안 본 사람)
+#   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py eval --set val --model eye_cnn_548.pt
+#     (eye_cnn.ipynb 7번에서 학습한 모델로 같은 시험 → result_val_eye_cnn_548.csv, 지금 모델 result_val.csv 와 비교)
+#   ... eval --set val --model eye_cnn8_resnet18.pt,eye_cnn8_effb0.pt,eye_cnn8_mnv3.pt   (8번 앙상블: 감음 확률 평균)
+#   ... team [--model ...]   팀 사진 (D:\aihub173\kpi_eye\images · images_cond) 서버 판정 → 묶음 × 라벨 요약
+#   ... eval|team ... --tta   좌우 반전 평균 (결과 이름 끝 _tta)
+#   ... wrong --csv result_val_eye_cnn_548.csv   틀린 사진의 눈만 모은 그림 → D:\aihub548\wrong_*.png (저장소 X)
+#   ... extra [--dir D:\aihub71421\sel] [--model ...]   외부 사진 시험 (하위 폴더 closed · open, 학습에 안 씀)
+#       기본 = AI-Hub 71421 「디스플레이 중심 안구 움직임」 Validation 13명 (한국인 · 스마트폰 · 차량 LCD 등, 라벨: 홍채 없음 + 눈꺼풀 세로/가로 < 0.15 = 감음)
+#       (참고: CEW 는 --dir D:\cew\faces\dataset_B_FacialImages --pad 0.4 — 외국인 얼굴이라 판단에는 안 씀, 11/03)
 #   set PYTHONUTF8=1 && sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py wandb
 #     (PYTHONUTF8: 사용자 폴더 이름이 한글이면 wandb 가 cp949 로 읽다 실패함)
 #   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py crop --limit 300   (시험: 결과는 eye_npz_test/)
 #   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py crop
 #   → D:\aihub548\eye_npz\ 안 파일을 구글 드라이브 sleep_detector/aihub548_eye/ 에 (본인 드라이브만)
+#   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py crop --color
+#   → D:\aihub548\eye_npz_color\ (컬러 눈, eye_cnn.ipynb 8번) → 드라이브 sleep_detector/aihub548_eye_color/
 #
 # [filekey]  TL 55881 · TS_G1_1 55882 · TS_G1_2 55883 · TS_G2_1 55884 · TS_G2_2 55885 · TS_U_1 55886 · TS_U_2 55887
 #            VL 55888 · VS_G1 55889 · VS_G2 55890 · VS_U 55891
@@ -186,14 +197,66 @@ EVAL_SETS = {
 }
 
 
-def evaluate(which="val_g1"):
-    """지금 서버 판정(face_service 그대로)으로 548 시험 — 감음 · 반쯤 전부 + 사람 · 거리마다 뜸 OPEN_PER 장"""
+def make_net(arch):
+    """모델 구조 (eye_cnn.ipynb 8-4 make_net 과 같음) — 출력 1개 = 감음 logit, 흑백을 3채널로 복사해 넣음"""
+    import torch
+    import torchvision
+    if arch == "resnet18":
+        m = torchvision.models.resnet18(weights=None)
+        m.fc = torch.nn.Linear(m.fc.in_features, 1)
+    elif arch == "efficientnet_b0":
+        m = torchvision.models.efficientnet_b0(weights=None)
+        m.classifier[1] = torch.nn.Linear(m.classifier[1].in_features, 1)
+    elif arch == "mobilenet_v3_large":
+        m = torchvision.models.mobilenet_v3_large(weights=None)
+        m.classifier[3] = torch.nn.Linear(m.classifier[3].in_features, 1)
+    else:
+        raise SystemExit(f"모르는 모델 구조: {arch}")
+    return m
+
+
+def use_model(fs, model, tta=False):
+    """face_service 가 쓸 CNN 을 바꿈 (서버 config.py 는 안 바꿈) → 결과 파일 이름에 붙일 말
+    model: ml_models/ 안 이름 또는 경로. 쉼표로 여러 개면 감음 확률 평균(앙상블). .pt 의 arch 로 구조를 고름
+    tta: 눈을 좌우 반전해 한 번 더 넣고 확률 평균 (eye_cnn.ipynb 9-3)"""
+    import torch
+    model = model or os.path.basename(fs.CNN_MODEL_PATH)
+    paths = [os.path.abspath(p if os.path.exists(p) else os.path.join(API_DIR, "ml_models", p)) for p in model.split(",")]
+    nets = []
+    for p in paths:
+        if not os.path.exists(p):
+            raise SystemExit(f"모델 파일이 없습니다: {p}")
+        ck = torch.load(p, map_location="cpu", weights_only=True)
+        nets.append(make_net(ck.get("arch", "resnet18")))
+        nets[-1].load_state_dict(ck["state_dict"])
+        print("CNN 모델:", p, ck.get("arch", "resnet18"), flush=True)
+
+    class Avg(torch.nn.Module):  # face_service._cnn_closed_prob 가 sigmoid 하므로 평균 확률을 logit 으로 돌려줌
+        def __init__(self, ms):
+            super().__init__()
+            self.ms = torch.nn.ModuleList(ms)
+
+        def forward(self, x):
+            xs = [x, x.flip(-1)] if tta else [x]
+            p = torch.stack([torch.sigmoid(m(v)) for m in self.ms for v in xs]).mean(0).clamp(1e-6, 1 - 1e-6)
+            return torch.log(p / (1 - p))
+
+    fs._cnn, fs._cnn_failed = Avg(nets).eval(), False
+    stem = os.path.splitext(os.path.basename(paths[0]))[0]
+    return (stem if len(paths) == 1 else f"{stem}_ens{len(paths)}") + ("_tta" if tta else "")
+
+
+def evaluate(which="val_g1", model="", tta=False):
+    """지금 서버 판정(face_service 그대로)으로 548 시험 — 감음 · 반쯤 전부 + 사람 · 거리마다 뜸 OPEN_PER 장
+    model: 다른 CNN 파일로 시험 (use_model — 쉼표로 여러 개면 앙상블) → 결과 CSV 이름 뒤에 모델 이름"""
     import tempfile
     sys.path.insert(0, API_DIR)
     os.chdir(API_DIR)
     from services import face_service as fs  # 서버 판정 그대로 (config.py 의 CNN · EAR 기준)
 
     label_zip, group, img_zips, drop_val, out_name = EVAL_SETS[which]
+    if model or tta:
+        out_name = out_name.replace(".csv", f"_{use_model(fs, model, tta)}.csv")
     label = read_labels(find(label_zip), group)
     drop = val_people(find("VL.zip")) if drop_val else set()
     zips, items, meta = {}, {}, {}  # 사진 이름 → (zip, 안 이름) / (zip, 번호) → 사람 정보
@@ -270,6 +333,140 @@ def report(rows):
                     yield f"  {lab} · {g}={v:<4} n={s['n']:5d} 감음 판정 {s['closed_rate']:.1%} | 취소 {s['cancel_rate']:.1%}"
 
 
+TEAM_DIRS = [r"D:\aihub173\kpi_eye\images", r"D:\aihub173\kpi_eye\images_cond"]  # 팀 사진 (KPI ①) · 조건 사진 (마스크 · 선글라스, 시연 폰 10/29)
+
+
+def team(model="", tta=False):
+    """팀 사진을 서버 판정 그대로 (eval 과 같은 _real → _normalize) → 묶음(밝은 곳 · 어두운 곳 · 고개 · 마스크 · 선글라스) × 라벨 요약
+    결과 CSV 는 팀 사진 폴더 옆에만 (저장소 X). 팀 사진은 시험에만 — 기준값 · 모델 고르기를 여러 번 반복하지 않는다"""
+    sys.path.insert(0, API_DIR)
+    os.chdir(API_DIR)
+    from services import face_service as fs
+    suffix = use_model(fs, model, tta) if model or tta else os.path.splitext(os.path.basename(fs.CNN_MODEL_PATH))[0]
+    rows = []
+    for d in TEAM_DIRS:
+        for f in sorted(os.listdir(d)):
+            if not f.lower().endswith((".jpg", ".png")):
+                continue
+            thr = fs.EAR_THRESHOLD
+            n = fs._normalize(fs._real(os.path.join(d, f), thr), thr, "microsleep")
+            tag = next((t for t in ("mask", "sun", "turn", "down") if f"_{t}_" in f), "")
+            group = {"mask": "마스크", "sun": "선글라스", "turn": "고개", "down": "고개"}.get(tag, "밝은 곳" if "_bright_" in f else "어두운 곳")
+            rows.append(dict(file=f, group=group, label=fs._label_of(f), face=n["face_found"], prob=n["eye_closed_prob"], ear=n["ear"],
+                             closed=n["is_closed"], cancel=n["is_definitely_open"]))
+    out = os.path.join(os.path.dirname(TEAM_DIRS[0]), f"team_{suffix}.csv")
+    with open(out, "w", newline="", encoding="utf-8-sig") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    print(f"== 팀 사진 ({suffix}) — 감음 판정 / 서버 취소(확실히 뜸), 얼굴 · CNN 값 있는 사진 기준 ==")
+    for g in ("밝은 곳", "어두운 곳", "고개", "마스크", "선글라스"):
+        line = []
+        for lab in ("open", "half", "closed"):
+            rs = [r for r in rows if r["group"] == g and r["label"] == lab and r["face"] and r["prob"] is not None]
+            if rs:
+                line.append(f"{lab} {sum(r['closed'] for r in rs)}/{len(rs)} 감음 · 취소 {sum(r['cancel'] for r in rs)}")
+        print(f"  {g:<5} " + " | ".join(line))
+    print("CSV:", out)
+
+
+def extra(folder, model="", tta=False, pad=0.4):
+    """학습 · 기준값 고르기에 한 번도 안 쓴 외부 얼굴 사진 시험 (예: CEW) — 하위 폴더 이름에 closed / open 이 들어 있으면 그게 라벨
+    얼굴이 사진에 꽉 찬 데이터라 사방을 pad 비율만큼 가장자리 색으로 늘려 MediaPipe 에 넣음 (두 라벨 똑같이). 결과 CSV 는 그 폴더 옆에만"""
+    import tempfile
+    import cv2
+    import numpy as np
+    sys.path.insert(0, API_DIR)
+    os.chdir(API_DIR)
+    from services import face_service as fs
+    suffix = use_model(fs, model, tta) if model or tta else os.path.splitext(os.path.basename(fs.CNN_MODEL_PATH))[0]
+    rows, tmp = [], os.path.join(tempfile.gettempdir(), "extra_eval.png")
+    for sub in sorted(os.listdir(folder)):
+        lab = next((l for l in ("closed", "open") if l in sub.lower()), "")
+        if not lab or not os.path.isdir(os.path.join(folder, sub)):
+            continue
+        for f in sorted(os.listdir(os.path.join(folder, sub))):
+            if not f.lower().endswith((".jpg", ".png")):
+                continue
+            img = cv2.imdecode(np.fromfile(os.path.join(folder, sub, f), np.uint8), cv2.IMREAD_COLOR)
+            if img is None:
+                continue
+            b = int(max(img.shape[:2]) * pad)
+            if b:
+                img = cv2.copyMakeBorder(img, b, b, b, b, cv2.BORDER_REPLICATE)
+            cv2.imencode(".png", img)[1].tofile(tmp)  # imwrite 는 한글 경로에서 실패. png = 원본 화질 그대로
+            thr = fs.EAR_THRESHOLD
+            n = fs._normalize(fs._real(tmp, thr), thr, "microsleep")
+            rows.append(dict(file=f"{sub}/{f}", label=lab, face=n["face_found"], prob=n["eye_closed_prob"], ear=n["ear"],
+                             closed=n["is_closed"], cancel=n["is_definitely_open"]))
+    os.remove(tmp)
+    out = os.path.join(os.path.dirname(os.path.abspath(folder)), f"extra_{os.path.basename(os.path.abspath(folder))}_{suffix}.csv")
+    with open(out, "w", newline="", encoding="utf-8-sig") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    print(f"== 외부 사진 {folder} ({suffix}) ==")
+    rate = {}
+    for lab in ("open", "closed"):
+        rs = [r for r in rows if r["label"] == lab]
+        ok = [r for r in rs if r["face"] and r["prob"] is not None]
+        rate[lab] = sum(r["closed"] for r in ok) / max(len(ok), 1)
+        print(f"  {lab:<6} {len(rs)}장 · 얼굴 · CNN {len(ok)} ({len(ok) / max(len(rs), 1):.1%}) · 감음 판정 {rate[lab]:.1%} · 서버 취소 {sum(r['cancel'] for r in ok) / max(len(ok), 1):.1%}"
+              f" · EAR < 기준 {sum(r['ear'] < fs.EAR_THRESHOLD for r in ok) / max(len(ok), 1):.1%}")
+    if all(any(r["label"] == l for r in rows) for l in ("open", "closed")):
+        print(f"  CNN 균형 정확도 (기준 {fs.CNN_CLOSED_PROB}) = {(1 - rate['open'] + rate['closed']) / 2:.1%}")
+        for th in (0.2, 0.3, 0.4, 0.5, 0.6):
+            o = [r["prob"] >= th for r in rows if r["label"] == "open" and r["face"] and r["prob"] is not None]
+            c = [r["prob"] >= th for r in rows if r["label"] == "closed" and r["face"] and r["prob"] is not None]
+            print(f"    기준 {th}: 뜬 눈 → 감음 {sum(o) / len(o):.1%} · 감은 눈 → 감음 {sum(c) / len(c):.1%} · 균형 {(1 - sum(o) / len(o) + sum(c) / len(c)) / 2:.1%}")
+    if rows[0]["file"].split("/")[-1].startswith("NIA22EYE"):  # 71421: 이름 = …_사람_T_S_기기_rgb_상태_자세_… → 나눠 보기
+        for k, (pos, names) in {"사람": (2, None), "기기": (5, {"S": "스마트폰", "T": "태블릿", "L": "노트북", "V": "차량 LCD", "M": "모니터"}),
+                                "상태": (7, {"F": "집중", "S": "졸림", "D": "집중결핍", "A": "집중하락", "N": "태만"})}.items():
+            line = []
+            for v in sorted({r["file"].split("/")[-1].split("_")[pos] for r in rows}):
+                g = [r for r in rows if r["file"].split("/")[-1].split("_")[pos] == v and r["face"] and r["prob"] is not None]
+                o = [r["closed"] for r in g if r["label"] == "open"]
+                c = [r["closed"] for r in g if r["label"] == "closed"]
+                line.append(f"{(names or {}).get(v, v)} 감음 {sum(c)}/{len(c)} · 뜬눈오판 {sum(o)}/{len(o)}")
+            print(f"  {k}: " + " | ".join(line))
+    print("CSV:", out)
+
+
+def wrong(csv_name, n=48):
+    """eval 결과 CSV → 틀린 사진(감은 눈을 뜸으로 · 뜬 눈을 감음으로, 확신하고 틀린 것부터)의 **눈만** 모은 그림 (저장소 밖에만)
+    사진은 zip 에서 한 장씩 꺼내 서버와 같은 MediaPipe · crop_eye 로 두 눈만 자름 (얼굴 전체는 저장하지 않음)"""
+    import cv2
+    import numpy as np
+    sys.path.insert(0, os.path.join(API_DIR, "services"))
+    rows = list(csv.DictReader(open(os.path.join(ROOT, csv_name), encoding="utf-8-sig")))
+    which = next(k for k, v in EVAL_SETS.items() if csv_name.startswith(v[4][:-4]))
+    rs = [r for r in rows if str(r["face"]) == "True" and r["prob"] not in ("", None) and r["label"] in ("open", "closed")
+          and (str(r["closed"]) == "True") != (r["label"] == "closed")]
+    rs.sort(key=lambda r: -abs(float(r["prob"]) - 0.4))
+    print(f"틀린 사진 {len(rs)}장 (감은 눈 → 뜸 {sum(r['label'] == 'closed' for r in rs)} · 뜬 눈 → 감음 {sum(r['label'] == 'open' for r in rs)}) — 그림은 {min(n, len(rs))}장")
+    items = {}
+    for pattern in EVAL_SETS[which][2]:
+        z = zipfile.ZipFile(find(pattern))
+        for i in z.infolist():
+            if "/RGB/" in zname(i):
+                items[os.path.basename(zname(i))] = (z, i)
+    _init(os.path.join(API_DIR, "ml_models", "face_landmarker.task"), color=True)
+    tiles = []
+    for r in rs[:n]:
+        z, i = items[r["file"]]
+        eyes = crop_bytes(z.read(i)) or []
+        t = np.hstack([e[1] for e in eyes][:2] or [np.zeros((STORE, STORE, 3), np.uint8)])
+        t = cv2.copyMakeBorder(cv2.resize(t, (STORE * 2, STORE)), 18, 0, 0, 0, cv2.BORDER_CONSTANT, value=(255, 255, 255))
+        cv2.putText(t, f"{r['label']} p={float(r['prob']):.2f} {r['dist']} {r['view']} {'G' if r.get('glasses') == 'yes' else ''}", (2, 13), 0, 0.4, (0, 0, 200), 1)
+        tiles.append(t)
+    while len(tiles) % 6:
+        tiles.append(np.full_like(tiles[0], 255))
+    sheet = np.vstack([np.hstack(tiles[k:k + 6]) for k in range(0, len(tiles), 6)])
+    out = os.path.join(ROOT, f"wrong_{os.path.splitext(csv_name)[0]}.png")
+    cv2.imencode(".png", sheet)[1].tofile(out)
+    print("그림:", out, "(AI-Hub 사진 — 저장소 · 단톡 X)")
+
+
 def load_rows():
     return list(csv.DictReader(open(os.path.join(ROOT, "result_g1.csv"), encoding="utf-8-sig")))
 
@@ -309,18 +506,20 @@ def val_people(vl_zip):
 
 
 _det = None
+_color = False  # crop --color: 흑백으로 바꾸지 않고 BGR 그대로 저장 (eye_cnn.ipynb 8번 색온도 증강용)
 
 
-def _init(face_task):
-    global _det
+def _init(face_task, color=False):
+    global _det, _color
     from mediapipe.tasks import python as mp_python
     from mediapipe.tasks.python import vision
     _det = vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(
         base_options=mp_python.BaseOptions(model_asset_path=face_task), num_faces=1))
+    _color = color
 
 
 def crop_bytes(data):
-    """jpg bytes → [('L' | 'R', 96×96 흑백 눈, 눈 중심 x, y), …] (L = 사진 왼쪽 눈) / 얼굴 없음 → None. 서버 face_service 와 같은 눈 점 · crop_eye"""
+    """jpg bytes → [('L' | 'R', 96×96 흑백(--color 면 BGR) 눈, 눈 중심 x, y), …] (L = 사진 왼쪽 눈) / 얼굴 없음 → None. 서버 face_service 와 같은 눈 점 · crop_eye"""
     import cv2
     import mediapipe as mp
     import numpy as np
@@ -338,13 +537,14 @@ def crop_bytes(data):
         eye = crop_eye(bgr, pts)
         if eye is None:
             continue
-        eye = cv2.cvtColor(eye, cv2.COLOR_BGR2GRAY)
-        interp = cv2.INTER_AREA if min(eye.shape) >= STORE else cv2.INTER_LINEAR
+        if not _color:
+            eye = cv2.cvtColor(eye, cv2.COLOR_BGR2GRAY)
+        interp = cv2.INTER_AREA if min(eye.shape[:2]) >= STORE else cv2.INTER_LINEAR  # [:2]: 컬러면 채널 3 이 끼어 늘 LINEAR 가 됐음
         out.append((side, cv2.resize(eye, (STORE, STORE), interpolation=interp), (pts[0][0] + pts[3][0]) / 2, (pts[0][1] + pts[3][1]) / 2))
     return out
 
 
-def crop(limit=0):
+def crop(limit=0, color=False):
     import hashlib
     import json
     from multiprocessing import Pool
@@ -370,9 +570,18 @@ def crop(limit=0):
                     items[os.path.basename(n)] = (zp, i.filename)
 
     # 사람 단위 train / val (Validation 사람은 뺀 뒤)
+    #   한 번 정한 분할은 people_split.json 에 고정 — 묶음을 더 받아도 예전 사람은 그대로 (학습한 사람이 val 로 넘어가지 않게),
+    #   새 사람만 따로 VAL_FRAC 만큼 val
     people = sorted({person_of(f) for f in items if f in labels} - drop)
     rng = random.Random(SEED)
-    val_set = set(rng.sample(people, round(len(people) * VAL_FRAC)))
+    split_path = os.path.join(ROOT, "people_split.json")
+    fixed = json.load(open(split_path, encoding="utf-8")) if os.path.exists(split_path) else {}
+    new = [p for p in people if p not in fixed]
+    val_set = {p for p in people if fixed.get(p) == "val"} | set(rng.sample(new, round(len(new) * VAL_FRAC)))
+    if not limit:
+        fixed.update({p: "val" if p in val_set else "train" for p in new})
+        json.dump(fixed, open(split_path, "w", encoding="utf-8"), ensure_ascii=False, indent=0)
+    print(f"분할: 예전 사람 {len(people) - len(new)} (고정) · 새 사람 {len(new)}", flush=True)
     # 사진 고르기: 감음 · 반쯤 전부 + 사람 · 거리마다 뜸 OPEN_PER_TRAIN 장
     opens, pick = collections.defaultdict(list), []
     for f in sorted(items):
@@ -390,10 +599,10 @@ def crop(limit=0):
     print(f"학습 zip {len(ts_zips)}개 · 라벨 사진 {len(labels)} · RGB 사진 {len(items)} · Validation 이라 뺀 사람 {len(drop)}"
           f" · 남은 사람 {len(people)} (val {len(val_set)}) · 쓸 사진 {len(pick)}", flush=True)
 
-    out_dir = os.path.join(ROOT, "eye_npz_test" if limit else "eye_npz")
+    out_dir = os.path.join(ROOT, ("eye_npz_test" if limit else "eye_npz") + ("_color" if color else ""))
     os.makedirs(out_dir, exist_ok=True)
     made, t0, zf = [], time.time(), {}
-    with Pool(max(os.cpu_count() - 1, 1), initializer=_init, initargs=(face_task,)) as pool:
+    with Pool(max(os.cpu_count() - 1, 1), initializer=_init, initargs=(face_task, color)) as pool:
         for ci in range(0, len(pick), CHUNK):
             part = pick[ci:ci + CHUNK]
             name = f"crops_{hashlib.md5(('|'.join(part) + f'{STORE}{MATCH}{VAL_FRAC}').encode()).hexdigest()[:10]}.npz"
@@ -443,7 +652,7 @@ def crop(limit=0):
     total = collections.Counter()
     for n in made:
         total.update(json.loads(str(np.load(os.path.join(out_dir, n))["counts"])))
-    summary = dict(made=time.strftime("%Y-%m-%d %H:%M"), ts_zips=[os.path.basename(z) for z in ts_zips], store=STORE,
+    summary = dict(made=time.strftime("%Y-%m-%d %H:%M"), ts_zips=[os.path.basename(z) for z in ts_zips], store=STORE, color=color,
                    open_per_train=OPEN_PER_TRAIN, val_frac=VAL_FRAC, match=MATCH, seed=SEED, dropped_val_people=len(drop),
                    people=len(people), val_people=len(val_set), chunks=made, counts=dict(total))
     json.dump(summary, open(os.path.join(out_dir, "summary.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
@@ -489,11 +698,18 @@ def to_wandb():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("step", choices=["download", "eval", "wandb", "crop"])
+    ap.add_argument("step", choices=["download", "eval", "wandb", "crop", "team", "wrong", "extra"])
+    ap.add_argument("--dir", default=r"D:\aihub71421\sel", help="extra: 외부 사진 폴더 (하위 폴더 이름에 closed / open)")
+    ap.add_argument("--pad", type=float, default=0.0, help="extra: 얼굴이 꽉 찬 사진이면 사방을 이 비율만큼 늘림 (CEW 0.4, 얼굴 전체 사진은 0)")
     ap.add_argument("--root", default=ROOT, help="받기 · 결과 폴더 (저장소 밖)")
     ap.add_argument("--keys", type=int, nargs="+", default=[55882], help="download: filekey (기본 TS_G1_1)")
     ap.add_argument("--limit", type=int, default=0, help="crop 시험용: 이만큼만 (결과는 eye_npz_test/)")
+    ap.add_argument("--tta", action="store_true", help="eval · team: 눈을 좌우 반전해 한 번 더 넣고 확률 평균")
+    ap.add_argument("--csv", default="result_val_eye_cnn_548.csv", help="wrong: 틀린 사진을 모을 eval 결과 CSV (ROOT 안)")
+    ap.add_argument("--color", action="store_true", help="crop: 컬러(BGR)로 저장 → eye_npz_color/ (8번 색온도 증강용, 사람 분할은 같음)")
     ap.add_argument("--set", default="val_g1", choices=list(EVAL_SETS), help="eval: 시험할 묶음 (val_g1 · val · train)")
+    ap.add_argument("--model", default="", help="eval · team: 다른 CNN 파일 (예: eye_cnn_548.pt, ml_models/ 안). 쉼표로 여러 개면 앙상블 (감음 확률 평균)")
     a = ap.parse_args()
     ROOT = a.root
-    {"download": lambda: download(a.keys), "eval": lambda: evaluate(a.set), "wandb": to_wandb, "crop": lambda: crop(a.limit)}[a.step]()
+    {"download": lambda: download(a.keys), "eval": lambda: evaluate(a.set, a.model, a.tta), "wrong": lambda: wrong(a.csv), "wandb": to_wandb, "crop": lambda: crop(a.limit, a.color),
+     "team": lambda: team(a.model, a.tta), "extra": lambda: extra(a.dir, a.model, a.tta, a.pad)}[a.step]()

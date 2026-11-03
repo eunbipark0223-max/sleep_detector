@@ -4,9 +4,10 @@
 | --- | --- | --- |
 | `face_landmarker.task` | A | MediaPipe 1.1.0 Face Landmarker 모델. **1주차에 A가 받아서 넣기** (MediaPipe 공식 모델 페이지) |
 | `eye_cnn.pt` | B | CNN 학습 결과 (`notebooks/eye_cnn.ipynb`). CNN 채택 시에만 (`config.USE_CNN = True`) |
-| `eye_cnn_aihub.pt` | B | AI-Hub 미세조정 모델 (`eye_cnn.ipynb` 3번). 웹캠 도구 비교용 · 11/4 채택 결정 전까지 |
+| `eye_cnn_aihub.pt` | B | AI-Hub 173 미세조정 모델 (`eye_cnn.ipynb` 3번, 적외선). 10/28 채택 → 11/03 교체. 적외선 카메라용으로 보관 |
+| `eye_cnn_548.pt` | B | AI-Hub 548 컬러 추가 학습 모델 (`eye_cnn.ipynb` 7번). **11/03 채택 — 서버가 쓰는 모델** (`config.CNN_MODEL_PATH`) |
 
-- `.pt` 두 개는 **A · B · 팀장 PC에만** 둡니다 (torch 설치: `tools/requirements-cnn.txt`). C · D는 없어도 서버가 EAR만으로 돌아갑니다.
+- `.pt` 파일은 **A · B · 팀장 PC에만** 둡니다 (torch 설치: `tools/requirements-cnn.txt`). C · D는 없어도 서버가 EAR만으로 돌아갑니다.
 - `.pt` · `.task` 는 `.gitignore` 에 들어 있어 GitHub에 안 올라갑니다 → 구글 드라이브로만 주고받기.
 
 - 50MB 넘는 파일은 GitHub에 올리지 않고 Google Drive로 공유합니다.
