@@ -12,8 +12,6 @@
 //   -   → nextQuiz 가 오면 한 번 더 → stage 로 색 갱신 (stageUp 이면 한 단계 위)
 //   - 3단계: 관리자 조치완료 전까지 30초마다 '관리자에게 알렸습니다. 정차해 주세요.'
 //   - 2단계 [정차했어요] → rest_screen
-//   - 경고 화면이 떠 있어도 운행 화면은 감지를 계속함 (11/03) → 새 확정(liveResponse)이 오면 내용 · 색 · 음성을 새 단계로
-//     퀴즈 · 휴식 화면이 위에 떠 있는 동안만 detectPaused = true (운행 화면이 감지를 멈춤)
 //
 // [주의]
 //   - 화면 터치로 답하지 않는다 (답은 말로만)
@@ -24,6 +22,7 @@
 
 import 'dart:async';
 
+import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -41,13 +40,13 @@ class WarningScreen extends StatefulWidget {
   /// 사진 1장 테스트처럼 운행 중이 아니면 null
   final ValueListenable<int>? liveStage;
 
-  /// 경고 화면이 떠 있는 동안 운행 화면이 새로 확정한 졸음 (오면 내용 · 색 · 음성을 새 단계로)
-  final ValueListenable<SleepResponse?>? liveResponse;
+  /// 퀴즈 · 휴식 화면을 띄우는 동안 true 로 바꿔 운행 화면의 졸음 판정을 쉬게 한다 (운행 중이 아니면 null)
+  final ValueNotifier<bool>? pauseDetect;
 
-  /// 퀴즈 · 휴식 화면을 띄운 동안 true → 운행 화면이 감지를 멈춤 (끝나면 false, 운행 화면이 판정 기록을 비움)
-  final ValueNotifier<bool>? detectPaused;
+  /// 운행 화면의 카메라 — 있으면 맨 위에 내 얼굴(카메라 화면)을 보여 준다 (사진 1장 테스트처럼 없으면 큰 아이콘)
+  final ValueListenable<CameraController?>? camera;
 
-  const WarningScreen({super.key, required this.response, this.liveStage, this.liveResponse, this.detectPaused});
+  const WarningScreen({super.key, required this.response, this.liveStage, this.pauseDetect, this.camera});
 
   @override
   State<WarningScreen> createState() => _WarningScreenState();
@@ -55,26 +54,22 @@ class WarningScreen extends StatefulWidget {
 
 class _WarningScreenState extends State<WarningScreen> {
   late int _stage; // 지금 화면의 단계 (정차 후 돌려받은 단계로 바뀜)
-  late SleepResponse _res; // 지금 보여 주는 경고 (경고 화면이 떠 있는 동안 새 확정이 오면 바뀜)
-  int _speakId = 0; // 새 경고가 와서 소리를 다시 시작하면 이전 소리 순서는 멈춤
   Timer? _repeat; // 3단계 30초 반복 음성
   String _restMessage = ''; // 휴식 뒤 서버가 준 안내 (예: 주의 단계로 다시 출발합니다). 있으면 이전 단계의 요약 · 안내 · 음성 보고 대신 보여 준다
 
   @override
   void initState() {
     super.initState();
-    _res = widget.response;
-    _stage = _res.stage;
+    _stage = widget.response.stage;
     widget.liveStage?.addListener(_onLiveStage);
-    widget.liveResponse?.addListener(_onLiveResponse);
+    widget.pauseDetect?.value = true; // 알람 · 음성 · 퀴즈가 끝날 때까지 졸음 판정 쉬기
     _speakWarning();
   }
 
   @override
   void dispose() {
     widget.liveStage?.removeListener(_onLiveStage);
-    widget.liveResponse?.removeListener(_onLiveResponse);
-    widget.detectPaused?.value = false;
+    widget.pauseDetect?.value = false; // 혹시 쉬는 중에 닫혀도 판정은 다시 켠다
     VoiceService.stop(); // 말하기 멈춤
     _repeat?.cancel(); // 3단계 반복 멈춤
     super.dispose();
@@ -100,29 +95,6 @@ class _WarningScreenState extends State<WarningScreen> {
     if (s == 3) _startRepeat();
   }
 
-  // 경고 화면이 떠 있는 동안 또 졸음 확정 (예: 1단계 화면을 띄운 채 다시 졸아 2단계) → 새 경고로 바꾸고 소리 처음부터
-  void _onLiveResponse() {
-    final r = widget.liveResponse!.value;
-    if (!mounted || r == null || identical(r, _res)) return;
-    VoiceService.stop();
-    setState(() {
-      _res = r;
-      _stage = r.stage;
-      _restMessage = '';
-    });
-    _speakWarning();
-  }
-
-  // 퀴즈 · 휴식 화면을 띄우는 동안 운행 화면 감지 멈춤
-  Future<T?> _pushPaused<T>(Widget page) async {
-    widget.detectPaused?.value = true;
-    try {
-      return await Navigator.push<T>(context, MaterialPageRoute(builder: (_) => page));
-    } finally {
-      widget.detectPaused?.value = false;
-    }
-  }
-
   // 3단계 30초 반복 시작 (이미 돌고 있으면 그대로)
   void _startRepeat() {
     _repeat ??= Timer.periodic(const Duration(seconds: 30), (_) {
@@ -132,21 +104,22 @@ class _WarningScreenState extends State<WarningScreen> {
 
   // 🔔 알람 → 고정 문구(1·2단계) → 기사 음성 보고 → (3단계) 30초마다 반복
   Future<void> _speakWarning() async {
-    final id = ++_speakId;
-    bool stale() => !mounted || id != _speakId; // 그 사이 새 경고가 왔으면 이 순서는 그만
     await VoiceService.alarm(); // 시작음
-    if (stale()) return;
+    if (!mounted) return;
     // 1·2단계 고정 문구 (3단계는 고정 문구 없이 음성 보고만 — 기획안 8-7)
     if (_stage == 1) await VoiceService.speak('일어나세요');
     if (_stage == 2) await VoiceService.speak('계속 졸고 있습니다. 가까운 졸음쉼터로 이동하세요');
-    if (stale()) return;
-    final voice = _res.driverVoice; // 기사 음성 보고 ("최근 10분 동안 2번 졸았습니다…")
+    if (!mounted) return;
+    final voice = widget.response.driverVoice; // 기사 음성 보고 ("최근 10분 동안 2번 졸았습니다…")
     if (voice.isNotEmpty) await VoiceService.speak(voice);
-    if (stale()) return;
+    if (!mounted) return;
     // 운전 중 음성 퀴즈 (D님 QuizScreen) — 서버가 2분 간격으로만 보내서 없을 수도 있음
-    final quiz = _res.voiceQuiz;
+    final quiz = widget.response.voiceQuiz;
     if (quiz != null) {
-      final newStage = await _pushPaused<int>(QuizScreen(quiz: quiz, stage: _stage));
+      final newStage = await Navigator.push<int>(
+        context,
+        MaterialPageRoute(builder: (_) => QuizScreen(quiz: quiz, stage: _stage)),
+      );
       if (!mounted) return;
       // 퀴즈 중에 해제됐으면 (조치완료 · 1단계 자동 해제) 이제 경고 화면을 닫는다
       if (widget.liveStage?.value == 0) {
@@ -156,8 +129,10 @@ class _WarningScreenState extends State<WarningScreen> {
       }
       if (newStage != null) setState(() => _stage = newStage); // 2번 실패하면 단계가 올라옴
     }
+    // 알람 · 음성 · 퀴즈가 다 끝났으니 이제부터 졸음 판정 (퀴즈가 없었으면 음성 보고가 끝난 뒤부터)
+    widget.pauseDetect?.value = false;
     // 3단계 30초 반복은 퀴즈가 끝난 뒤에 시작
-    if (_stage == 3 && !stale()) _startRepeat();
+    if (_stage == 3) _startRepeat();
   }
 
   // 단계별 큰 글씨 한 줄
@@ -188,11 +163,70 @@ class _WarningScreenState extends State<WarningScreen> {
     }
   }
 
+  // 맨 위 그림 — 운행 중이면 카메라 화면(내 얼굴) + 오른쪽 아래 단계 아이콘 배지, 카메라가 없으면 큰 아이콘
+  Widget _topVisual(Color bg, Color fg) {
+    final bigIcon = Icon(_icon, size: 88, color: fg);
+    final cam = widget.camera;
+    if (cam == null) return bigIcon;
+    return ValueListenableBuilder<CameraController?>(
+      valueListenable: cam,
+      builder: (_, c, _) {
+        if (c == null || !c.value.isInitialized) return bigIcon;
+        // 카메라 높이는 폰 화면 높이에 맞춘다 (아래 글 · 버튼까지 한 화면에 들어가게)
+        final camH = (MediaQuery.of(context).size.height * 0.28).clamp(170.0, 260.0);
+        return Center(
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white, width: 3),
+                ),
+                // 가로로 넓고 세로는 짧게 — 세로로 긴 카메라 화면의 가운데(얼굴)만 잘라서 (버튼까지 한 화면에 들어가게)
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(17),
+                  child: SizedBox(
+                    width: 330,
+                    height: camH,
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      clipBehavior: Clip.hardEdge,
+                      child: SizedBox(
+                        width: 330,
+                        height: 330 * c.value.aspectRatio, // 세로 화면이라 높이 = 너비 × 가로세로비
+                        child: CameraPreview(c),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                right: -10,
+                bottom: -10,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                  child: Icon(_icon, size: 24, color: bg),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   // [정차했어요] → D님 RestScreen 으로 갔다가, 닫히면 돌려받은 단계로 색 바꾸기
   Future<void> _goRest() async {
     // RestScreen 은 닫힐 때 서버 응답(Map: stage · status · message)을 돌려줘요.
     // 휴식 시작에 실패해서 닫히면 null 이 와요.
-    final result = await _pushPaused<Map<String, dynamic>>(const RestScreen());
+    widget.pauseDetect?.value = true; // 휴식 중에는 졸음 판정 쉬기 (기획안: 휴식 중 눈 판정 멈춤)
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(builder: (_) => const RestScreen()),
+    );
+    widget.pauseDetect?.value = false; // 휴식이 끝나면 다시 판정
     if (result == null || !mounted) return;
     final s = result['stage'];
     final newStage = s is num ? s.toInt() : int.tryParse('$s');
@@ -201,16 +235,43 @@ class _WarningScreenState extends State<WarningScreen> {
     setState(() {
       _stage = newStage; // 돌려받은 단계로 색 바꾸기
       // 단계가 바뀌었으면 처음 경고의 요약 · 안내 · 음성 보고는 지금 단계와 맞지 않으니 서버 안내로 바꾼다
-      if (newStage != _res.stage) _restMessage = m is String ? m : '';
+      if (newStage != widget.response.stage) _restMessage = m is String ? m : '';
     });
   }
 
-  // [규정 보기] — 아래에서 올라오는 창에 규정 목록 (regulation_screen 의 공용 카드)
-  void _showRegulations() => showRegulationSheet(context, _res.regulations);
+  // [규정 듣기] — 운전 중에는 글을 읽기 어려우니 소리로 읽어 주고, 화면에도 띄운다. 창을 닫으면 읽기도 멈춘다
+  Future<void> _showRegulations() async {
+    final regs = widget.response.regulations;
+    _speakRegulations(regs);
+    await showRegulationSheet(context, regs); // regulation_screen 의 공용 카드 창
+    VoiceService.stop(); // 창을 닫으면 읽기도 멈춘다
+  }
+
+  // 규정을 소리로 읽기 — 원문이 길 수 있어서 규정마다 앞부분만 짧게
+  Future<void> _speakRegulations(List<Regulation> regs) async {
+    if (regs.isEmpty) {
+      await VoiceService.speak('관련 규정이 없어요.');
+      return;
+    }
+    final text = StringBuffer('관련 규정을 읽어 드릴게요. ');
+    for (final r in regs) {
+      text.write('${r.title}. ${_shorten(r.content)} ');
+    }
+    await VoiceService.speak(text.toString());
+  }
+
+  // 120글자까지만, 가능하면 문장이 끝나는 곳(마침표)에서 자른다
+  String _shorten(String s) {
+    const max = 120;
+    if (s.length <= max) return s;
+    final cut = s.substring(0, max);
+    final dot = cut.lastIndexOf('.');
+    return dot > 30 ? cut.substring(0, dot + 1) : '$cut…';
+  }
 
   @override
   Widget build(BuildContext context) {
-    final r = _res;
+    final r = widget.response;
     final bg = AppColors.stage(_stage);
     final fg = AppColors.onStage(_stage);
     final stageChanged = _stage != r.stage; // 휴식 뒤 단계가 바뀌었으면 처음 경고의 글은 숨긴다
@@ -225,18 +286,17 @@ class _WarningScreenState extends State<WarningScreen> {
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
           children: [
-            const SizedBox(height: 8),
-            Icon(_icon, size: 88, color: fg),
+            _topVisual(bg, fg),
             const SizedBox(height: 16),
             // 큰 글씨 한 줄
             Text(
               _headline,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: fg, height: 1.3),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: fg, height: 1.25),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
             // 요약
             if (stageChanged && _restMessage.isNotEmpty)
               Text(_restMessage,
@@ -244,12 +304,12 @@ class _WarningScreenState extends State<WarningScreen> {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: fg))
             else if (!stageChanged && r.summary.isNotEmpty)
               Text(r.summary,
-                  textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: fg)),
-            const SizedBox(height: 20),
+                  textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: fg)),
+            const SizedBox(height: 12),
             // 안내
             if (!stageChanged && r.guidance.isNotEmpty)
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(14),
@@ -257,11 +317,11 @@ class _WarningScreenState extends State<WarningScreen> {
                 child: Text(r.guidance,
                     style: const TextStyle(fontSize: 15, color: AppColors.textPrimary, height: 1.4)),
               ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             // 기사 음성 보고 문장 (보라 카드)
             if (!stageChanged && r.driverVoice.isNotEmpty)
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: AppColors.aiPurple,
                   borderRadius: BorderRadius.circular(14),
@@ -272,15 +332,15 @@ class _WarningScreenState extends State<WarningScreen> {
                     const Text('🔊 기사 음성 보고',
                         style: TextStyle(
                             fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70)),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Text(r.driverVoice,
-                        style: const TextStyle(fontSize: 15, color: Colors.white, height: 1.4)),
+                        style: const TextStyle(fontSize: 14, color: Colors.white, height: 1.35)),
                   ],
                 ),
               ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 14),
             // 버튼들
-            OutlinedButton(
+            OutlinedButton.icon(
               onPressed: _showRegulations,
               style: OutlinedButton.styleFrom(
                 foregroundColor: fg,
@@ -288,7 +348,8 @@ class _WarningScreenState extends State<WarningScreen> {
                 minimumSize: const Size.fromHeight(50),
                 textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700), // 주황 · 빨강 바탕에서도 글자가 또렷하게
               ),
-              child: const Text('규정 보기'),
+              icon: const Icon(Icons.volume_up_rounded),
+              label: const Text('규정 듣기'),
             ),
             if (_stage == 2) ...[
               const SizedBox(height: 10),

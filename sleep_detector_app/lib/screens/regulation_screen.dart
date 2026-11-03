@@ -6,9 +6,9 @@
 //
 // [이 파일이 하는 일]
 //   - RegulationCard : 근거 규정 1건 카드 (제목 · 출처 배지 · 내용)
-//       · 기본       : 늘 펼친 카드 — 경고 화면 [규정 보기]
+//       · 기본       : 늘 펼친 카드 — 경고 화면 [규정 듣기]
 //       · collapsible : 눌러야 내용이 펼쳐지는 작은 카드 — 규정 도우미(chat) 답 아래 근거
-//   - showRegulationSheet(context, regulations) : 아래에서 올라오는 '관련 규정' 창 (경고 화면 [규정 보기])
+//   - showRegulationSheet(context, regulations) : 아래에서 올라오는 '관련 규정' 창 (경고 화면 [규정 듣기] — 읽기는 경고 화면이)
 //
 // [왜 화면이 아니라 카드인가] (11/03)
 //   규정은 경고 화면 [규정 보기] 창과 규정 도우미 답 아래에서 보여서 따로 넘어가는 화면이 필요 없음.
@@ -122,9 +122,9 @@ class RegulationCard extends StatelessWidget {
   }
 }
 
-/// [규정 보기] — 아래에서 올라오는 '관련 규정' 창 (경고 화면)
-void showRegulationSheet(BuildContext context, List<Regulation> regulations) {
-  showModalBottomSheet(
+/// [규정 듣기] — 아래에서 올라오는 '관련 규정' 창 (경고 화면). 창이 닫히면 끝나는 Future
+Future<void> showRegulationSheet(BuildContext context, List<Regulation> regulations) {
+  return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     builder: (_) => DraggableScrollableSheet(
