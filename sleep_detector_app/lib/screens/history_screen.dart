@@ -6,6 +6,7 @@
 //
 // [이 파일이 하는 일]
 //   - GET /events/my 목록 · 단계 필터 칩 · 상태 배지 (미확인 · 확인 · 조치완료 · 휴식완료)
+//   - 맨 위 요약(오늘 · 누적 · 1~3단계 건수, 단계 필터와 상관없이 전체 기준) + 날짜가 바뀔 때마다 구분 줄 (오늘 · 어제 · 11월 1일 (토))
 //
 // [연결]
 //   - 목록은 C 의 ApiService.fetchMyEvents() (GET /events/my) 로 받는다. 실패하면 '불러오지 못했어요 + 다시 시도'
@@ -78,8 +79,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 // 받은 목록을 건드리지 않게 복사해서 최신순으로 정렬한다
                 final shown = events.where((e) => _stage == null || e.stage == _stage).toList()
                   ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-                if (shown.isEmpty) return _scroll(const [_Hint(text: '이 단계의 경고가 없어요')]);
-                return _scroll([for (final e in shown) _EventCard(event: e)]);
+                final now = DateTime.now();
+                return _scroll([
+                  _Summary(events: events, now: now), // 요약은 단계 필터와 상관없이 전체 기준
+                  if (shown.isEmpty) const _Hint(text: '이 단계의 경고가 없어요') else ..._byDay(shown, now),
+                ]);
               },
             ),
           ),
@@ -88,12 +92,138 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
+  // 최신순으로 정렬된 목록을 날짜가 바뀔 때마다 구분 줄을 끼워서 카드로 만든다
+  static List<Widget> _byDay(List<SleepEvent> sorted, DateTime now) {
+    final counts = <String, int>{};
+    for (final e in sorted) {
+      counts.update(_dayKey(e.createdAt), (n) => n + 1, ifAbsent: () => 1);
+    }
+    final out = <Widget>[];
+    String? lastKey;
+    for (final e in sorted) {
+      final key = _dayKey(e.createdAt);
+      if (key != lastKey) {
+        out.add(_DayHeader(label: _dayLabel(e.createdAt, now), count: counts[key]!));
+        lastKey = key;
+      }
+      out.add(_EventCard(event: e));
+    }
+    return out;
+  }
+
   // 당겨서 새로고침이 안내 문구 화면에서도 되도록 항상 스크롤 가능하게 둔다
   Widget _scroll(List<Widget> children) {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
       children: children,
+    );
+  }
+}
+
+// 같은 날인지 가르는 열쇠 (기기 시간대 기준 연-월-일)
+String _dayKey(DateTime t) {
+  final d = t.toLocal();
+  return '${d.year}-${d.month}-${d.day}';
+}
+
+// 오늘 · 어제 · 11월 1일 (토) · (다른 해는) 2025년 11월 1일 (토)
+String _dayLabel(DateTime t, DateTime now) {
+  final d = t.toLocal();
+  if (d.year < 2000) return '날짜 없음'; // created_at 이 비었을 때의 대신값(1970년)
+  // 날짜끼리만 비교하려고 자정 UTC 로 맞춘다 (시각 차이 · 서머타임에 흔들리지 않게)
+  final days = DateTime.utc(now.year, now.month, now.day).difference(DateTime.utc(d.year, d.month, d.day)).inDays;
+  if (days == 0) return '오늘';
+  if (days == 1) return '어제';
+  const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+  final year = d.year == now.year ? '' : '${d.year}년 ';
+  return '$year${d.month}월 ${d.day}일 (${weekdays[d.weekday - 1]})';
+}
+
+// 목록 맨 위 요약: 오늘 · 누적 · 단계별 건수 (전체 기록 기준)
+class _Summary extends StatelessWidget {
+  final List<SleepEvent> events;
+  final DateTime now;
+  const _Summary({required this.events, required this.now});
+
+  @override
+  Widget build(BuildContext context) {
+    final todayKey = _dayKey(now);
+    final today = events.where((e) => _dayKey(e.createdAt) == todayKey).length;
+    int countStage(int stage) => events.where((e) => e.stage == stage).length;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Row(
+        children: [
+          _Stat(value: today, label: '오늘'),
+          _Stat(value: events.length, label: '누적'),
+          for (final stage in const [1, 2, 3]) _Stat(value: countStage(stage), label: '$stage단계', dot: AppColors.stage(stage)),
+        ],
+      ),
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  final int value;
+  final String label;
+  final Color? dot; // 단계별 칸은 단계 색 점 (색만으로 구분하지 않게 글자도 같이)
+  const _Stat({required this.value, required this.label, this.dot});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Semantics(
+        label: '$label $value건',
+        excludeSemantics: true,
+        child: Column(
+          children: [
+            Text('$value', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+            const SizedBox(height: 2),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (dot != null) ...[
+                  Container(width: 8, height: 8, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
+                  const SizedBox(width: 4),
+                ],
+                Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// 날짜가 바뀔 때 카드 사이에 끼는 구분 줄: "오늘 · 3건"
+class _DayHeader extends StatelessWidget {
+  final String label;
+  final int count;
+  const _DayHeader({required this.label, required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 8, left: 2),
+      child: Semantics(
+        header: true,
+        child: Row(
+          children: [
+            Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+            const SizedBox(width: 6),
+            Text('$count건', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+          ],
+        ),
+      ),
     );
   }
 }
