@@ -14,7 +14,9 @@
 #   -   reason 이 비어 있으면 '사진 1장 테스트' → 서버 EAR 만으로 판정
 #   -   사진 없이 오면 (고개를 떨궈 얼굴을 놓친 채 감김, 10/28) → '얼굴 없음' 과 같이 앱 판단대로 확정 (method mlkit, photo_path 없음)
 #       사진 1장 테스트(reason 없음)는 사진이 꼭 있어야 함 → 400
-#   - POST /drive/start — 운행 시작: 졸음 기록 · 단계 0, 연속 운전 시간 시작
+#   - POST /drive/start — 운행 시작: 0 · 1단계만 0 으로 (2 · 3단계 · 10분 졸음 기록은 유지), 연속 운전 시간 시작
+#   - 휴식 중([정차했어요] ~ [운행 재개])에 온 /detect 는 기록하지 않음 — 휴식 화면 아래 운행 화면 카메라가 계속 돌아서
+#     쉬면서 눈을 감으면 단계가 올라가던 문제 (11/03 A 확인)
 #   - POST /drive/calibrate — 개인 기준 측정 사진 1장씩, 5장 모이면 서버 개인 기준 EAR 완성
 #   - POST /drive/ping — 30초마다 (사진 없음). 응답: stage · status · drive_min · rest_due · rest_message
 #   - POST /drive/rest — [정차했어요] → 휴식 시작 시각 기록
@@ -26,7 +28,7 @@
 #   - 숫자는 _normalize 로 int / float 확정해서 보냄 (수업에서 배운 '5' 문자열 사고 방지)
 #
 # [연결 약속 — 다른 사람 파일의 이름]
-#   - sleep_state (A): reset · get_stage · add_sleep · set_stage · facts · start_rest · rest_elapsed_min · finish_rest
+#   - sleep_state (A): start_drive · reset · get_stage · add_sleep · set_stage · facts · start_rest · rest_elapsed_min · finish_rest
 #                      · get_ear_threshold · set_ear_threshold
 #   - face_service (A): check_eyes(path, user_id, reason) · calibrate(paths)
 #   - drive_timer (팀장): start · ping · rest_done · drive_min
@@ -127,13 +129,14 @@ def _open_stage2_event(session: Session, user_id: int) -> Optional[SleepEvent]:
 # ───────────────────────────────────────────────
 @router.post("/drive/start")
 def drive_start_handler(user: User = Depends(get_current_user)):
-    sleep_state.reset(user.id)
+    # 2 · 3단계는 유지 — 다시 시작으로 경고를 끌 수 없게 (기획안 8장, 11/03 A start_drive)
+    stage = int(sleep_state.start_drive(user.id)["stage"])
     drive_timer.start(user.id)
     with _lock:
         for p in _calib_photos.pop(user.id, []):
             _remove(p)
         _rest_event.pop(user.id, None)
-    return {"success": True, "message": "운행을 시작합니다", "stage": 0, "status": _label(0)}
+    return {"success": True, "message": "운행을 시작합니다", "stage": stage, "status": _label(stage)}
 
 
 @router.post("/drive/calibrate")
@@ -251,6 +254,14 @@ async def detect_handler(
     reason = reason if reason in ("microsleep", "perclos") else ""
     if file is None and not reason:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "사진이 필요합니다 (사진 없이는 운행 중 졸음 의심만 보낼 수 있음)")
+    if reason and sleep_state.get_state(user.id).get("rest_started_at") is not None:
+        # 휴식 중 — 운행 중 졸음 의심은 세지 않는다 (사진도 받지 않음). 사진 1장 테스트(reason 없음)는 그대로 판정
+        stage = int(sleep_state.get_stage(user.id))
+        return {"success": True, "face_found": False, "ear": None, "eye_closed_prob": None, "eye_open_prob": None,
+                "method": "mlkit", "perclos": None, "ear_threshold": None, "is_sleep": False, "reason": "",
+                "stage": stage, "status": _label(stage), "summary": "휴식 중", "guidance": "", "driver_voice": "",
+                "sleep_count_10min": int(sleep_state.facts(user.id)["sleep_count_10min"]),
+                "voice_quiz": None, "regulations": [], "event_id": None}
     tmp_path = await _save_upload(file, config.UPLOAD_TMP_DIR, f"u{user.id}") if file is not None else None
     closed, pc, open_prob = _num(closed_sec), _num(perclos), _num(eye_open_prob)
     lat, lng = _num(latitude), _num(longitude)
