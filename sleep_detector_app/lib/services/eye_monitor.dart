@@ -27,6 +27,7 @@
 //       jpg = 눈 감긴 순간의 프레임을 eye_monitor 가 이미 jpg 로 바꾼 것 → drive_screen 은 그대로 sendDetect
 //       (null 이면 변환 실패 — 사진 없이 보내거나 다음 의심을 기다림)
 //   - onCheckCamera()  ← drive_screen 이 받는 콜백
+//   - reset()  ← drive_screen 이 경고 화면이 닫힐 때 부름 (판정 기록 비우기, 개인 기준은 그대로, 11/03 팀장)
 //   - onFrameResult(eyeOpenProb, perclos, ear)  ← (선택) 0단계 화면 표시용, 모름이면 eyeOpenProb · ear = null
 //   - analyzeFile(String path) → 눈 뜸 확률
 //   - analyzeFileDetail(String path) → EyeReading(눈 뜸 확률 · 폰 EAR · 처리 ms) — 사진 비교 · KPI ① 측정용
@@ -306,6 +307,30 @@ class EyeMonitor {
         ? null
         : CameraImageUtils.toJpg(target, rotation: _headCamera?.sensorOrientation ?? 270);
     onSuspect?.call('microsleep', sec, _calculatePerclos(), avgProb ?? _lastEyeOpenProb, jpg);
+  }
+
+  /// 판정 기록을 처음 상태로 (경고 · 퀴즈 · 휴식 화면이 닫히고 운행 화면으로 돌아올 때, drive_screen 이 부름)
+  ///   그 화면들이 떠 있는 동안에도 아래 운행 화면 카메라는 돌아서 PERCLOS 30초 창에 눈 감김이 쌓임
+  ///   → 돌아오자마자 PERCLOS 의심 → 재개한 1단계가 바로 2단계 (11/03 팀장 확인). 평소 고개 각도도 쉬는 자세로 바뀌어 있어서 같이 비움
+  ///   개인 기준(threshold) 은 그대로
+  void reset() {
+    _closedStartTime = null;
+    _unknownStartTime = null;
+    _microsleepTriggered = false;
+    _perclosTriggered = false;
+    _lastSuspectAt = null;
+    _cameraWarnTriggered = false;
+    _history.clear();
+    _windowStart = null; // PERCLOS 는 다시 30초를 채운 뒤부터 판정
+    _headHistory.clear();
+    _headDown = false;
+    _headStartTime = null;
+    _headUpSince = null;
+    _headTriggered = false;
+    _headFrame = null;
+    _lastClosedFrame = null;
+    _frameInStreak = false;
+    _lastEyeOpenProb = 1.0;
   }
 
   /// 숙이지 않은 프레임 — headUpResetSec 동안 계속 들고 있어야 숙임 시간을 처음부터 (한두 프레임 흔들림은 숙임이 이어짐)

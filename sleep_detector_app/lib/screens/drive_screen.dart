@@ -260,6 +260,7 @@ class _DriveScreenState extends State<DriveScreen> {
           MaterialPageRoute(builder: (_) => WarningScreen(response: res, liveStage: _liveStage)),
         );
         _warningOpen = false; // 경고 화면이 닫히면(뒤로 가기) 다시 띄울 수 있게
+        _eye.reset(); // 경고 · 퀴즈 · 휴식 동안 쌓인 눈 감김으로 돌아오자마자 의심이 나지 않게 (11/03)
       }
     } catch (e) {
       if (mounted) setState(() => _notice = '서버 연결 실패: $e');

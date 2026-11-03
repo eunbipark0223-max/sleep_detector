@@ -257,6 +257,7 @@ async def detect_handler(
     if reason and sleep_state.get_state(user.id).get("rest_started_at") is not None:
         # 휴식 중 — 운행 중 졸음 의심은 세지 않는다 (사진도 받지 않음). 사진 1장 테스트(reason 없음)는 그대로 판정
         stage = int(sleep_state.get_stage(user.id))
+        print(f"[detect] {datetime.now():%H:%M:%S} u{user.id} {reason} → 휴식 중이라 무시 (단계 {stage})")
         return {"success": True, "face_found": False, "ear": None, "eye_closed_prob": None, "eye_open_prob": None,
                 "method": "mlkit", "perclos": None, "ear_threshold": None, "is_sleep": False, "reason": "",
                 "stage": stage, "status": _label(stage), "summary": "휴식 중", "guidance": "", "driver_voice": "",
@@ -278,7 +279,12 @@ async def detect_handler(
         "eye_closed_prob": _r(eye.get("eye_closed_prob")), "eye_open_prob": _r(open_prob),
         "method": eye.get("method") or "ear", "perclos": _r(pc), "ear_threshold": _r(eye.get("ear_threshold")),
     }
-    if not eye.get("is_sleep"):              # 취소 → AI 를 부르지 않고 바로 응답, 사진은 지움 (개인정보)
+    # 판정 한 줄 (시연 폰 시험에서 왜 확정 · 취소됐는지 터미널로 보기, 11/03) — 사진 · 개인정보는 찍지 않음
+    print(f"[detect] {datetime.now():%H:%M:%S} u{user.id} {reason or '사진테스트'} closed={closed} perclos={pc} "
+          f"app_open={open_prob} photo={'Y' if tmp_path else 'N'} → face={base['face_found']} ear={base['ear']}"
+          f"(기준 {base['ear_threshold']}) cnn={base['eye_closed_prob']} method={base['method']} "
+          f"{'확정' if eye.get('is_sleep') else '취소'} 단계 {sleep_state.get_stage(user.id)}")
+    if not eye.get("is_sleep"):             # 취소 → AI 를 부르지 않고 바로 응답, 사진은 지움 (개인정보)
         _remove(tmp_path)
         stage = int(sleep_state.get_stage(user.id))
         return {**base, "is_sleep": False, "reason": "", "stage": stage, "status": _label(stage),
@@ -302,6 +308,8 @@ async def detect_handler(
     agent = await run_in_threadpool(agent_service.generate_response, eye_info, analysis, regulations, facts,
                                     rule_stage, location, user.id)
     stage = int(sleep_state.set_stage(user.id, agent["stage"]))   # 올리기만 (sleep_state 가 보증)
+    print(f"[detect]   → 10분 졸음 {facts['sleep_count_10min']}번 · 규칙 {rule_stage}단계 · Agent {agent['stage']}단계 "
+          f"({'AI' if agent['is_real'] else '규칙'}) → 최종 {stage}단계")
 
     # ⑦ 저장 — 확정 사진만 uploads/events/ 로, DB 1줄 (사진 없이 온 경고는 photo_path 없음 → 관리자 웹 '사진 없음')
     photo_path = None
