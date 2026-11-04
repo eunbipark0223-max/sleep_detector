@@ -31,7 +31,7 @@
 #   sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py eval --set val --model eye_cnn_548.pt
 #     (eye_cnn.ipynb 7번에서 학습한 모델로 같은 시험 → result_val_eye_cnn_548.csv, 지금 모델 result_val.csv 와 비교)
 #   ... eval --set val --model eye_cnn8_resnet18.pt,eye_cnn8_effb0.pt,eye_cnn8_mnv3.pt   (8번 앙상블: 감음 확률 평균)
-#   ... team [--model ...]   팀 사진 (D:\aihub173\kpi_eye\images · images_cond) 서버 판정 → 묶음 × 라벨 요약
+#   ... team [--model ... | --models a.pt b.pt]   팀 사진 (D:\aihub173\kpi_eye\images · images_cond) 서버 판정 → 묶음 × 라벨 요약
 #   ... eval|team ... --tta   좌우 반전 평균 (결과 이름 끝 _tta)
 #   ... wrong --csv result_val_eye_cnn_548.csv   틀린 사진의 눈만 모은 그림 → D:\aihub548\wrong_*.png (저장소 X)
 #   ... curve [--csvs result_val.csv,result_val_eye_cnn_548.csv]   기준값 0.05~0.95 곡선 (오경보 ↔ 반쯤 · 감은 눈 취소) 모델끼리 겹침
@@ -44,7 +44,7 @@
 #   ... final --csv result_val_eye_cnn12_<설정>_s0.csv --t <pick 의 t>   세 숫자 + 건수 (기준 모델도 자기 t 로)
 #   ... cond [--csvs team_a.csv,team_b.csv]   팀 사진 · 조건 사진을 조건별로 (감은 눈 취소 / 뜬 눈 오경보 / 판정 불가, 같은 보고 형식)
 #       기본 = team_eye_cnn_aihub.csv · team_eye_cnn_548.csv (team --model 로 먼저 만들기)
-#   ... extra [--dir D:\aihub71421\sel] [--model ...]   외부 사진 시험 (하위 폴더 closed · open, 학습에 안 씀)
+#   ... extra [--dir D:\aihub71421\sel] [--model ... | --models a.pt b.pt]   외부 사진 시험 (하위 폴더 closed · open, 학습에 안 씀)
 #       기본 = AI-Hub 71421 「디스플레이 중심 안구 움직임」 Validation 13명 (한국인 · 스마트폰 · 차량 LCD 등, 라벨: 홍채 없음 + 눈꺼풀 세로/가로 < 0.15 = 감음)
 #       (참고: CEW 는 --dir D:\cew\faces\dataset_B_FacialImages --pad 0.4 — 외국인 얼굴이라 판단에는 안 씀, 11/03)
 #   set PYTHONUTF8=1 && sleep_detector_api\venv\Scripts\python.exe notebooks\aihub548.py wandb
@@ -1014,7 +1014,7 @@ if __name__ == "__main__":
     ap.add_argument("--color", action="store_true", help="crop: 컬러(BGR)로 저장 → eye_npz_color/ (8번 색온도 증강용, 사람 분할은 같음)")
     ap.add_argument("--set", default="val_g1", choices=list(EVAL_SETS), help="eval: 시험할 묶음 (val_g1 · val · train)")
     ap.add_argument("--scale", type=float, default=1.0, help="eval · extra: 사진을 이 배율로 줄여서 (저해상도 원인 확인, 결과 이름 끝 _s배율)")
-    ap.add_argument("--models", nargs="+", default=[], help="eval: 모델 여러 개를 따로 (앙상블 X) — 사진은 한 번 읽고 모델마다 CSV (12번 실험)")
+    ap.add_argument("--models", nargs="+", default=[], help="eval: 모델 여러 개를 따로 (앙상블 X) — 사진은 한 번 읽고 모델마다 CSV (12번 실험) · team · extra: 모델마다 차례로 CSV")
     ap.add_argument("--t", type=float, default=0.4, help="final: pick 이 val 에서 고른 기준값")
     ap.add_argument("--fa", type=float, default=0.03, help="pick: 뜬 눈 오경보 목표 (이하가 되는 가장 낮은 t)")
     ap.add_argument("--margin", type=float, default=0.02, help="pick: 기준보다 반쯤 취소가 이만큼 넘게 낮을 때만 보정 채택 (팀 확정 2%p)")
@@ -1022,7 +1022,8 @@ if __name__ == "__main__":
     a = ap.parse_args()
     ROOT = a.root
     {"download": lambda: download(a.keys), "eval": lambda: evaluate(a.set, a.model, a.tta, a.scale, a.models), "wrong": lambda: wrong(a.csv), "wandb": to_wandb, "crop": lambda: crop(a.limit, a.color),
-     "team": lambda: team(a.model, a.tta), "curve": lambda: curve(a.csvs.split(",")),
+     "team": lambda: [team(m, a.tta) for m in (a.models or [a.model])], "curve": lambda: curve(a.csvs.split(",")),
      "pick": lambda: pick(a.csvs.split(",") if a.csvs != ap.get_default("csvs") else [], a.fa, a.margin),
      "final": lambda: final(a.csv, a.t),
-     "cond": lambda: cond_table(a.csvs.split(",") if a.csvs != ap.get_default("csvs") else ["team_eye_cnn_aihub.csv", "team_eye_cnn_548.csv"]),"extra": lambda: extra(a.dir, a.model, a.tta, a.pad, a.scale)}[a.step]()
+     "cond": lambda: cond_table(a.csvs.split(",") if a.csvs != ap.get_default("csvs") else ["team_eye_cnn_aihub.csv", "team_eye_cnn_548.csv"]),
+     "extra": lambda: [extra(a.dir, m, a.tta, a.pad, a.scale) for m in (a.models or [a.model])]}[a.step]()
