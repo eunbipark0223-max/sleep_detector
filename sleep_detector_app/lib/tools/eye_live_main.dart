@@ -114,8 +114,8 @@ class _EyeLiveScreenState extends State<EyeLiveScreen> {
       _prob = prob;
       _perclos = perclos;
     });
-    // 프레임마다 한 줄 (tools/eye_replay.py 가 기준값을 바꿔 다시 계산): 시각 ms, 눈 뜸 확률 (모름은 빈칸), 숙임 0/1
-    debugPrint('[eye_frame] ${DateTime.now().difference(_start).inMilliseconds},${prob?.toStringAsFixed(3) ?? ""},${_eye.isHeadDown ? 1 : 0}');
+    // 프레임마다 한 줄 (tools/eye_replay.py 가 기준값을 바꿔 다시 계산): 시각 ms, 눈 뜸 확률 (모름은 빈칸), 숙임 0/1, 웃음 확률
+    debugPrint('[eye_frame] ${DateTime.now().difference(_start).inMilliseconds},${prob?.toStringAsFixed(3) ?? ""},${_eye.isHeadDown ? 1 : 0},${_eye.lastSmileProb?.toStringAsFixed(3) ?? ""}');
     // 0.5초마다 상태 한 줄 (로그에만) → 단계 표시와 맞춰 어떤 동작에서 무엇이 나왔는지 봄
     final now = DateTime.now();
     if (now.difference(_lastStateLog).inMilliseconds >= 500) {

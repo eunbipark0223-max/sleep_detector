@@ -9,7 +9,7 @@
 //
 // [하는 일]
 //   - [갤러리에서 사진 고르기] → 여러 장 선택 → eye_monitor.analyzeFileDetail 로 한 장씩
-//       눈 뜸 확률 · 폰 EAR(눈 윤곽) · 처리 ms · 고개 각도 X(위아래) · Y(좌우)
+//       눈 뜸 확률 · 폰 EAR(눈 윤곽) · 처리 ms · 고개 각도 X(위아래) · Y(좌우) · 웃음 확률
 //   - 결과를 화면 표 + 콘솔(CSV 줄) + 파일로 남김
 //       파일: /sdcard/Android/data/com.example.sleep_detector_app/files/eye_measure.csv
 //       PC 로 가져오기: adb pull /sdcard/Android/data/com.example.sleep_detector_app/files/eye_measure.csv
@@ -49,6 +49,7 @@ class _Row {
         r.ms,
         r.headX?.toStringAsFixed(1) ?? '',
         r.headY?.toStringAsFixed(1) ?? '',
+        r.smileProb?.toStringAsFixed(4) ?? '',
       ].join(',');
 }
 
@@ -94,7 +95,7 @@ class _EyeMeasureScreenState extends State<EyeMeasureScreen> {
   }
 
   Future<void> _save() async {
-    const header = 'file,label,eye_open_prob,phone_ear,ms,head_x,head_y';
+    const header = 'file,label,eye_open_prob,phone_ear,ms,head_x,head_y,smile_prob';
     final lines = [header, ..._rows.map((r) => r.toCsv())];
     // 콘솔에도 남김 (flutter run 창에서 복사 가능)
     debugPrint('===== eye_measure.csv 시작 =====');
