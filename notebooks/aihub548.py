@@ -565,8 +565,9 @@ def curve(csv_names, fa_fix=(0.005, 0.01, 0.03)):
         ok = {lab: [r for r in rs if str(r["face"]) == "True" and r["prob"] not in ("", None)] for lab, rs in by.items()}
         pts = []
         for t in ts:
-            fa, hc, cc = (sum(_judge_at(r, t, ear_thr, ear_margin, open_margin)[i] for r in ok[lab]) / len(ok[lab])
-                          for lab, i in (("open", 0), ("half", 1), ("closed", 1)))
+            # 오경보 = 뜬 눈인데 서버가 취소 못 해 앱 경고가 나감 (CNN 감음 판정만 보면 0.8% 처럼 작게 보임 — 실제 경고는 취소 규칙이 정함)
+            fa, hc, cc = (sum(_judge_at(r, t, ear_thr, ear_margin, open_margin)[1] != want for r in ok[lab]) / len(ok[lab])
+                          for lab, want in (("open", True), ("half", False), ("closed", False)))
             pts.append((t, fa, hc, cc))
         label = os.path.splitext(name)[0]
         line, = ax.plot([p[1] * 100 for p in pts], [p[2] * 100 for p in pts], marker=".", ms=3, label=label)
@@ -582,15 +583,15 @@ def curve(csv_names, fa_fix=(0.005, 0.01, 0.03)):
                 print(f"오경보 {f:.1%} 이하 → 기준값 {fix[0]:.2f}: 오경보 {fix[1]:.2%} · 반쯤 취소 {fix[2]:.1%} · 감은 눈 취소 {fix[3]:.1%}")
         print(f"[기준값 {now} (지금 config) · EAR {ear_thr} + {ear_margin} · 확실히 뜸 {now - open_margin:.2f} 미만]")
         print("묶음     | 전체 | 판정됨 | 판정 불가(얼굴 없음) | 해당 | 비율 | 95% 범위")
-        for lab, what, idx in (("open", "오경보(감음 판정)", 0), ("half", "취소(확실히 뜸)", 1), ("closed", "취소(확실히 뜸)", 1)):
-            k = sum(_judge_at(r, now, ear_thr, ear_margin, open_margin)[idx] for r in ok[lab])
+        for lab, what, want in (("open", "오경보(취소 못 함)", False), ("half", "취소(확실히 뜸)", True), ("closed", "취소(확실히 뜸)", True)):
+            k = sum(_judge_at(r, now, ear_thr, ear_margin, open_margin)[1] == want for r in ok[lab])
             n = len(ok[lab])
             lo, hi = _wilson(k, n)
             print(f"{lab:<6} {what} | {len(by[lab])} | {n} | {len(by[lab]) - n} | {k} | {k / n:.1%} | {lo:.1%} ~ {hi:.1%}")
     for a, what in ((ax, "반쯤 감은 눈"), (ax2, "감은 눈")):
         for f in fa_fix:
             a.axvline(f * 100, color="gray", ls=":", lw=1)
-        a.set_xlabel("뜬 눈 오경보율 (%) — 뜬 눈을 감음으로")
+        a.set_xlabel("뜬 눈 오경보율 (%) — 뜬 눈인데 서버가 취소 못 함 (앱 경고 나감)")
         a.set_ylabel(f"{what} 취소율 (%) — 확실히 뜸으로 경고 취소")
         a.set_title(f"{what} · 아래일수록 좋음")
         a.grid(alpha=0.3)
@@ -614,12 +615,12 @@ def cond_table(csv_names):
         print("조건 | 눈 | 전체 | 판정됨 | 판정 불가 | 해당 | 비율 | 95% 범위")
         for c in ("", "turn", "down", "mask", "sun"):
             for g in ((None,) if c else ("밝은 곳", "어두운 곳")):
-                for lab, what, key in (("closed", "취소", "cancel"), ("half", "취소", "cancel"), ("open", "오경보", "closed")):
+                for lab, what, key in (("closed", "취소", "cancel"), ("half", "취소", "cancel"), ("open", "오경보(취소 못 함)", "cancel")):
                     rs = [r for r in rows if r.get("cond", "") == c and (g is None or r["group"] == g) and r["label"] == lab]
                     if not rs:
                         continue
                     ok = [r for r in rs if r["face"] == "True" and r["prob"] not in ("", None)]
-                    k = sum(r[key] == "True" for r in ok)
+                    k = sum((r[key] == "True") != (lab == "open") for r in ok)  # 뜬 눈은 취소 못 한 수
                     lo, hi = _wilson(k, len(ok))
                     rate = f"{k / len(ok):.1%} | {lo:.1%} ~ {hi:.1%}" if ok else "- | -"
                     print(f"{COND_NAME[c] or g} | {lab} {what} | {len(rs)} | {len(ok)} | {len(rs) - len(ok)} | {k} | {rate}")
