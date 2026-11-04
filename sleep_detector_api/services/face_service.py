@@ -25,6 +25,7 @@
 #   - 먼저 사진 위에 점을 그려서 눈에 찍히는지 확인
 #   - 진짜 판정이 실패하면 얼굴 없음과 같이 처리(앱 판단대로 경고)하고, 원인은 터미널에 [face_service] 로 남긴다
 #   - CNN: torch 가 없거나 eye_cnn.pt 가 없으면 자동으로 EAR 만 씀 (method = ear)
+#   - cnn_status() → CNN 이 지금 실제로 읽혀 있는지 (GET /health · tools/check_cnn.py, 11/04 팀장)
 #
 # 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 # ═══════════════════════════════════════════════════════════════
@@ -84,11 +85,12 @@ RIGHT_EYE = [362, 385, 387, 263, 373, 380]
 _detector = None
 _cnn = None          # eye_cnn.pt 로 만든 모델 (처음 쓸 때 1번 읽음)
 _cnn_failed = False  # 한 번 못 읽으면 다시 시도하지 않고 EAR 만 씀
+_cnn_error = None    # 못 읽은 이유 (예외 이름, cnn_status 가 알려 줌)
 
 
 def _get_cnn():
     """eye_cnn.pt → resnet18 (eye_cnn.ipynb 2-9 방식). torch · 파일이 없으면 None"""
-    global _cnn, _cnn_failed
+    global _cnn, _cnn_failed, _cnn_error
     if _cnn is None and not _cnn_failed:
         try:
             import torch
@@ -100,8 +102,22 @@ def _get_cnn():
             _cnn = m.eval()
         except Exception as e:
             _cnn_failed = True
+            _cnn_error = type(e).__name__
             print(f"[face_service] CNN 을 못 읽어 EAR 만 씀: {e}")
     return _cnn
+
+
+def cnn_status() -> dict:
+    """CNN 이 지금 실제로 판정에 쓰일 수 있는지 (모델을 새로 읽지는 않음). 파일 경로 · 오류 내용은 넣지 않음 (/health 는 로그인 없이 열림)"""
+    return {
+        "mode": "real" if USE_REAL_AI else "mock",
+        "use_cnn": bool(USE_CNN),
+        "model": os.path.basename(CNN_MODEL_PATH),
+        "loaded": _cnn is not None,
+        "error": _cnn_error if _cnn_failed else None,
+        "closed_prob": CNN_CLOSED_PROB,
+        "ear_threshold": EAR_THRESHOLD,
+    }
 
 
 def _cnn_closed_prob(image_bgr, eyes_px) -> float | None:

@@ -8,6 +8,7 @@
 #   - FastAPI 앱을 만들고 routers/ 의 라우터를 등록한다 (user · detect · event · admin · chat · quiz)
 #   - 서버 시작 때 DB 테이블 자동 생성 (수업 코드 그대로)
 #   - 서버 시작 때 눈 판정 모델 미리 읽기 · 30일 지난 졸음 사진 정리 (그 뒤 24시간마다)
+#   - GET /health — 서버 상태 + CNN 이 실제로 쓰이는지 (mode · 모델 · 읽힘 · 판정 방식별 건수)
 #   - static/ (관리자 웹) 과 uploads/events/ (졸음 확정 사진) 를 정적 파일로 연결
 #   - 실행: python main.py  →  http://127.0.0.1:8000/docs
 #
@@ -146,7 +147,15 @@ def root():
 
 @app.get("/health", tags=["기본"])
 def health():
-    return {"status": "ok", "demo_mode": config.DEMO_MODE}
+    """서버 상태 + 눈 판정 상태. eye.mode 가 real · eye.loaded 가 true · judged 가 cnn 위주면 CNN 이 쓰이는 중"""
+    out = {"status": "ok", "demo_mode": config.DEMO_MODE, "eye": None, "judged": None}
+    try:                                     # 라우터가 건너뛰어져도 /health 는 응답한다 (_include_routers)
+        from routers import detect
+        from services import face_service
+        out["eye"], out["judged"] = face_service.cnn_status(), detect.method_counts()
+    except Exception as e:
+        out["eye_error"] = type(e).__name__
+    return out
 
 
 @app.get("/admin", tags=["기본"])

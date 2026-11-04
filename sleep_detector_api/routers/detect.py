@@ -76,6 +76,8 @@ _rest_event = {}         # user_id → event_id
 # 운전 중 음성 퀴즈 최소 간격 (VOICE_QUIZ_GAP_SEC) — 마지막으로 낸 시각
 _last_quiz_at = {}       # user_id → time.time()
 _lock = threading.Lock()
+# 서버를 켠 뒤 /detect 판정 방식별 건수 (GET /health — method 가 cnn 이 아니면 폴백이 난 것)
+_method_counts = {"cnn": 0, "ear": 0, "mlkit": 0}
 
 
 def _num(v):
@@ -127,6 +129,12 @@ def _open_stage2_event(session: Session, user_id: int) -> Optional[SleepEvent]:
         .where(SleepEvent.user_id == user_id, SleepEvent.stage == 2, SleepEvent.status.in_(["미확인", "확인"]))
         .order_by(SleepEvent.id.desc())
     )
+
+
+def method_counts() -> dict:
+    """서버를 켠 뒤 판정 방식별 건수 (main.py GET /health)"""
+    with _lock:
+        return dict(_method_counts)
 
 
 # ───────────────────────────────────────────────
@@ -336,6 +344,8 @@ async def detect_handler(
         "eye_closed_prob": _r(eye.get("eye_closed_prob")), "eye_open_prob": _r(open_prob),
         "method": eye.get("method") or "ear", "perclos": _r(pc), "ear_threshold": _r(eye.get("ear_threshold")),
     }
+    with _lock:
+        _method_counts[base["method"]] = _method_counts.get(base["method"], 0) + 1
     # 판정 한 줄 (시연 폰 시험에서 왜 확정 · 취소됐는지 터미널로 보기, 11/03) — 사진 · 개인정보는 찍지 않음
     print(f"[detect] {datetime.now():%H:%M:%S} u{user.id} {reason or '사진테스트'} closed={closed} perclos={pc} "
           f"app_open={open_prob} photo={'Y' if tmp_path else 'N'} → face={base['face_found']} ear={base['ear']}"
