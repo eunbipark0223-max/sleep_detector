@@ -115,7 +115,10 @@ class _DriveScreenState extends State<DriveScreen> {
     _pingTimer = Timer.periodic(const Duration(seconds: AppConfig.pingSec), (_) => _ping());
 
     _initLocation(); // 위치 권한 묻고 첫 위치 받기
-    _begin(); // 서버가 기억하는 단계 · 휴식을 바로 이어받고 첫 ping (30초 기다리지 않음)
+    // 첫 프레임이 그려진 뒤에 — initState 안에서 경고 화면을 바로 push 하면 'setState() called during build' 가 남
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _begin(); // 서버가 기억하는 단계 · 휴식을 바로 이어받고 첫 ping (30초 기다리지 않음)
+    });
   }
 
   // 운행 화면을 열자마자 — 서버가 기억하는 상태(단계 · 휴식 중)를 받아 화면에 이어 준다.

@@ -160,6 +160,8 @@ def restore_from_events(user_id: int, events: list[tuple[int, str, str, datetime
 
     events : [(stage, status, reason, created_at), ...] 그 기사의 경고 전부
       - 관리자 [조치완료]는 그 기사 단계를 전부 0 으로 되돌림 → 조치완료된 경고와 그보다 오래된 경고는 세지 않음
+      - 가장 최근 휴식완료도 같은 식으로: 그 경고보다 오래된 1 · 2단계 경고는 세지 않음 (3단계는 그대로)
+        (2단계 경고가 2건이고 최근 것만 휴식완료여도 오래된 2단계가 다시 살아나지 않게)
       - 3단계: 조치완료 전까지 / 2단계: 휴식완료 · 조치완료 전까지 / 1단계: 10분 안
       - 휴게 미준수(rest_overdue)는 단계를 올린 경고가 아니라서 세지 않음
     이미 메모리에 단계가 있으면(서버가 켜진 뒤 쓰던 기사) 건드리지 않음. 되살린 단계를 돌려줌.
@@ -169,12 +171,15 @@ def restore_from_events(user_id: int, events: list[tuple[int, str, str, datetime
     now = datetime.now()
     window = timedelta(minutes=_get_window_minutes())
     reset_at = max((c for _, st, _, c in events if st == "조치완료"), default=None)
+    rest_done_at = max((c for _, st, _, c in events if st == "휴식완료"), default=None)
     stage, sleeps = 0, []
     for ev_stage, status, reason, created in events:
         if status == "조치완료" or reason == "rest_overdue":
             continue
         if reset_at is not None and created <= reset_at:
             continue
+        if rest_done_at is not None and created <= rest_done_at and int(ev_stage) < 3:
+            continue                        # 휴식을 마치면 그 전의 1 · 2단계 경고는 끝난 것 (3단계는 조치완료만 해제)
         age = now - created
         active = {3: True, 2: status != "휴식완료", 1: age <= window}.get(int(ev_stage), False)
         if active:
