@@ -13,7 +13,7 @@
 //
 // [만들 것 (이름 약속 — 다른 파일이 이 이름으로 부름)]
 //   - speak(String text)                         → 말이 끝나면 돌아옴
-//   - alarm()                                    → 진동 3번 + 짧은 경고음 (오디오 패키지가 없어 TTS 로 냄)
+//   - alarm()                                    → 진동 3번 + 짧은 경고음 (assets/sounds/alarm.wav), 소리가 끝나면 돌아옴
 //   - listen({type, display, listenSec, onPartial, onGuide}) → String? (최종 글자)
 //       type    : 'add'(덧셈) · 'repeat'(따라 말하기) · null(그 밖의 대답) — 서버 voice_quiz.type 그대로
 //       display : 따라 말하기 문장 (서버 voice_quiz.display) — 다 들었는지 판단에만 씀, 채점은 서버
@@ -42,6 +42,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -66,6 +67,16 @@ class VoiceService {
   static Future<void>? _speaking; // 지금 말하는 중이면 그 Future
   static DateTime? _lastSpeakEnd;
   static int _listenId = 0; // 새 listen / stop 이 오면 1 늘림 → 이전 listen 은 그만 둠
+  static final AudioPlayer _alarmPlayer = AudioPlayer();
+  static Completer<void>? _alarmDone; // 지금 울리는 경고음이 끝나면 완료
+  // 경고음도 TTS 처럼 길안내 소리로 — 음악 소리만 잠깐 줄이고 끝나면 돌려줌
+  static final AudioContext _alarmContext = AudioContext(
+    android: const AudioContextAndroid(
+      contentType: AndroidContentType.sonification,
+      usageType: AndroidUsageType.assistanceNavigationGuidance,
+      audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+    ),
+  );
 
   /// 마지막 listen 에서 첫 글자가 들린 시각(초). 무응답이면 null
   static double? lastAnswerSec;
@@ -117,16 +128,42 @@ class VoiceService {
     }
   }
 
-  /// 짧은 경고 — 진동 3번 + 높은 음으로 '삐삐'. (알람음 파일을 틀 패키지가 없어서 TTS 로 냄)
+  /// 짧은 경고 — 진동 3번 + 경고음 (assets/sounds/alarm.wav, 코드로 직접 만든 소리). 소리가 끝나면 돌아온다.
+  ///   말하는 중 · 듣는 중이면 끊고 울림. 소리를 못 틀면 예전처럼 TTS 로 '삐삐' (경고가 조용해지지 않게)
   static Future<void> alarm() async {
+    await stop();
     for (var i = 0; i < 3; i++) {
       await HapticFeedback.heavyImpact();
       await Future.delayed(const Duration(milliseconds: 120));
     }
-    await _initTts();
-    await _tts.setPitch(1.8);
-    await speak('삐삐');
-    await _tts.setPitch(1.0);
+    final done = Completer<void>();
+    final previous = _alarmDone;
+    if (previous != null && !previous.isCompleted) previous.complete(); // 앞 알람이 울리는 중이면 그 함수는 여기서 끝낸다 (새 알람으로 바뀜)
+    _alarmDone = done;
+    try {
+      await _alarmPlayer.stop();
+      final sub = _alarmPlayer.onPlayerComplete.listen((_) {
+        if (!done.isCompleted) done.complete();
+      });
+      await _alarmPlayer.setAudioContext(_alarmContext);
+      await _alarmPlayer.play(AssetSource('sounds/alarm.wav'));
+      // 완료 신호가 안 와도 경고 · 퀴즈가 멈추지 않게 3초까지만 기다린다
+      await done.future.timeout(const Duration(seconds: 3), onTimeout: () {});
+      await sub.cancel();
+    } catch (e) {
+      debugPrint('[voice] 경고음 실패 → TTS: $e');
+      if (identical(_alarmDone, done)) {
+        await _initTts();
+        await _tts.setPitch(1.8);
+        await speak('삐삐');
+        await _tts.setPitch(1.0);
+      }
+    }
+    if (!done.isCompleted) done.complete();
+    if (identical(_alarmDone, done)) {
+      _alarmDone = null;
+      _lastSpeakEnd = DateTime.now(); // 바로 듣기를 시작해도 경고음이 마이크에 안 들어가게 (micDelay)
+    }
   }
 
   // ═══════════════════════════════════════════════════════════

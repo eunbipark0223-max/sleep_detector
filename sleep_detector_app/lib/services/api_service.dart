@@ -35,6 +35,12 @@ import '../models/sleep_event.dart';
 import '../models/sleep_response.dart';
 import 'auth_service.dart';
 
+/// 로그인 만료 (401) — 운행 화면이 서버 장애와 구분할 때 쓴다 (401 은 알람을 울리지 않음)
+class UnauthorizedException implements Exception {
+  @override
+  String toString() => '로그인이 만료됐어요. 다시 로그인해 주세요';
+}
+
 class ApiService {
   // 서버 주소는 AppConfig.baseUrl 한 곳에서만 가져와요 (팀 규칙)
   static Uri _uri(String path) => Uri.parse('${AppConfig.baseUrl}$path');
@@ -52,7 +58,7 @@ class ApiService {
       _sentToLogin = true;
       onUnauthorized?.call();
     }
-    throw Exception('로그인이 만료됐어요. 다시 로그인해 주세요');
+    throw UnauthorizedException();
   }
 
   /// 다시 로그인했으면 부른다 (다음 만료 때 또 로그인 화면으로 보낼 수 있게)
