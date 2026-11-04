@@ -34,6 +34,8 @@
 #   ... team [--model ...]   팀 사진 (D:\aihub173\kpi_eye\images · images_cond) 서버 판정 → 묶음 × 라벨 요약
 #   ... eval|team ... --tta   좌우 반전 평균 (결과 이름 끝 _tta)
 #   ... wrong --csv result_val_eye_cnn_548.csv   틀린 사진의 눈만 모은 그림 → D:\aihub548\wrong_*.png (저장소 X)
+#   ... curve [--csvs result_val.csv,result_val_eye_cnn_548.csv]   기준값 0.05~0.95 곡선 (오경보 ↔ 반쯤 · 감은 눈 취소) 모델끼리 겹침
+#       + 오경보 0.5 · 1 · 3% 고정점 + 지금 기준값 보고 형식 (전체 / 판정됨 / 판정 불가 / 해당 / 비율 / 95% 범위) — 중간 점검 피드백 11/04
 #   ... extra [--dir D:\aihub71421\sel] [--model ...]   외부 사진 시험 (하위 폴더 closed · open, 학습에 안 씀)
 #       기본 = AI-Hub 71421 「디스플레이 중심 안구 움직임」 Validation 13명 (한국인 · 스마트폰 · 차량 LCD 등, 라벨: 홍채 없음 + 눈꺼풀 세로/가로 < 0.15 = 감음)
 #       (참고: CEW 는 --dir D:\cew\faces\dataset_B_FacialImages --pad 0.4 — 외국인 얼굴이라 판단에는 안 씀, 11/03)
@@ -246,10 +248,67 @@ def use_model(fs, model, tta=False):
     return (stem if len(paths) == 1 else f"{stem}_ens{len(paths)}") + ("_tta" if tta else "")
 
 
-def evaluate(which="val_g1", model="", tta=False):
+def _judge(fs, img, tmp, scale=1.0, info=None, blur=0.0, jpeg=0):
+    """사진 한 장 (BGR 배열) → 서버 판정 그대로 (_real → _normalize) + 눈 폭(px, 두 눈 눈꼬리 사이 평균 — 눈 crop 원래 크기)
+    scale < 1 이면 사진 전체를 줄여서 넣음 (저해상도 확인 — 중간 점검 피드백 11/04). face_service 는 안 고치고 얼굴 검출 결과만 엿봄
+    blur (가우시안 시그마 px) · jpeg (품질 1~100) 은 줄인 뒤 더 망가뜨리기 (CEW 원인 확인 — cewcheck)
+    info 에 dict 를 주면 눈 점 (사진 왼쪽 눈 · 오른쪽 눈 6점씩, 넣은 사진 기준 px) · 눈 선명도를 채움"""
+    import cv2
+    import numpy as np
+    if scale != 1.0:
+        img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    if blur:
+        img = cv2.GaussianBlur(img, (0, 0), blur)
+    if jpeg:
+        img = cv2.imdecode(cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, jpeg])[1], cv2.IMREAD_COLOR)
+    cv2.imencode(".png", img)[1].tofile(tmp)  # imwrite 는 한글 경로에서 실패. png = 화질 그대로
+    det, seen = fs._get_detector(), {}
+
+    class Peek:  # _real 이 부르는 detect 결과를 그대로 넘기면서 눈 점만 봄
+        def detect(self, im):
+            seen["r"] = det.detect(im)
+            return seen["r"]
+
+    orig, fs._get_detector = fs._get_detector, lambda: Peek()
+    try:
+        thr = fs.EAR_THRESHOLD
+        n = fs._normalize(fs._real(tmp, thr), thr, "microsleep")
+    finally:
+        fs._get_detector = orig
+    eye_w = None
+    if seen.get("r") is not None and seen["r"].face_landmarks:
+        h, w = img.shape[:2]
+        lm = seen["r"].face_landmarks[0]
+        eye_w = round(float(np.mean([np.hypot((lm[a].x - lm[b].x) * w, (lm[a].y - lm[b].y) * h)
+                                     for a, b in ((fs.LEFT_EYE[0], fs.LEFT_EYE[3]), (fs.RIGHT_EYE[0], fs.RIGHT_EYE[3]))])), 1)
+        if info is not None:
+            pts = [np.array([(lm[i].x * w, lm[i].y * h) for i in eye]) for eye in (fs.LEFT_EYE, fs.RIGHT_EYE)]
+            info["pts"] = pts
+            info["sharp"] = _sharp(img, pts)
+    return n, eye_w
+
+
+def _sharp(img, pts):
+    """눈 선명도 — 눈마다 눈꼬리 사이 거리만 한 정사각형을 32×32 로 맞춘 뒤 라플라시안 분산 (두 눈 평균). 눈 크기와 상관없이 '눈 안에 디테일이 얼마나 남았나'"""
+    import cv2
+    import numpy as np
+    g, out = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), []
+    for p in pts:
+        c, s = p.mean(0), max(np.hypot(*(p[0] - p[3])), 4) / 2
+        x0, y0, x1, y1 = int(c[0] - s), int(c[1] - s), int(c[0] + s) + 1, int(c[1] + s) + 1
+        patch = g[max(y0, 0):y1, max(x0, 0):x1]
+        if patch.size >= 16:
+            out.append(cv2.Laplacian(cv2.resize(patch, (32, 32), interpolation=cv2.INTER_LINEAR), cv2.CV_64F).var())
+    return round(float(np.mean(out)), 1) if out else None
+
+
+def evaluate(which="val_g1", model="", tta=False, scale=1.0):
     """지금 서버 판정(face_service 그대로)으로 548 시험 — 감음 · 반쯤 전부 + 사람 · 거리마다 뜸 OPEN_PER 장
-    model: 다른 CNN 파일로 시험 (use_model — 쉼표로 여러 개면 앙상블) → 결과 CSV 이름 뒤에 모델 이름"""
+    model: 다른 CNN 파일로 시험 (use_model — 쉼표로 여러 개면 앙상블) → 결과 CSV 이름 뒤에 모델 이름
+    scale: 사진을 이 배율로 줄여서 시험 (CEW 처럼 눈이 작을 때 오경보가 오르나 — 해상도 원인 확인) → 이름 뒤 _s배율"""
     import tempfile
+    import cv2
+    import numpy as np
     sys.path.insert(0, API_DIR)
     os.chdir(API_DIR)
     from services import face_service as fs  # 서버 판정 그대로 (config.py 의 CNN · EAR 기준)
@@ -257,6 +316,8 @@ def evaluate(which="val_g1", model="", tta=False):
     label_zip, group, img_zips, drop_val, out_name = EVAL_SETS[which]
     if model or tta:
         out_name = out_name.replace(".csv", f"_{use_model(fs, model, tta)}.csv")
+    if scale != 1.0:
+        out_name = out_name.replace(".csv", f"_s{scale:g}.csv")
     label = read_labels(find(label_zip), group)
     drop = val_people(find("VL.zip")) if drop_val else set()
     zips, items, meta = {}, {}, {}  # 사진 이름 → (zip, 안 이름) / (zip, 번호) → 사람 정보
@@ -284,17 +345,15 @@ def evaluate(which="val_g1", model="", tta=False):
     print(f"[{which}] 라벨 {len(label)} / RGB {len(items)} / 뺀 Validation 사람 {len(drop)} / 고른 사진 {len(pick)}",
           dict(collections.Counter(label[f] for f in pick)), flush=True)
 
-    rows, tmp = [], os.path.join(tempfile.gettempdir(), "aihub548_eval.jpg")  # 사진은 한 장씩 임시 파일에만 (저장소 · 드라이브에 안 남김)
+    rows, tmp = [], os.path.join(tempfile.gettempdir(), "aihub548_eval.png")  # 사진은 한 장씩 임시 파일에만 (저장소 · 드라이브에 안 남김)
     for k, f in enumerate(pick, 1):
         zp, info = items[f]
-        with open(tmp, "wb") as w:
-            w.write(zips[zp].read(info))
-        thr = fs.EAR_THRESHOLD
-        n = fs._normalize(fs._real(tmp, thr), thr, "microsleep")
+        img = cv2.imdecode(np.frombuffer(zips[zp].read(info), np.uint8), cv2.IMREAD_COLOR)
+        n, eye_w = _judge(fs, img, tmp, scale)
         rows.append(dict(file=f, person=person_of(f), dist=f.split("_")[4], view=f.split("_")[6], label=label[f],
                          **{"age": "", "gender": "", "glasses": "", **meta.get((zp, f.split("_")[3]), {})},
                          face=n["face_found"], prob=n["eye_closed_prob"], ear=n["ear"], closed=n["is_closed"],
-                         cancel=n["is_definitely_open"]))
+                         cancel=n["is_definitely_open"], eye_w=eye_w))
         if k % 1000 == 0:
             print(k, "/", len(pick), flush=True)
     os.remove(tmp)
@@ -343,17 +402,18 @@ def team(model="", tta=False):
     os.chdir(API_DIR)
     from services import face_service as fs
     suffix = use_model(fs, model, tta) if model or tta else os.path.splitext(os.path.basename(fs.CNN_MODEL_PATH))[0]
-    rows = []
+    import tempfile
+    rows, tmp = [], os.path.join(tempfile.gettempdir(), "team_eval.png")
     for d in TEAM_DIRS:
         for f in sorted(os.listdir(d)):
             if not f.lower().endswith((".jpg", ".png")):
                 continue
-            thr = fs.EAR_THRESHOLD
-            n = fs._normalize(fs._real(os.path.join(d, f), thr), thr, "microsleep")
+            n, eye_w = _judge(fs, fs._read_image_bgr(os.path.join(d, f)), tmp)  # 서버와 같은 읽기
             tag = next((t for t in ("mask", "sun", "turn", "down") if f"_{t}_" in f), "")
             group = {"mask": "마스크", "sun": "선글라스", "turn": "고개", "down": "고개"}.get(tag, "밝은 곳" if "_bright_" in f else "어두운 곳")
-            rows.append(dict(file=f, group=group, label=fs._label_of(f), face=n["face_found"], prob=n["eye_closed_prob"], ear=n["ear"],
-                             closed=n["is_closed"], cancel=n["is_definitely_open"]))
+            rows.append(dict(file=f, group=group, cond=tag, label=fs._label_of(f), face=n["face_found"], prob=n["eye_closed_prob"], ear=n["ear"],
+                             closed=n["is_closed"], cancel=n["is_definitely_open"], eye_w=eye_w))  # cond: 고개는 turn(돌림) · down(숙임) 따로
+    os.remove(tmp)
     out = os.path.join(os.path.dirname(TEAM_DIRS[0]), f"team_{suffix}.csv")
     with open(out, "w", newline="", encoding="utf-8-sig") as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[0]))
@@ -370,7 +430,7 @@ def team(model="", tta=False):
     print("CSV:", out)
 
 
-def extra(folder, model="", tta=False, pad=0.4):
+def extra(folder, model="", tta=False, pad=0.4, scale=1.0):
     """학습 · 기준값 고르기에 한 번도 안 쓴 외부 얼굴 사진 시험 (예: CEW) — 하위 폴더 이름에 closed / open 이 들어 있으면 그게 라벨
     얼굴이 사진에 꽉 찬 데이터라 사방을 pad 비율만큼 가장자리 색으로 늘려 MediaPipe 에 넣음 (두 라벨 똑같이). 결과 CSV 는 그 폴더 옆에만"""
     import tempfile
@@ -394,12 +454,11 @@ def extra(folder, model="", tta=False, pad=0.4):
             b = int(max(img.shape[:2]) * pad)
             if b:
                 img = cv2.copyMakeBorder(img, b, b, b, b, cv2.BORDER_REPLICATE)
-            cv2.imencode(".png", img)[1].tofile(tmp)  # imwrite 는 한글 경로에서 실패. png = 원본 화질 그대로
-            thr = fs.EAR_THRESHOLD
-            n = fs._normalize(fs._real(tmp, thr), thr, "microsleep")
+            n, eye_w = _judge(fs, img, tmp, scale)
             rows.append(dict(file=f"{sub}/{f}", label=lab, face=n["face_found"], prob=n["eye_closed_prob"], ear=n["ear"],
-                             closed=n["is_closed"], cancel=n["is_definitely_open"]))
+                             closed=n["is_closed"], cancel=n["is_definitely_open"], eye_w=eye_w))
     os.remove(tmp)
+    suffix += f"_s{scale:g}" if scale != 1.0 else ""
     out = os.path.join(os.path.dirname(os.path.abspath(folder)), f"extra_{os.path.basename(os.path.abspath(folder))}_{suffix}.csv")
     with open(out, "w", newline="", encoding="utf-8-sig") as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[0]))
@@ -465,6 +524,80 @@ def wrong(csv_name, n=48):
     out = os.path.join(ROOT, f"wrong_{os.path.splitext(csv_name)[0]}.png")
     cv2.imencode(".png", sheet)[1].tofile(out)
     print("그림:", out, "(AI-Hub 사진 — 저장소 · 단톡 X)")
+
+
+def _wilson(k, n, z=1.96):
+    """비율 k/n 의 95% 범위 (Wilson) — 사진 수가 적거나 0% 근처여도 범위가 0~1 안"""
+    if not n:
+        return None, None
+    p, d = k / n, 1 + z * z / n
+    c, h = (p + z * z / (2 * n)) / d, z * (p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5 / d
+    return max(c - h, 0.0), min(c + h, 1.0)
+
+
+def _judge_at(r, t, ear_thr, ear_margin, open_margin):
+    """eval CSV 한 줄 → 기준값 t 일 때 서버 판정 (face_service 의 CNN 규칙 그대로) — (감음, 취소)"""
+    p, e = float(r["prob"]), float(r["ear"])
+    return p >= t, p < t - open_margin and e >= ear_thr + ear_margin
+
+
+def curve(csv_names, fa_fix=(0.005, 0.01, 0.03)):
+    """중간 점검 피드백 (11/04): 기준값 0.05~0.95 를 바꿔 가며 (뜬 눈 오경보율, 반쯤 감은 눈 취소율) 곡선 — 모델 여러 개를 한 그림에
+    eval 결과 CSV (사진마다 감음 확률 · EAR) 로 다시 계산만 함 (사진을 다시 안 돌림). 곡선이 아래(같은 오경보에서 취소가 적음)면 개선
+    숫자 = 오경보를 fa_fix 마다 고정 (그 이하가 되는 가장 낮은 기준값) → 반쯤 · 감은 눈 취소율 + 지금 기준값(config) 에서 고정 보고 형식
+    ⚠️ 기준값 ≤ 확실히 뜸 여유(0.1) 이면 취소가 아예 안 생겨 곡선이 0 으로 떨어짐 (규칙 탓, 모델 실력 아님)"""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    sys.path.insert(0, API_DIR)
+    import config
+    ear_thr, ear_margin = config.EAR_THRESHOLD, config.CONFIRM_OPEN_MARGIN
+    open_margin, now = getattr(config, "CNN_OPEN_MARGIN", 0.1), config.CNN_CLOSED_PROB  # 기본값은 face_service 와 같게
+    ts = [round(0.05 + 0.01 * k, 2) for k in range(91)]
+    plt.rcParams["font.family"] = "Malgun Gothic"
+    # 오른쪽 = 감은 눈 취소율: 반쯤만 보면 기준값을 낮춘 옛 모델이 좋아 보이는데, 그때 감은 눈을 취소하는지 같이 봐야 함
+    fig, (ax, ax2) = plt.subplots(1, 2, figsize=(11, 4.8))
+    for name in csv_names:
+        rows = list(csv.DictReader(open(os.path.join(ROOT, name), encoding="utf-8-sig")))
+        by = {lab: [r for r in rows if r["label"] == lab] for lab in ("open", "half", "closed")}
+        ok = {lab: [r for r in rs if str(r["face"]) == "True" and r["prob"] not in ("", None)] for lab, rs in by.items()}
+        pts = []
+        for t in ts:
+            fa, hc, cc = (sum(_judge_at(r, t, ear_thr, ear_margin, open_margin)[i] for r in ok[lab]) / len(ok[lab])
+                          for lab, i in (("open", 0), ("half", 1), ("closed", 1)))
+            pts.append((t, fa, hc, cc))
+        label = os.path.splitext(name)[0]
+        line, = ax.plot([p[1] * 100 for p in pts], [p[2] * 100 for p in pts], marker=".", ms=3, label=label)
+        ax2.plot([p[1] * 100 for p in pts], [p[3] * 100 for p in pts], marker=".", ms=3, color=line.get_color(), label=label)
+        cur = min(pts, key=lambda p: abs(p[0] - now))
+        ax.plot(cur[1] * 100, cur[2] * 100, "o", ms=8, mfc="none", color=line.get_color())
+        ax2.plot(cur[1] * 100, cur[3] * 100, "o", ms=8, mfc="none", color=line.get_color())
+        print(f"\n== {name} ==")
+        for f in fa_fix:
+            # t 가 오를수록 오경보 ↓ · 취소 ↑ → 오경보 f 이하인 가장 낮은 t. 취소가 생기는 t (> 여유) 만
+            fix = next((p for p in pts if p[1] <= f and p[0] > open_margin + 1e-9), None)
+            if fix:
+                print(f"오경보 {f:.1%} 이하 → 기준값 {fix[0]:.2f}: 오경보 {fix[1]:.2%} · 반쯤 취소 {fix[2]:.1%} · 감은 눈 취소 {fix[3]:.1%}")
+        print(f"[기준값 {now} (지금 config) · EAR {ear_thr} + {ear_margin} · 확실히 뜸 {now - open_margin:.2f} 미만]")
+        print("묶음     | 전체 | 판정됨 | 판정 불가(얼굴 없음) | 해당 | 비율 | 95% 범위")
+        for lab, what, idx in (("open", "오경보(감음 판정)", 0), ("half", "취소(확실히 뜸)", 1), ("closed", "취소(확실히 뜸)", 1)):
+            k = sum(_judge_at(r, now, ear_thr, ear_margin, open_margin)[idx] for r in ok[lab])
+            n = len(ok[lab])
+            lo, hi = _wilson(k, n)
+            print(f"{lab:<6} {what} | {len(by[lab])} | {n} | {len(by[lab]) - n} | {k} | {k / n:.1%} | {lo:.1%} ~ {hi:.1%}")
+    for a, what in ((ax, "반쯤 감은 눈"), (ax2, "감은 눈")):
+        for f in fa_fix:
+            a.axvline(f * 100, color="gray", ls=":", lw=1)
+        a.set_xlabel("뜬 눈 오경보율 (%) — 뜬 눈을 감음으로")
+        a.set_ylabel(f"{what} 취소율 (%) — 확실히 뜸으로 경고 취소")
+        a.set_title(f"{what} · 아래일수록 좋음")
+        a.grid(alpha=0.3)
+        a.legend(fontsize=8)
+    fig.suptitle(f"Validation 151명 · 기준값 0.05~0.95 (동그라미 = 지금 {now})")
+    out = os.path.join(ROOT, "curve_" + "_vs_".join(os.path.splitext(n)[0] for n in csv_names) + ".png")
+    fig.tight_layout()
+    fig.savefig(out, dpi=150)
+    print("\n그림:", out, "(숫자만 들어 있음 — 노션 · 발표 OK)")
 
 
 def load_rows():
@@ -698,7 +831,7 @@ def to_wandb():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("step", choices=["download", "eval", "wandb", "crop", "team", "wrong", "extra"])
+    ap.add_argument("step", choices=["download", "eval", "wandb", "crop", "team", "wrong", "extra", "curve"])
     ap.add_argument("--dir", default=r"D:\aihub71421\sel", help="extra: 외부 사진 폴더 (하위 폴더 이름에 closed / open)")
     ap.add_argument("--pad", type=float, default=0.0, help="extra: 얼굴이 꽉 찬 사진이면 사방을 이 비율만큼 늘림 (CEW 0.4, 얼굴 전체 사진은 0)")
     ap.add_argument("--root", default=ROOT, help="받기 · 결과 폴더 (저장소 밖)")
@@ -706,10 +839,12 @@ if __name__ == "__main__":
     ap.add_argument("--limit", type=int, default=0, help="crop 시험용: 이만큼만 (결과는 eye_npz_test/)")
     ap.add_argument("--tta", action="store_true", help="eval · team: 눈을 좌우 반전해 한 번 더 넣고 확률 평균")
     ap.add_argument("--csv", default="result_val_eye_cnn_548.csv", help="wrong: 틀린 사진을 모을 eval 결과 CSV (ROOT 안)")
+    ap.add_argument("--csvs", default="result_val.csv,result_val_eye_cnn_548.csv", help="curve: 한 그림에 겹칠 eval 결과 CSV (쉼표, ROOT 안)")
     ap.add_argument("--color", action="store_true", help="crop: 컬러(BGR)로 저장 → eye_npz_color/ (8번 색온도 증강용, 사람 분할은 같음)")
     ap.add_argument("--set", default="val_g1", choices=list(EVAL_SETS), help="eval: 시험할 묶음 (val_g1 · val · train)")
+    ap.add_argument("--scale", type=float, default=1.0, help="eval · extra: 사진을 이 배율로 줄여서 (저해상도 원인 확인, 결과 이름 끝 _s배율)")
     ap.add_argument("--model", default="", help="eval · team: 다른 CNN 파일 (예: eye_cnn_548.pt, ml_models/ 안). 쉼표로 여러 개면 앙상블 (감음 확률 평균)")
     a = ap.parse_args()
     ROOT = a.root
-    {"download": lambda: download(a.keys), "eval": lambda: evaluate(a.set, a.model, a.tta), "wrong": lambda: wrong(a.csv), "wandb": to_wandb, "crop": lambda: crop(a.limit, a.color),
-     "team": lambda: team(a.model, a.tta), "extra": lambda: extra(a.dir, a.model, a.tta, a.pad)}[a.step]()
+    {"download": lambda: download(a.keys), "eval": lambda: evaluate(a.set, a.model, a.tta, a.scale), "wrong": lambda: wrong(a.csv), "wandb": to_wandb, "crop": lambda: crop(a.limit, a.color),
+     "team": lambda: team(a.model, a.tta), "curve": lambda: curve(a.csvs.split(",")), "extra": lambda: extra(a.dir, a.model, a.tta, a.pad, a.scale)}[a.step]()
