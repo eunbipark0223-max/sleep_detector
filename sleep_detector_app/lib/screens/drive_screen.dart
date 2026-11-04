@@ -334,6 +334,8 @@ class _DriveScreenState extends State<DriveScreen> {
         lng: _lng,
       );
       if (!mounted) return;
+      // 서버가 취소하면 눈 감시 도구에 알린다 (고개 숙인 채 계속 자면 사진 없이 한 번 더 보내게, A)
+      if (!res.isSleep) _eye.serverCancelled();
       _notice = res.isSleep ? '졸음 확정 (${res.stage}단계)' : '서버 확인: 취소';
       // 경고 화면이 떠 있고 단계가 그대로면 알람 · 음성을 다시 내지 않는다 (단계가 올라갈 때만, 기획안 6-6)
       final sameStage = _warningRoute != null && res.stage == _stage;
