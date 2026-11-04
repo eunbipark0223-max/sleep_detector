@@ -5,7 +5,7 @@
 #
 # [설계 — 돌리기 전에 정해 둔 것 (11/02, 첫 시험의 편향을 고침)]
 #   1. 질문 (tools/kpi4_questions.csv): 자료(knowledge/)를 보고 만든 질문은 쓰지 않음 — RAG 에 유리해짐
-#      · app  : 앱 규정 도우미 예시 질문 4개 (실제 사용자가 누르는 질문)
+#      · app  : 앱 규정 도우미 예시 질문 4개 (실제 사용자가 누르는 질문) — a3 는 11/04 지시문 조정에 써서 집계 제외 (exclude 칸)
 #      · team : 팀원이 knowledge/ 를 보지 않고 '기사라면 물어볼 질문' 을 쓴 것 (6개 이상)
 #      · 돌리기 전에 B 가 질문마다 answerable(yes / no) · gold(정답 법령 · 조항, law.go.kr 로 확인) · key_facts 를 채움
 #        answerable = knowledge/ 문서로 답할 수 있나 → '자료 범위' 지표 (RAG 가 답할 수 있는 질문 비율)
@@ -53,15 +53,23 @@ ARTICLE = re.compile(r"제\s*\d+\s*조(?:\s*의\s*\d+)?")
 CITE_NO = re.compile(r"\s*\[\d+(?:\s*,\s*\d+)*\]")
 
 
+def _excluded(r):
+    """exclude 칸에 이유가 있으면 집계에서 뺌 (예: a3 — 11/04 이 질문으로 chat_service 지시문을 고침 → 시험 질문이 아님)"""
+    return bool((r.get("exclude") or "").strip())
+
+
 def load_questions():
     rows = list(csv.DictReader(open(QUESTIONS_CSV, encoding="utf-8-sig")))
-    return [r for r in rows if r["question"].strip()]
+    return [r for r in rows if r["question"].strip() and not _excluded(r)]
 
 
 def check():
     rows = list(csv.DictReader(open(QUESTIONS_CSV, encoding="utf-8-sig")))
     empty = [r["id"] for r in rows if not r["question"].strip()]
-    qs = [r for r in rows if r["question"].strip()]
+    skipped = [f"{r['id']}({r['exclude'].strip()})" for r in rows if _excluded(r)]
+    if skipped:
+        print(f"집계 제외: {', '.join(skipped)}")
+    qs = [r for r in rows if r["question"].strip() and not _excluded(r)]
     no_label = [r["id"] for r in qs if r["answerable"].strip() not in ("yes", "no")]
     no_gold = [r["id"] for r in qs if r["answerable"].strip() == "yes" and not r["gold"].strip()]
     print(f"질문 {len(qs)}개 (출처: {', '.join(sorted({r['source'] for r in qs}))}) · 빈 질문 {empty or '없음'}")

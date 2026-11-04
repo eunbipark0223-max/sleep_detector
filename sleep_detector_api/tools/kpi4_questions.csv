@@ -1,11 +1,11 @@
-id,source,question,answerable,gold,key_facts,note
-a1,app,화물차는 몇 시간 운전하면 쉬어야 해?,,,,앱 규정 도우미 예시 질문 (chat_screen _greetingSuggestions)
-a2,app,휴게시간은 최소 몇 분이야?,,,,앱 예시
-a3,app,졸음운전으로 사고 나면 처벌은?,,,,앱 예시 — knowledge/ 에 처벌 · 벌칙 조문 없음 (11/02 확인)
-a4,app,운전 중 휴대전화 써도 돼?,,,,앱 예시
-t1,team,,,,,팀원이 knowledge/ 를 보지 않고 '기사라면 물어볼 질문' 을 씀 (t1~t6)
-t2,team,,,,,
-t3,team,,,,,
-t4,team,,,,,
-t5,team,,,,,
-t6,team,,,,,
+id,source,question,answerable,gold,key_facts,exclude,note
+a1,app,화물차는 몇 시간 운전하면 쉬어야 해?,,,,,앱 규정 도우미 예시 질문 (chat_screen _greetingSuggestions)
+a2,app,휴게시간은 최소 몇 분이야?,,,,,앱 예시
+a3,app,졸음운전으로 사고 나면 처벌은?,,,,지시문 조정에 사용,앱 예시 — knowledge/ 에 도로교통법 제154조 제3호(과로 운전 벌칙) · 교통사고처리 특례법 제3조 있음. 11/04 이 질문으로 chat_service 지시문을 고쳤기 때문에 KPI ④ 집계에서 뺌
+a4,app,운전 중 휴대전화 써도 돼?,,,,,앱 예시
+t1,team,,,,,,팀원이 knowledge/ 를 보지 않고 '기사라면 물어볼 질문' 을 씀 (t1~t6)
+t2,team,,,,,,
+t3,team,,,,,,
+t4,team,,,,,,
+t5,team,,,,,,
+t6,team,,,,,,
