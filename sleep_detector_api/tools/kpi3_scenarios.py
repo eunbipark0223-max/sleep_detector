@@ -239,8 +239,29 @@ def bonus_no_photo():
     return f"{'확정' if r['is_sleep'] else '취소'} · {r['method']} · {r['stage']}단계 · {photo} · 사진 테스트 {test}"
 
 
+def bonus_restart():
+    """운행을 다시 시작해도 2 · 3단계는 그대로 (기사는 끌 수 없음, 11/03), 1단계는 0단계로"""
+    out = []
+    for n in (1, 2, 3):
+        h, _ = new_driver()
+        for _ in range(n):
+            doze(h)
+        out.append(client.post("/drive/start", headers=h).json()["stage"])
+    return " · ".join(map(str, out))
+
+
+def bonus_rest_detect():
+    """휴식 중(정차했어요 ~ 운행 재개)에 온 졸음 의심은 세지 않음 (11/03)"""
+    h, _ = new_driver()
+    doze(h)
+    doze(h)
+    client.post("/drive/rest", headers=h)
+    r = doze(h)
+    return f"{'무시' if not r['is_sleep'] else '확정'} · {r['stage']}단계"
+
+
 SCENARIOS = [
-    ("① 졸음 1회 → 1단계",                     1, s1),
+    ("① 졸음 1회 → 1단계",                    1, s1),
     ("② 10분 안 졸음 2회 → 2단계",              2, s2),
     ("③ 10분 안 졸음 3회 → 3단계",              3, s3),
     ("④ 1단계에서 10분 졸음 없음 → 0단계",        0, s4),
@@ -254,7 +275,9 @@ SCENARIOS = [
     ("⑫ 운전 중 퀴즈 2번 실패 → 단계 +1",          "2단계 · no_response 1건", s12),
 ]
 BONUS = [("(보너스) 3단계는 휴식으로 안 풀림 → 3단계", 3, bonus),
-         ("(보너스) 사진 없는 졸음 → 앱 판단대로 확정", "확정 · mlkit · 1단계 · 사진 없음 · 사진 테스트 400", bonus_no_photo)]
+         ("(보너스) 사진 없는 졸음 → 앱 판단대로 확정", "확정 · mlkit · 1단계 · 사진 없음 · 사진 테스트 400", bonus_no_photo),
+         ("(보너스) 1 · 2 · 3단계에서 운행 다시 시작", "0 · 2 · 3", bonus_restart),
+         ("(보너스) 2단계 휴식 중 졸음 의심 → 무시", "무시 · 2단계", bonus_rest_detect)]
 
 
 def run(items):

@@ -98,6 +98,7 @@ class _DriveScreenState extends State<DriveScreen> {
 
     WakelockPlus.enable(); // 운행 중에는 화면이 꺼지지 않게 (꺼지면 카메라 · 눈 판정도 멈춤)
     _startCamera(); // 카메라 켜기
+    _pauseDetect.addListener(_onPauseChanged);
 
     // 2초마다 카메라가 살아 있는지 확인한다
     _watchdog = Timer.periodic(const Duration(seconds: 2), (_) {
@@ -246,6 +247,7 @@ class _DriveScreenState extends State<DriveScreen> {
     _pingTimer?.cancel(); // ping 끄기
     _watchdog?.cancel(); // 카메라 지킴이 끄기
     _liveStage.dispose();
+    _pauseDetect.removeListener(_onPauseChanged);
     _pauseDetect.dispose();
     _cameraNote.dispose();
     _controller?.dispose(); // 카메라 끄기
@@ -305,7 +307,16 @@ class _DriveScreenState extends State<DriveScreen> {
     );
     _warningRoute = route;
     await Navigator.of(context).push(route);
-    if (_warningRoute == route) _warningRoute = null; // 이 경고 화면이 닫혔으면 다시 띄울 수 있게
+    if (_warningRoute == route) {
+      _warningRoute = null; // 이 경고 화면이 닫혔으면 다시 띄울 수 있게
+      _eye.reset(); // 경고 화면 동안 쌓인 눈 감김으로 돌아오자마자 의심이 나지 않게 (11/03 팀장)
+    }
+  }
+
+  // 판정을 쉬다가(경고 음성 · 퀴즈 · 휴식) 다시 켤 때 — 그동안 쌓인 눈 감김(쉬면서 감은 눈 등)은 세지 않음
+  //   안 비우면 [운행 재개] 하자마자 PERCLOS 의심 → 1단계가 바로 2단계 (11/03 팀장)
+  void _onPauseChanged() {
+    if (!_pauseDetect.value) _eye.reset();
   }
 
   // 얼굴이 3초 이상 안 보임 (A님 도구가 알려 줌) → 글 + 🔊

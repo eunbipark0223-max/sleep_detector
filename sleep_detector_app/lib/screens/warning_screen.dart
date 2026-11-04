@@ -30,6 +30,7 @@ import '../models/sleep_response.dart';
 import '../services/voice_service.dart';
 import '../theme.dart';
 import 'quiz_screen.dart';
+import 'regulation_screen.dart';
 import 'rest_screen.dart';
 
 class WarningScreen extends StatefulWidget {
@@ -238,57 +239,11 @@ class _WarningScreenState extends State<WarningScreen> {
     });
   }
 
-  // [규정 보기] — 아래에서 올라오는 창에 규정 목록
   // [규정 듣기] — 운전 중에는 글을 읽기 어려우니 소리로 읽어 주고, 화면에도 띄운다. 창을 닫으면 읽기도 멈춘다
   Future<void> _showRegulations() async {
     final regs = widget.response.regulations;
     _speakRegulations(regs);
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.6,
-        maxChildSize: 0.9,
-        builder: (_, controller) => ListView(
-          controller: controller,
-          padding: const EdgeInsets.all(20),
-          children: [
-            const Text('관련 규정',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-            const SizedBox(height: 12),
-            if (regs.isEmpty)
-              const Text('표시할 규정이 없어요.', style: TextStyle(color: AppColors.textMuted)),
-            for (final r in regs)
-              Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  border: Border.all(color: AppColors.cardBorder),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(r.title,
-                        style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-                    if (r.source.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(r.source,
-                            style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                      ),
-                    const SizedBox(height: 8),
-                    Text(r.content,
-                        style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
+    await showRegulationSheet(context, regs); // regulation_screen 의 공용 카드 창
     VoiceService.stop(); // 창을 닫으면 읽기도 멈춘다
   }
 

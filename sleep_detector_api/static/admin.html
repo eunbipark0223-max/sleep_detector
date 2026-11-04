@@ -15,6 +15,8 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     · [상세 보기 및 조치] → 모달: 사진 · 위치 · Agent 보고서(상황 · 단계 이유 · 법규 · 권장 조치) · 운전 중 퀴즈 · 휴식 기록
     · [확인했어요] / [조치완료] → PATCH /events/{id}/status → 3단계 해제
   - 기사 관리: 기사 목록(이름 · 이메일 · 상태 · 오늘 경고 · 누적 경고 · 마지막 경고) + 검색 + 연락 모달
+    · [상세 보기] → 기사 상세 모달: 연락처 · 상태 · 단계별 경고 건수 · 음성 응답 없음 · 휴게 미준수 · 최근 경고 10건
+      (경고 줄의 [상세 보기]는 경고 상세 모달을 그 위에 겹쳐 연다). 서버 API 추가 없이 이미 받은 경고 · 기사 목록으로 계산
   - AI 처리 표시: 보고서의 report.is_real(llm · rag · agent)로 '모의'로 대체된 단계를 태그로 알려 줌
 
 [기사 연락 (전화번호 · 차량번호)]
@@ -205,6 +207,25 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     .contact-body .mail { margin-top: 8px; font-size: 16px; font-weight: 700; color: var(--text-sub); word-break: break-all; }
     .contact-body .note { margin-top: 12px; font-size: 15px; color: var(--text-sub); }
 
+    /* 기사 상세 모달 */
+    .row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .driver-body { padding: 24px; display: grid; gap: 22px; }
+    .d-title { font-size: 17px; font-weight: 800; color: var(--brand); margin-bottom: 10px; }
+    .d-profile { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px 24px; }
+    .d-item { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .d-item .k { font-size: 14px; color: var(--text-sub); }
+    .d-item .v { font-size: 16px; font-weight: 700; word-break: break-all; }
+    .d-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; }
+    .d-stat { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; background: var(--bg); }
+    .d-stat .k { display: block; font-size: 14px; color: var(--text-sub); }
+    .d-stat .v { font-size: 26px; font-weight: 800; }
+    .d-stat .v small { font-size: 14px; font-weight: 500; color: var(--text-sub); margin-left: 2px; }
+    .d-stat.alert { border-color: var(--stage-3-text); background: var(--alert-bg); }
+    .d-stat.alert .v, .d-stat.alert .k { color: var(--stage-3-text); }
+    .d-recent { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .driver-body table { min-width: 620px; }
+    .d-more { margin-top: 8px; font-size: 14px; color: var(--text-sub); }
+
     /* ── 알림 ── */
     #toast { position: fixed; bottom: 32px; left: 50%; transform: translate(-50%, 12px); background: rgba(15,23,42,.96); color: #fff; padding: 14px 22px; border-radius: 12px; font-size: 15px; font-weight: 700; max-width: 90vw; text-align: center; line-height: 1.5; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; z-index: 200; }
     #toast.show { opacity: 1; transform: translate(-50%, 0); }
@@ -292,6 +313,18 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       </div>
     </section>
   </main>
+
+  <!-- 모달: 기사 상세 (겹쳐 열리는 순서가 DOM 순서: 기사 → 경고 → 연락) -->
+  <div class="modal-overlay" id="driverModal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dTitle">
+      <div class="modal-header brand">
+        <h2 id="dTitle"></h2>
+        <button class="modal-close" type="button" id="dClose" aria-label="닫기"><span data-icon="close" data-size="24" aria-hidden="true"></span></button>
+      </div>
+      <div class="driver-body" id="dBody"></div>
+      <div class="modal-footer" id="dFooter"></div>
+    </div>
+  </div>
 
   <!-- 모달: 경고 상세 -->
   <div class="modal-overlay" id="hazardModal">
@@ -399,7 +432,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     // ── 상태 ─────────────────────────────────────────────────
     let events = [], users = [], stageStats = [], hourStats = [];
     let view = 'dashboard', filter = 'all', driverQuery = '';
-    let modalId = null, contactCtx = null, lastFocus = null, contactFocus = null, busy = false, lastUrgent = null, loaded = false;
+    let modalId = null, driverId = null, contactCtx = null, lastFocus = null, busy = false, lastUrgent = null, loaded = false;
     const sig = {};
 
     const $ = (id) => document.getElementById(id);
@@ -537,7 +570,9 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
           h('td', null, h('span', { class: 'st ' + cls }, icon(ic, 16), text)),
           h('td', { class: 'nowrap' }, today + '건'), h('td', { class: 'nowrap' }, (u.event_count || 0) + '건'),
           h('td', { class: 'nowrap' }, u.last_event_at ? fmtTime(u.last_event_at) : '없음'),
-          h('td', null, h('button', { class: 'btn-action', type: 'button', 'data-key': 'dr' + u.id, onclick: () => openContact({ name: u.name, email: u.email, phone: u.phone, vehicle: u.vehicle_no }), 'aria-label': u.name + ' 기사 연락하기' }, '연락하기')));
+          h('td', null, h('div', { class: 'row-actions' },
+            h('button', { class: 'btn-action outline', type: 'button', 'data-key': 'drv' + u.id, onclick: () => openDriver(u.id), 'aria-label': u.name + ' 기사 상세 보기' }, '상세 보기'),
+            h('button', { class: 'btn-action', type: 'button', 'data-key': 'dr' + u.id, onclick: () => openContact({ name: u.name, email: u.email, phone: u.phone, vehicle: u.vehicle_no }), 'aria-label': u.name + ' 기사 연락하기' }, '연락하기'))));
       }) : [h('tr', { class: 'empty-row' }, h('td', { colspan: 8 }, q ? '검색 결과가 없어요' : '등록된 기사가 없어요'))]));
       $('driverCount').textContent = list.length + '명';
       if (keepKey) { const again = document.querySelector('[data-key="' + keepKey + '"]'); if (again) again.focus({ preventScroll: true }); }
@@ -610,6 +645,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       if (view === 'dashboard') { renderSummary(); renderStageChart(); renderTimeChart(); }
       else if (view === 'hazards') renderHazards();
       else renderDrivers();
+      if (driverId !== null) refreshDriver();
       if (modalId !== null) refreshModal();
     }
 
@@ -626,11 +662,32 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       const again = key ? document.querySelector('[data-key="' + key + '"]') : null;
       (again || lastFocus || $('main')).focus({ preventScroll: true });
     }
+    // 이미 열린 모달 위에 겹쳐 열기: 아래 모달은 inert, 닫으면 눌렀던 버튼 (다시 그려져 없어졌으면 아래 모달의 닫기 버튼)으로 돌아감
+    const stackOpener = {};
+    function openStacked(overlay, firstFocus) {
+      const below = [...document.querySelectorAll('.modal-overlay.open')];
+      if (!below.length) { openOverlay(overlay, firstFocus); return; }
+      below.forEach((o) => { o.querySelector('.modal').inert = true; });
+      stackOpener[overlay.id] = document.activeElement;
+      overlay.classList.add('open');
+      firstFocus.focus();
+    }
+    function closeStacked(overlay) {
+      const under = [...document.querySelectorAll('.modal-overlay.open')].filter((o) => o !== overlay);
+      if (!under.length) { closeOverlay(overlay); return; }
+      overlay.classList.remove('open');
+      const top = under[under.length - 1];
+      top.querySelector('.modal').inert = false;
+      const opener = stackOpener[overlay.id], key = opener && opener.dataset ? opener.dataset.key : null;
+      const again = key ? top.querySelector('[data-key="' + key + '"]') : null;
+      (again || (opener && top.contains(opener) ? opener : null) || top.querySelector('.modal-close')).focus();
+    }
+    const CLOSERS = { driverModal: () => closeDriver(), hazardModal: () => closeModal(), contactModal: () => closeContact() };
     document.addEventListener('keydown', (ev) => {
       const open = document.querySelectorAll('.modal-overlay.open');
       const overlay = open[open.length - 1];           // 겹쳐 열렸으면 맨 위(나중에 열린) 모달
       if (!overlay) return;
-      if (ev.key === 'Escape') { overlay.id === 'contactModal' ? closeContact() : closeModal(); return; }
+      if (ev.key === 'Escape') { CLOSERS[overlay.id](); return; }
       if (ev.key !== 'Tab') return;
       const items = [...overlay.querySelectorAll('button, a[href]')].filter((n) => !n.disabled && n.offsetParent !== null);
       if (!items.length) return;
@@ -638,7 +695,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
       else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
     });
-    ['hazardModal', 'contactModal'].forEach((id) => $(id).addEventListener('click', (ev) => { if (ev.target === ev.currentTarget) (id === 'contactModal' ? closeContact : closeModal)(); }));
+    Object.keys(CLOSERS).forEach((id) => $(id).addEventListener('click', (ev) => { if (ev.target === ev.currentTarget) CLOSERS[id](); }));
 
     // ── 경고 상세 모달 ────────────────────────────────────────
     function reportRow(label, value, tag, extraClass) {
@@ -704,7 +761,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       if (!e) return;
       modalId = id; sig.modal = JSON.stringify(e);
       fillModal(e);
-      openOverlay($('hazardModal'), $('mClose'));
+      openStacked($('hazardModal'), $('mClose'));
     }
     function refreshModal() {                          // 모달이 열려 있는 동안 서버 값이 바뀌었을 때만 다시 채움
       const e = events.find((x) => x.id === modalId);
@@ -717,8 +774,69 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       const again = act ? $('mFooter').querySelector('[data-act="' + act + '"]') : null;
       (again || $('mClose')).focus();
     }
-    function closeModal() { if (modalId === null) return; modalId = null; closeOverlay($('hazardModal')); }
+    function closeModal() { if (modalId === null) return; modalId = null; closeStacked($('hazardModal')); }
     $('mClose').addEventListener('click', closeModal);
+
+    // ── 기사 상세 모달: 서버 API 를 더하지 않고 이미 받은 경고 · 기사 목록으로 계산 ─────
+    function fillDriver(u) {
+      const mine = events.filter((e) => e.user_id === u.id).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      const [cls, ic, text] = driverState(u);
+      const unset = (v) => v ? v : h('span', { class: 'unset' }, '미등록');
+      const item = (k, v) => h('div', { class: 'd-item' }, h('span', { class: 'k' }, k), h('span', { class: 'v' }, v));
+      const stat = (k, n, alert) => h('div', { class: 'd-stat' + (alert && n > 0 ? ' alert' : '') }, h('span', { class: 'k' }, k), h('span', { class: 'v' }, String(n), h('small', null, '건')));
+      const count = (fn) => mine.filter(fn).length;
+      $('dTitle').replaceChildren(h('span', { class: 'hico' }, icon('person', 22)), u.name + ' 기사님');
+
+      const recent = mine.slice(0, 10);
+      const rows = recent.length ? recent.map((e) => {
+        const alert = isOpenUrgent(e);
+        return h('tr', { class: alert ? 'row-alert' : '' },
+          h('td', { class: 'nowrap' }, '#' + e.id), h('td', null, stageBadge(e)),
+          h('td', { class: 'nowrap' }, REASON_LABEL[e.reason] || e.reason), h('td', { class: 'nowrap' }, fmtTime(e.created_at)), h('td', null, statusCell(e)),
+          h('td', null, h('button', { class: 'btn-action' + (alert ? '' : ' outline'), type: 'button', 'data-key': 'dv' + e.id, onclick: () => openModal(e.id),
+            'aria-label': '경고 #' + e.id + (alert ? ' 상세 보기 및 조치' : ' 상세 보기') }, alert ? '상세 보기 및 조치' : '상세 보기')));
+      }) : [h('tr', { class: 'empty-row' }, h('td', { colspan: 6 }, '아직 이 기사의 경고가 없어요'))];
+
+      $('dBody').replaceChildren(
+        h('div', null, h('h3', { class: 'd-title' }, '기본 정보'),
+          h('div', { class: 'd-profile' }, item('차량번호', unset(u.vehicle_no)), item('전화번호', unset(u.phone)), item('이메일', unset(u.email)),
+            item('상태', h('span', { class: 'st ' + cls }, icon(ic, 16), text)), item('마지막 경고', u.last_event_at ? fmtTime(u.last_event_at) : '없음'))),
+        h('div', null, h('h3', { class: 'd-title' }, '경고 현황'),
+          h('div', { class: 'd-stats' }, stat('오늘 경고', count((e) => isToday(e.created_at))), stat('누적 경고', mine.length),
+            stat('1단계 (주의)', count((e) => e.stage === 1)), stat('2단계 (휴식)', count((e) => e.stage === 2)), stat('3단계 (긴급)', count((e) => e.stage === 3)),
+            stat('음성 응답 없음', count((e) => e.reason === 'no_response')), stat('휴게 미준수', count((e) => e.reason === 'rest_overdue')),
+            stat('조치 필요', count(isOpenUrgent), true))),
+        h('div', null, h('h3', { class: 'd-title' }, '최근 경고'),
+          h('div', { class: 'd-recent table-wrap' }, h('table', null,
+            h('caption', { class: 'visually-hidden' }, u.name + ' 기사의 최근 경고'),
+            h('thead', null, h('tr', null, ['ID', '단계', '종류', '시각', '상태', '관리'].map((t) => h('th', { scope: 'col' }, t)))),
+            h('tbody', null, rows))),
+          mine.length > recent.length ? h('p', { class: 'd-more' }, '최근 ' + recent.length + '건만 보여요 (전체 ' + mine.length + '건)') : null));
+      $('dFooter').replaceChildren(h('button', { class: 'btn', type: 'button', 'data-act': 'close', onclick: closeDriver }, '닫기'),
+        h('button', { class: 'btn brand', type: 'button', 'data-act': 'contact', onclick: () => openContact({ name: u.name, email: u.email, phone: u.phone, vehicle: u.vehicle_no }) }, icon('phone', 18), '기사에게 연락'));
+    }
+    function openDriver(id) {
+      const u = users.find((x) => x.id === id);
+      if (!u) return;
+      driverId = id; sig.driver = JSON.stringify([u, events.filter((e) => e.user_id === u.id)]);
+      fillDriver(u);
+      openStacked($('driverModal'), $('dClose'));
+    }
+    function refreshDriver() {                         // 열려 있는 동안 값이 바뀌었을 때만 다시 채움 (경고 모달이 위에 있으면 포커스는 건드리지 않음)
+      const u = users.find((x) => x.id === driverId);
+      if (!u) { closeDriver(); return; }
+      const s = JSON.stringify([u, events.filter((e) => e.user_id === u.id)]);
+      if (s === sig.driver) return;
+      sig.driver = s;
+      const active = document.activeElement, inside = $('driverModal').contains(active);
+      const key = inside && active.dataset ? active.dataset.key || active.dataset.act : null;
+      fillDriver(u);
+      if (!inside) return;
+      const again = key ? $('driverModal').querySelector('[data-key="' + key + '"], [data-act="' + key + '"]') : null;
+      (again || $('dClose')).focus();
+    }
+    function closeDriver() { if (driverId === null) return; driverId = null; closeStacked($('driverModal')); }
+    $('dClose').addEventListener('click', closeDriver);
 
     async function changeStatus(e, status) {
       if (busy) return;
@@ -749,15 +867,13 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
         validPhone ? h('a', { class: 'btn', href: 'sms:' + phoneDigits }, icon('mail', 18), '문자 보내기') : null,
         validPhone ? h('a', { class: 'btn brand', href: 'tel:' + phoneDigits }, icon('phone', 18), '전화 걸기')
           : validMail ? h('a', { class: 'btn brand', href: 'mailto:' + ctx.email }, icon('mail', 18), '이메일 보내기') : null);
-      // 경고 모달 위에 겹쳐 열릴 때는 뒤 화면 inert 를 풀지 않고, 닫을 때 경고 모달로 돌아간다
-      if ($('hazardModal').classList.contains('open')) { contactFocus = document.activeElement; $('contactModal').classList.add('open'); $('mClose').closest('.modal').inert = true; $('cClose').focus(); }
-      else openOverlay($('contactModal'), $('cClose'));
+      // 기사 · 경고 모달 위에 겹쳐 열릴 때는 뒤 화면 inert 를 풀지 않고, 닫을 때 아래 모달로 돌아간다
+      openStacked($('contactModal'), $('cClose'));
     }
     function closeContact() {
-      const over = $('hazardModal').classList.contains('open');
-      $('contactModal').classList.remove('open'); contactCtx = null;
-      if (over) { $('mClose').closest('.modal').inert = false; (contactFocus && document.contains(contactFocus) ? contactFocus : $('mClose')).focus(); }
-      else closeOverlay($('contactModal'));
+      if (!$('contactModal').classList.contains('open')) return;
+      contactCtx = null;
+      closeStacked($('contactModal'));
     }
     $('cClose').addEventListener('click', closeContact);
 

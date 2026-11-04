@@ -40,12 +40,14 @@ EAR_THRESHOLD = 0.23          # 기본 기준 (개인 기준이 없을 때) — 
 CONFIRM_OPEN_MARGIN = 0.03    # EAR 이 기준 + 이 값 이상이면 '확실히 뜸' → 앱 의심 취소
 
 # CNN — 10/28 CNN 채택 회의 (KPI ①): 채택, AI-Hub 미세조정 모델, 기준 0.4
+#   11/03 모델 교체: AI-Hub 548 컬러 추가 학습 eye_cnn_548.pt (폰 컬러 카메라용, 기준 0.4 그대로, eye_cnn.ipynb 7-6)
+#     Validation 151명 83.1% → 99.4%, 팀 사진 그대로 · 반쯤 감음 50 → 78/109. 적외선 카메라면 eye_cnn_aihub.pt
 #   취소는 CNN · EAR 둘 다 '확실히 뜸' 일 때만 (face_service._normalize)
 #   torch(tools/requirements-cnn.txt) · 모델 파일이 없는 PC 는 자동으로 EAR 만 씀 (A · B · 팀장 PC 에만 설치)
 USE_CNN = True
 CNN_CLOSED_PROB = 0.4         # 감음 확률이 이 값 이상이면 감음 (CNN_OPEN_MARGIN 0.1 → 0.3 미만이면 '확실히 뜸')
 CNN_INPUT_SIZE = 64           # 눈 잘라 흑백 64×64 (학습 노트북과 같은 값)
-CNN_MODEL_PATH = os.path.join(BASE_DIR, "ml_models", "eye_cnn_aihub.pt")   # 구글 드라이브에서 받아 ml_models/ 에 (GitHub X)
+CNN_MODEL_PATH = os.path.join(BASE_DIR, "ml_models", "eye_cnn_548.pt")   # 구글 드라이브에서 받아 ml_models/ 에 (GitHub X)
 
 # ── 개인 기준 EAR (출발 때 정면 사진 5장) ─────────────
 CALIB_FRAMES = 5              # 받는 사진 수
