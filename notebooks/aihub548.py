@@ -39,7 +39,7 @@
 #   ── 12번 실험 (11/04 강사님 중간 점검 2 — vscale 설정 5개) ──
 #   ... eval --set trainval --models eye_cnn12_k100_100_s0.pt eye_cnn12_k085_100_s0.pt ...   548 학습용 val 115명 (고르기)
 #       → result_trainval_eye_cnn12_<설정>_<시드>.csv (사진은 한 번 읽고 모델마다)
-#   ... pick [--csvs a.csv,b.csv] [--fa 0.03] [--margin 0.02]   모델마다 t (오경보 ≤ 3% 인 가장 낮은 t) → 설정 고르기 규칙
+#   ... pick [--csvs a.csv,b.csv] [--fa 0.03] [--margin 0.02]   팀 확정 규칙 (노트북 12번 맨 앞) 그대로 — 후보 · 시드 재확인 대상 · 판정
 #   ... eval --set val --models <고른 모델> <기준 모델>   151명 (한 번만)
 #   ... final --csv result_val_eye_cnn12_<설정>_s0.csv --t <pick 의 t>   세 숫자 + 건수 (기준 모델도 자기 t 로)
 #   ... cond [--csvs team_a.csv,team_b.csv]   팀 사진 · 조건 사진을 조건별로 (감은 눈 취소 / 뜬 눈 오경보 / 판정 불가, 같은 보고 형식)
@@ -651,62 +651,78 @@ def _cfg_of(name):
     return (m[1], m[2]) if m else (os.path.splitext(name)[0], "s0")
 
 
+def _dist(cfg):
+    """기준(k100_100)에서 얼마나 먼가 — 동점이면 가까운 쪽 (규칙 9). k085_100 → 0.15"""
+    lo, hi = (int(x) / 100 for x in cfg[1:].split("_"))
+    return round((1 - lo) + (1 - hi), 2)
+
+
 def pick(csv_names, fa=0.03, margin=0.02, base="k100_100"):
-    """12번 실험 — 548 학습용 val 115명 (eval --set trainval) 으로 **고르기** (11/04 강사님 중간 점검 2)
-    1. 모델마다 기준값 t 를 훑어 뜬 눈 오경보 ≤ fa 가 되는 가장 낮은 t → 그때 감은 눈 · 반쯤 감은 눈 취소
-    2. 감은 눈 취소가 0 이 아닌 설정은 뺌 → 남은 것 중 반쯤 취소가 가장 낮은 설정 (시드 여러 개면 평균)
-    3. 기준(base, vscale 없음)이 이기거나 차이가 margin 이내면 보정 안 씀
+    """12번 실험 — 548 학습용 val 115명 (eval --set trainval) 으로 **고르기** — 팀 확정 규칙 (11/04, 노트북 12번 맨 앞)
+    2. 후보 = 오경보 ≤ fa 인 t 가 있고 (0.11 ~ 0.95, 0.01 간격, 가장 낮은 t), 그 t 에서 감은 눈 취소 0건
+    3. 후보 중 반쯤 취소율 가장 낮은 설정, 기준보다 margin 넘게 낮을 때만 보정 채택   4. 아니면 새 기준 모델 + 그 t
+    5. 기준도 후보가 못 되면 서버 변경 없음 (eye_cnn_548 + 0.4 유지)   6. 분모 = 얼굴 찾은 사진, 판정 불가는 따로
+    7. 시드가 여러 개면 시드마다 t 다시 · 모든 시드가 2번 통과 · 반쯤 취소율 평균으로 비교
+    8. 서버에 넣는 건 시드 0 모델 + 그 t   9. 동점이면 기준에 가까운 설정
     ⚠️ 151명(Validation) CSV 는 넣지 않음 — 여기서 고른 t 로 final 에서 한 번만 잼"""
     if not csv_names:
         csv_names = sorted(os.path.basename(f) for f in glob.glob(os.path.join(ROOT, "result_trainval_eye_cnn12_*.csv")))
     assert csv_names, "result_trainval_eye_cnn12_*.csv 가 없음 — 먼저 eval --set trainval --models ..."
     assert not any(n.startswith("result_val") for n in csv_names), "151명 CSV 로 고르면 안 됨"
-    res = []
+    runs = collections.defaultdict(dict)  # 설정 → 시드 → 결과 (t 를 못 찾으면 t=None)
     for name in csv_names:
         rows = list(csv.DictReader(open(os.path.join(ROOT, name), encoding="utf-8-sig")))
         cfg, seed = _cfg_of(name)
         hit = next(((t, r) for t in T_GRID for r in [_rates_at(rows, t)] if r["open"][0] / r["open"][1] <= fa), None)
-        if hit is None:
-            print(f"{name}: 오경보 {fa:.0%} 이하가 되는 t 없음 (0.95 까지)")
-            continue
-        t, r = hit
-        res.append(dict(cfg=cfg, seed=seed, t=t, fa=r["open"], closed=r["closed"], half=r["half"], file=name))
-    print(f"== 모델마다: 뜬 눈 오경보 ≤ {fa:.0%} 가 되는 가장 낮은 t (548 학습용 val, 사람 {'115'}명) ==")
-    print("설정 | 시드 | t | 오경보 | 감은 눈 취소 | 반쯤 감은 눈 취소 | (해당/판정됨, 전체)")
-    for x in sorted(res, key=lambda x: (x["cfg"], x["seed"])):
-        f = lambda v: f"{v[0] / v[1]:.1%} ({v[0]}/{v[1]}, {v[2]})"
-        print(f"{x['cfg']} | {x['seed']} | {x['t']:.2f} | {f(x['fa'])} | {f(x['closed'])} | {f(x['half'])}")
+        t, r = hit if hit else (None, _rates_at(rows, T_GRID[-1]))
+        runs[cfg][seed] = dict(t=t, fa=r["open"], closed=r["closed"], half=r["half"], file=name,
+                               ok=t is not None and r["closed"][0] == 0)
+    f = lambda v: f"{v[0] / v[1]:.1%} ({v[0]}/{v[1]}, 판정 불가 {v[2] - v[1]})"
+    print(f"== 모델마다: 뜬 눈 오경보 ≤ {fa:.0%} 가 되는 가장 낮은 t (548 학습용 val 115명, 분모 = 얼굴 찾은 사진) ==")
+    print("설정 | 시드 | t | 오경보 | 감은 눈 취소 | 반쯤 감은 눈 취소 | 후보")
+    for cfg in sorted(runs, key=_dist):
+        for seed, x in sorted(runs[cfg].items()):
+            why = "O" if x["ok"] else ("X: 오경보 3% 이하 t 없음 (0.95 값)" if x["t"] is None else "X: 감은 눈 취소 있음")
+            t_txt = "없음" if x["t"] is None else f"{x['t']:.2f}"
+            print(f"{cfg} | {seed} | {t_txt} | {f(x['fa'])} | {f(x['closed'])} | {f(x['half'])} | {why}")
 
-    cfgs = collections.defaultdict(list)
-    for x in res:
-        cfgs[x["cfg"]].append(x)
-    half = {c: sum(x["half"][0] / x["half"][1] for x in xs) / len(xs) for c, xs in cfgs.items()}
-    alive = [c for c, xs in cfgs.items() if all(x["closed"][0] == 0 for x in xs)]
-    dead = sorted(set(cfgs) - set(alive))
-    print()
-    print(f"감은 눈 취소가 0 이 아니라 뺌: {dead or '없음'}")
-    rank = sorted(alive, key=lambda c: half[c])
-    print("남은 설정 (반쯤 취소 낮은 순, 시드 평균):", " · ".join(f"{c} {half[c]:.1%} (시드 {len(cfgs[c])})" for c in rank))
-    if not rank:
-        print("판정: 남은 설정 없음 — 기준 포함 전부 감은 눈 취소 있음 → 팀장 · 강사님 확인")
+    n_seed = max(len(v) for v in runs.values())
+    pool = [c for c in runs if len(runs[c]) == n_seed]  # 시드 재확인 뒤면 같은 수의 시드를 돌린 설정끼리 (규칙 7)
+    if n_seed > 1:
+        print(f"\n시드 {n_seed}개를 다 돌린 설정끼리 비교: {pool} (나머지는 시드 0 단계에서 끝남)")
+    cand = [c for c in pool if all(x["ok"] for x in runs[c].values())]  # 모든 시드가 통과 (규칙 2 · 7)
+    half = {c: sum(x["half"][0] / x["half"][1] for x in runs[c].values()) / len(runs[c]) for c in cand}
+    rank = sorted(cand, key=lambda c: (round(half[c], 4), _dist(c)))  # 동점이면 기준에 가까운 쪽 (규칙 9)
+    print(f"\n후보 (반쯤 취소 낮은 순{', 시드 평균' if n_seed > 1 else ''}):", " · ".join(f"{c} {half[c]:.1%}" for c in rank) or "없음")
+    print("후보 아님:", [c for c in pool if c not in cand] or "없음")
+    if n_seed == 1 and base in cand:  # 기준이 탈락하면 결과가 '변경 없음' 으로 정해져서 재확인할 것이 없음
+        top2 = [c for c in rank if c != base][:2]
+        print(f"시드 1 로 한 번 더 (규칙 7): {top2} + 기준 {base} → 노트북 12-5 의 TOP2 = {[_cfg_tuple(c) for c in top2]}")
+    if base not in cand:
+        print(f"\n판정: 기준 {base} 가 후보가 못 됨 → **서버 변경 없음** (eye_cnn_548.pt + 0.4 유지), 결과만 보고 (규칙 5)")
         return
-    print("시드 바꿔 더 돌릴 상위 2개:", rank[:2], "(아직 시드 1개뿐이면 노트북 12-5)")
     best = rank[0]
-    if base not in cfgs:
-        print(f"판정 보류: 기준 {base} 결과가 없음")
-        return
     gap = half[base] - half[best]
-    if best == base or gap <= margin:
-        choice = base
-        why = "기준이 이김" if best == base else f"차이 {gap * 100:.1f}%p ≤ {margin * 100:.0f}%p"
+    if best != base and gap > margin:
+        choice, why = best, f"기준보다 반쯤 취소 {gap * 100:.1f}%p 낮음 (> {margin * 100:.0f}%p) → vscale 보정 채택"
     else:
-        choice, why = best, f"기준보다 반쯤 취소 {gap * 100:.1f}%p 낮음"
-    seeds = [x for x in cfgs[choice] if x["seed"] == "s0"] or cfgs[choice]
-    bseed = [x for x in cfgs[base] if x["seed"] == "s0"] or cfgs[base]
-    print()
-    print(f"판정: {choice} ({why}) — {'보정 안 씀' if choice == base else 'vscale 보정 씀'}")
-    print(f"  151명 final: 고른 모델 {seeds[0]['file']} → t = {seeds[0]['t']:.2f}"
-          + ("" if choice == base else f" / 기준 {bseed[0]['file']} → t = {bseed[0]['t']:.2f} (기준도 자기 t 로 한 번)"))
+        choice, why = base, ("기준이 가장 낮음" if best == base else f"차이 {gap * 100:.1f}%p ≤ {margin * 100:.0f}%p") + " → 보정 안 씀, 새 기준 모델"
+    if n_seed == 1:
+        print(f"\n(시드 0 만 본 잠정 판정: {choice} — {why}. 시드 재확인 뒤 다시 pick)")
+        return
+    c0, b0 = runs[choice]["s0"], runs[base]["s0"]
+    print(f"\n판정: {choice} — {why}")
+    print(f"  서버에 넣을 것 (규칙 8): {c0['file'].replace('result_trainval_', '').replace('.csv', '.pt')} + CNN_CLOSED_PROB = {c0['t']:.2f}")
+    model = lambda x: x["file"].replace("result_trainval_", "").replace(".csv", ".pt")
+    finals = [(c0, "최종")] + ([] if choice == base else [(b0, "기준")])
+    print(f"  151명 (규칙 10, 각 1회): eval --set val --models {' '.join(model(x) for x, _ in finals)}")
+    for x, what in finals:
+        print(f"    {what}: final --csv {x['file'].replace('result_trainval_', 'result_val_')} --t {x['t']:.2f}")
+
+
+def _cfg_tuple(cfg):
+    lo, hi = (int(x) / 100 for x in cfg[1:].split("_"))
+    return (lo, hi)
 
 
 def final(csv_name, t):
@@ -992,7 +1008,7 @@ if __name__ == "__main__":
     ap.add_argument("--models", nargs="+", default=[], help="eval: 모델 여러 개를 따로 (앙상블 X) — 사진은 한 번 읽고 모델마다 CSV (12번 실험)")
     ap.add_argument("--t", type=float, default=0.4, help="final: pick 이 val 에서 고른 기준값")
     ap.add_argument("--fa", type=float, default=0.03, help="pick: 뜬 눈 오경보 목표 (이하가 되는 가장 낮은 t)")
-    ap.add_argument("--margin", type=float, default=0.02, help="pick: 기준과 반쯤 취소 차이가 이 이내면 보정 안 씀 (1~2%p — 팀장 확인)")
+    ap.add_argument("--margin", type=float, default=0.02, help="pick: 기준보다 반쯤 취소가 이만큼 넘게 낮을 때만 보정 채택 (팀 확정 2%p)")
     ap.add_argument("--model", default="", help="eval · team: 다른 CNN 파일 (예: eye_cnn_548.pt, ml_models/ 안). 쉼표로 여러 개면 앙상블 (감음 확률 평균)")
     a = ap.parse_args()
     ROOT = a.root
