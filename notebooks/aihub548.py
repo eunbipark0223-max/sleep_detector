@@ -42,6 +42,7 @@
 #   ... pick [--csvs a.csv,b.csv] [--fa 0.03] [--margin 0.02]   팀 확정 규칙 (노트북 12번 맨 앞) 그대로 — 후보 · 시드 재확인 대상 · 판정
 #   ... eval --set val --models <고른 모델> <기준 모델>   151명 (한 번만)
 #   ... final --csv result_val_eye_cnn12_<설정>_s0.csv --t <pick 의 t>   세 숫자 + 건수 (기준 모델도 자기 t 로)
+#   ... safety --csvs team_eye_cnn_548.csv:0.4,team_<최종>.csv:<t>,team_<기준>.csv:<t>   규칙 11 팀 사진 · 조건 사진 안전 확인 (자기 t, 뜬 눈 CNN 0.03 · 0.1 · 0.3 넘는 비율)
 #   ... cond [--csvs team_a.csv,team_b.csv]   팀 사진 · 조건 사진을 조건별로 (감은 눈 취소 / 뜬 눈 오경보 / 판정 불가, 같은 보고 형식)
 #       기본 = team_eye_cnn_aihub.csv · team_eye_cnn_548.csv (team --model 로 먼저 만들기)
 #   ... extra [--dir D:\aihub71421\sel] [--model ... | --models a.pt b.pt]   외부 사진 시험 (하위 폴더 closed · open, 학습에 안 씀)
@@ -771,6 +772,37 @@ def cond_table(csv_names):
                     print(f"{COND_NAME[c] or g} | {lab} {what} | {len(rs)} | {len(ok)} | {len(rs) - len(ok)} | {k} | {rate}")
 
 
+def safety(specs):
+    """12번 규칙 11 — 팀 사진 · 조건 사진 안전 확인 (고르기에 안 씀, 11/04 팀장 요청). team 결과 CSV 를 모델마다 **자기 t** 로 다시 판정
+    specs: ["team_eye_cnn_548.csv:0.4", "team_eye_cnn12_k080_080_s0.csv:0.13", ...]
+    일반 사진: 뜬 눈 오경보 (취소 못 함) · 감은 눈 취소 · 반쯤 취소 / 조건 (고개 돌림 · 숙임 · 마스크 · 선글라스): 뜬 눈 오경보 · 감은 눈 취소
+    + 뜬 눈 (일반, 판정된 사진) 의 CNN 감음 확률이 0.03 · 0.1 · 0.3 을 넘는 비율 — t 가 낮으면 취소선(t − 0.1)이 0.03 미만이 되는 영향 보기"""
+    sys.path.insert(0, API_DIR)
+    import config
+    ear_thr, ear_margin = config.EAR_THRESHOLD, config.CONFIRM_OPEN_MARGIN
+    open_margin = getattr(config, "CNN_OPEN_MARGIN", 0.1)
+    print("기준값은 사진 1장 평가로 정한 값 (서버는 3장 다수결 예정, 11/04 팀장 안내) · 팀 사진은 고르기에 안 씀 (규칙 11)")
+    for spec in specs:
+        name, t = spec.rsplit(":", 1)
+        t = float(t)
+        rows = list(csv.DictReader(open(os.path.join(os.path.dirname(TEAM_DIRS[0]), name), encoding="utf-8-sig")))
+        print(f"\n== {name} · t = {t:.2f} (취소선: CNN < {t - open_margin:.2f} 그리고 EAR ≥ {ear_thr + ear_margin:.2f}) ==")
+        print("묶음 | 지표 | 전체 | 판정됨 | 판정 불가 | 해당 | 비율 | 95% 범위")
+        for c in ("", "turn", "down", "mask", "sun"):
+            for lab, what in (("open", "뜬 눈 오경보 (취소 못 함)"), ("closed", "감은 눈 취소"), ("half", "반쯤 취소")):
+                rs = [r for r in rows if r.get("cond", "") == c and r["label"] == lab]
+                if not rs:
+                    continue
+                ok = [r for r in rs if r["face"] == "True" and r["prob"] not in ("", None)]
+                k = sum(_judge_at(r, t, ear_thr, ear_margin, open_margin)[1] == (lab != "open") for r in ok)
+                lo, hi = _wilson(k, len(ok))
+                rate = f"{k / len(ok):.1%} | {lo:.1%} ~ {hi:.1%}" if ok else "- | -"
+                print(f"{COND_NAME[c] or '일반'} | {what} | {len(rs)} | {len(ok)} | {len(rs) - len(ok)} | {k} | {rate}")
+        po = [float(r["prob"]) for r in rows if r.get("cond", "") == "" and r["label"] == "open" and r["face"] == "True" and r["prob"] not in ("", None)]
+        print("일반 뜬 눈 CNN 감음 확률 분포 (판정된 " + str(len(po)) + "장): "
+              + " · ".join(f"> {x}: {sum(p > x for p in po)}장 ({sum(p > x for p in po) / len(po):.1%})" for x in (0.03, 0.1, 0.3)))
+
+
 def load_rows():
     return list(csv.DictReader(open(os.path.join(ROOT, "result_g1.csv"), encoding="utf-8-sig")))
 
@@ -1002,7 +1034,7 @@ def to_wandb():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("step", choices=["download", "eval", "wandb", "crop", "team", "wrong", "extra", "curve", "cond", "pick", "final"])
+    ap.add_argument("step", choices=["download", "eval", "wandb", "crop", "team", "wrong", "extra", "curve", "cond", "pick", "final", "safety"])
     ap.add_argument("--dir", default=r"D:\aihub71421\sel", help="extra: 외부 사진 폴더 (하위 폴더 이름에 closed / open)")
     ap.add_argument("--pad", type=float, default=0.0, help="extra: 얼굴이 꽉 찬 사진이면 사방을 이 비율만큼 늘림 (CEW 0.4, 얼굴 전체 사진은 0)")
     ap.add_argument("--root", default=ROOT, help="받기 · 결과 폴더 (저장소 밖)")
@@ -1025,5 +1057,6 @@ if __name__ == "__main__":
      "team": lambda: [team(m, a.tta) for m in (a.models or [a.model])], "curve": lambda: curve(a.csvs.split(",")),
      "pick": lambda: pick(a.csvs.split(",") if a.csvs != ap.get_default("csvs") else [], a.fa, a.margin),
      "final": lambda: final(a.csv, a.t),
+     "safety": lambda: safety(a.csvs.split(",")),
      "cond": lambda: cond_table(a.csvs.split(",") if a.csvs != ap.get_default("csvs") else ["team_eye_cnn_aihub.csv", "team_eye_cnn_548.csv"]),
      "extra": lambda: [extra(a.dir, m, a.tta, a.pad, a.scale) for m in (a.models or [a.model])]}[a.step]()
