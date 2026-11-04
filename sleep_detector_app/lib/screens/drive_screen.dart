@@ -9,7 +9,7 @@
 //   - onSuspect → camera_image_utils.toJpg → api_service.sendDetect (위도 · 경도 포함)
 //   -   → 응답 isSleep 이면 warning_screen 을 이 화면 위에 겹쳐 띄움 (Stack, 카메라 · 판정은 계속)
 //   - 30초마다 sendPing → stage 로 화면 색 (1단계 자동 해제 · 조치완료 반영), restDue 면 휴게 배너 + 🔊 1번
-//   - onCheckCamera → 🔊 '카메라를 확인하세요'
+//   - onCheckCamera → '카메라를 확인하세요' 배너 (얼굴이 다시 잡힐 때까지) + 🔊 10초마다
 //   - 화면 꺼짐 방지 (wakelock_plus), 0단계 화면에 눈 뜸 확률 · 내 기준 표시
 //   - 나갈 때 스트림 정지 · eye_monitor.close()
 //
@@ -74,9 +74,11 @@ class _DriveScreenState extends State<DriveScreen> {
   // 카메라 지킴이: 사진(프레임)이 마지막으로 들어온 시각을 기억했다가, 오래 안 들어오면 카메라를 다시 켠다
   Timer? _watchdog;
   DateTime _lastFrameAt = DateTime.now();
-  // 얼굴(눈 뜸 확률)이 마지막으로 잡힌 시각 · 이번에 "카메라를 확인하세요"를 이미 말했는지
+  // 얼굴(눈 뜸 확률)이 마지막으로 잡힌 시각 · "카메라를 확인하세요" 배너를 띄웠는지 · 마지막으로 말한 시각
+  static const int _cameraRepeatSec = 10; // 얼굴이 안 잡히는 동안 이 간격으로 다시 말함
   DateTime _lastFaceAt = DateTime.now();
   bool _faceWarned = false;
+  DateTime? _cameraSpokeAt;
   bool _restarting = false; // 다시 켜는 중인지 (두 번 겹쳐 켜지 않게)
 
   // 30초마다 서버에 "운전 중이에요" 알리기 (ping) → 지금 단계 · 휴게 알림 받기
@@ -332,7 +334,7 @@ class _DriveScreenState extends State<DriveScreen> {
         lng: _lng,
       );
       if (!mounted) return;
-      _notice = res.isSleep ? '졸음 확정 (${res.stage}단계)' : '서버 확인: 눈 뜸 → 취소';
+      _notice = res.isSleep ? '졸음 확정 (${res.stage}단계)' : '서버 확인: 취소';
       // 경고 화면이 떠 있고 단계가 그대로면 알람 · 음성을 다시 내지 않는다 (단계가 올라갈 때만, 기획안 6-6)
       final sameStage = _warningRoute != null && res.stage == _stage;
       _setStage(res.stage);
@@ -414,27 +416,30 @@ class _DriveScreenState extends State<DriveScreen> {
     if (DateTime.now().difference(_lastFaceAt).inMilliseconds >= AppConfig.unknownSec * 1000) _warnCamera();
   }
 
-  // "카메라를 확인하세요" — 얼굴이 다시 잡힐 때까지 한 번만
+  // "카메라를 확인하세요" — 얼굴이 다시 잡힐 때까지 배너를 띄워 두고, 음성은 10초마다
   void _warnCamera() {
     // 경고 음성 · 퀴즈 · 휴식 중에는 안내하지 않는다 (쉬는 기사에게 "카메라를 확인하세요"가 나오지 않게)
-    if (!mounted || _pauseDetect.value || _faceWarned) return;
-    _faceWarned = true;
-    setState(() => _notice = '카메라를 확인하세요');
+    if (!mounted || _pauseDetect.value) return;
+    final now = DateTime.now();
+    final spokeAt = _cameraSpokeAt;
+    if (spokeAt != null && now.difference(spokeAt).inSeconds < _cameraRepeatSec) return;
+    _cameraSpokeAt = now;
+    if (!_faceWarned) setState(() => _faceWarned = true);
     VoiceService.speak('카메라를 확인하세요');
   }
 
   // 프레임마다 오는 눈 뜸 확률 · PERCLOS (0단계 화면 표시용)
   void _onFrameResult(double? eyeOpenProb, double perclos, double? ear) {
     if (!mounted) return;
-    if (eyeOpenProb != null) {
-      _lastFaceAt = DateTime.now();
-      _faceWarned = false; // 얼굴이 다시 잡히면 다음에 또 안내할 수 있게
-    }
+    if (eyeOpenProb != null) _lastFaceAt = DateTime.now();
     setState(() {
       _eyeOpenProb = eyeOpenProb;
       _perclos = perclos;
-      // 얼굴이 다시 잡히면 "카메라를 확인하세요" 안내를 지운다
-      if (eyeOpenProb != null && _notice == '카메라를 확인하세요') _notice = '';
+      // 얼굴이 다시 잡히면 배너를 내리고, 다음에 또 안내할 수 있게 비운다
+      if (eyeOpenProb != null) {
+        _faceWarned = false;
+        _cameraSpokeAt = null;
+      }
     });
   }
 
@@ -455,6 +460,25 @@ class _DriveScreenState extends State<DriveScreen> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
+            // 카메라 확인 배너 — 얼굴이 다시 잡힐 때까지 유지 (단계 색이 무엇이든 눈에 띄게 검은 바탕)
+            if (_faceWarned) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(14)),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.videocam_off, color: Colors.white, size: 28),
+                    SizedBox(width: 10),
+                    Flexible(
+                      child: Text('카메라를 확인하세요',
+                          style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             // 휴게 배너 (연속 운전 2시간) — [닫기]로 숨김, [정차했어요]로 휴식 시작
             if (_restMessage.isNotEmpty)
               Container(
