@@ -22,6 +22,8 @@ import re
 import sys
 
 EYE_CLOSED_PROB = 0.4      # config.dart
+SMILE_OPEN_PROB = 0.8      # config.dart — 웃음 확률이 이 이상이면 감김으로 세지 않음
+SMILE_GRID = [0.7, 0.8, 0.9]
 PERCLOS_WINDOW_SEC = 30
 HEAD_DOWN_SEC = 3.0
 HEAD_UP_RESET_SEC = 0.5
@@ -32,13 +34,14 @@ MARK_NEAR_SEC = 5.0        # 경고 전후 이 시간 안의 동작 표시를 �
 
 
 def read_log(path):
-    """→ frames [(초, 확률 또는 None, 숙임 bool)], marks [(초, 글)], 앱이 낸 경고 [(초, reason)]"""
+    """→ frames [(초, 확률 또는 None, 숙임 bool, 웃음 확률 또는 None)], marks [(초, 글)], 앱이 낸 경고 [(초, reason)]"""
     frames, marks, alarms = [], [], []
     with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
-            m = re.search(r"\[eye_frame\] (\d+),([\d.]*),([01])", line)
+            m = re.search(r"\[eye_frame\] (\d+),([\d.]*),([01])(?:,([\d.]+))?", line)
             if m:
-                frames.append((int(m[1]) / 1000, float(m[2]) if m[2] else None, m[3] == "1"))
+                frames.append((int(m[1]) / 1000, float(m[2]) if m[2] else None, m[3] == "1",
+                               float(m[4]) if m[4] else None))
                 continue
             m = re.search(r"\[eye_mark\] (\d+),(.+)", line)
             if m:
@@ -50,7 +53,8 @@ def read_log(path):
     return frames, marks, alarms
 
 
-def replay(frames, closed_sec=NOW_CLOSED_SEC, perclos_thr=NOW_PERCLOS, closed_prob=EYE_CLOSED_PROB, cooldown=True):
+def replay(frames, closed_sec=NOW_CLOSED_SEC, perclos_thr=NOW_PERCLOS, closed_prob=EYE_CLOSED_PROB, cooldown=True,
+           smile_open=SMILE_OPEN_PROB):
     """eye_monitor.processFrame · _judge · _checkHeadDown 과 같은 순서로 판정 → 경고 [(초, 이유)]"""
     out, history = [], []
     closed_start = window_start = last_suspect = head_start = head_up_since = None
@@ -76,14 +80,15 @@ def replay(frames, closed_sec=NOW_CLOSED_SEC, perclos_thr=NOW_PERCLOS, closed_pr
         last_suspect = t
         out.append((t, "head"))
 
-    for t, prob, down in frames:
+    for t, prob, down, *rest in frames:
+        smile = rest[0] if rest else None   # 웃음 기록이 없는 옛 기록은 규칙 없이 계산
         if prob is None:                # 얼굴 없음 · 눈 확률 없음
             if down:
                 check_head(t)
             else:
                 head_up(t)
             continue
-        closed = prob < closed_prob
+        closed = prob < closed_prob and not (smile is not None and smile >= smile_open)
         history = [r for r in history if r[0] >= t - PERCLOS_WINDOW_SEC]
         if not history:
             window_start = t
@@ -129,7 +134,7 @@ def main(path):
     if not frames:
         sys.exit("[eye_frame] 기록이 없습니다 — tools/eye_live_main.dart 최신판으로 시험했는지 확인")
     minutes = (frames[-1][0] - frames[0][0]) / 60
-    unknown = sum(p is None for _, p, _ in frames)
+    unknown = sum(f[1] is None for f in frames)
     print(f"기록 {minutes:.1f}분 · 프레임 {len(frames)}장 ({len(frames) / (minutes * 60):.1f}fps) · "
           f"얼굴 · 눈 없음 {unknown}장 · 동작 표시 {len(marks)}개")
 
@@ -154,6 +159,12 @@ def main(path):
             n = len(replay(frames, c, p))
             cells.append(f"{n:>5d} ({n / minutes * 10:4.0f})")
         print(f"{c:>6.1f}초 " + "".join(f"{x:>12s}" for x in cells))
+    if any(f[3] is not None for f in frames):
+        print("\n■ 웃음 기준별 경고 횟수 (감김 프레임 중 웃음으로 뺀 장수)")
+        for s in SMILE_GRID + [9.0]:
+            cut = sum(f[1] is not None and f[1] < EYE_CLOSED_PROB and f[3] is not None and f[3] >= s for f in frames)
+            name = "규칙 없음" if s > 1 else f"{s:.1f}"
+            print(f"  {name}: 경고 {len(replay(frames, smile_open=s))}번 · 뺀 프레임 {cut}장")
     nc = replay(frames, cooldown=False)
     print(f"\n참고: 30초 재경고 막기를 뺐다면 {len(nc)}번 (PERCLOS {sum(r == 'perclos' for _, r in nc)}번)")
 
