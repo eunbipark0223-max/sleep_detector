@@ -16,7 +16,9 @@
 #       is_real = False 면 검색 결과가 아닌 대표 규정(가짜 / 실패) — 팀장이 보고서 is_real.rag 로 저장
 #
 # [주의]
-#   - 임베딩: gemini-embedding-001 (3072차원), OpenAI 호환 주소로 호출 (1주차 확인 완료)
+#   - 임베딩: gemini-embedding-2 (3072차원), OpenAI 호환 주소로 호출 (11/04 001 → 2 교체)
+#       · 001 과 벡터 공간이 달라 색인을 다시 만들어야 함 (모델 이름이 지문에 들어 있어 저절로 다시 만듦)
+#       · 2 는 task_type 을 못 써서 공식 문서대로 글 앞에 작업 표시를 붙임 (_GeminiEmbeddings)
 #   - 핵심 경로는 법령만 검색 — 일반 자료(보도자료)가 섞이면 법령이 밀려남 (노션 「문제 1」)
 #   - knowledge/ 문서를 바꾸면 다음 검색 때 색인이 저절로 다시 만들어짐 (chroma_db/ 지워도 됨)
 #   - 실패하면 대표 규정 3개 (mock)
@@ -52,7 +54,11 @@ USE_REAL_AI = _cfg("USE_REAL_AI", True)
 FALLBACK_ON_ERROR = _cfg("FALLBACK_ON_ERROR", True)
 GEMINI_API_KEY = _cfg("GEMINI_API_KEY")
 GEMINI_BASE_URL = _cfg("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
-GEMINI_EMBEDDING_MODEL = _cfg("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
+GEMINI_EMBEDDING_MODEL = _cfg("GEMINI_EMBEDDING_MODEL", "gemini-embedding-2")
+# gemini-embedding-2 는 task_type 대신 글 앞에 작업을 적는다 (ai.google.dev/gemini-api/docs/embeddings)
+USE_TASK_PREFIX = GEMINI_EMBEDDING_MODEL.startswith("gemini-embedding-2")
+QUERY_PREFIX = "task: search result | query: "
+TITLED = re.compile(r"\[([^\]]+)\] ")  # page_content = "[제목] 내용"
 KNOWLEDGE_DIR = Path(_cfg("KNOWLEDGE_DIR", BASE_DIR / "knowledge"))
 CHROMA_DIR = BASE_DIR / "chroma_db"
 COLLECTION = "sleep_regulations"
@@ -201,17 +207,39 @@ _lock = threading.Lock()
 
 
 def _fingerprint():
-    h = hashlib.sha1(f"{CHUNKER_VERSION}|{GEMINI_EMBEDDING_MODEL}".encode())
+    h = hashlib.sha1(f"{CHUNKER_VERSION}|{GEMINI_EMBEDDING_MODEL}|prefix={USE_TASK_PREFIX}".encode())
     for path in sorted(KNOWLEDGE_DIR.glob("*.txt")):
         h.update(path.name.encode() + path.read_bytes())
     return h.hexdigest()
 
 
+def _doc_text(text):
+    """문서 쪽 형식: 'title: {제목} | text: {내용}' (제목이 없으면 title: none)."""
+    m = TITLED.match(text)
+    if m:
+        return f"title: {m.group(1)} | text: {text[m.end():]}"
+    return f"title: none | text: {text}"
+
+
 def _embeddings():
+    from langchain_core.embeddings import Embeddings
     from langchain_openai import OpenAIEmbeddings
     if not GEMINI_API_KEY:
         raise RuntimeError("GEMINI_API_KEY 가 .env 에 없습니다")
-    return OpenAIEmbeddings(
+
+    class _GeminiEmbeddings(Embeddings):
+        """검색어 / 문서에 다른 작업 표시를 붙여 OpenAIEmbeddings 로 넘김 (gemini-embedding-2 일 때만)."""
+
+        def __init__(self, inner):
+            self.inner = inner
+
+        def embed_documents(self, texts):
+            return self.inner.embed_documents([_doc_text(t) for t in texts])
+
+        def embed_query(self, text):
+            return self.inner.embed_query(QUERY_PREFIX + text)
+
+    inner = OpenAIEmbeddings(
         model=GEMINI_EMBEDDING_MODEL,
         openai_api_key=GEMINI_API_KEY,
         openai_api_base=GEMINI_BASE_URL,
@@ -220,6 +248,7 @@ def _embeddings():
         request_timeout=15,
         max_retries=1,  # 실패한 호출도 무료 한도에 포함됨 (노션 「RAG 전체 흐름 테스트」)
     )
+    return _GeminiEmbeddings(inner) if USE_TASK_PREFIX else inner
 
 
 def build_index(force=False):
