@@ -661,7 +661,8 @@ def pick(csv_names, fa=0.03, margin=0.02, base="k100_100"):
     """12번 실험 — 548 학습용 val 115명 (eval --set trainval) 으로 **고르기** — 팀 확정 규칙 (11/04, 노트북 12번 맨 앞)
     2. 후보 = 오경보 ≤ fa 인 t 가 있고 (0.11 ~ 0.95, 0.01 간격, 가장 낮은 t), 그 t 에서 감은 눈 취소 0건
     3. 후보 중 반쯤 취소율 가장 낮은 설정, 기준보다 margin 넘게 낮을 때만 보정 채택   4. 아니면 새 기준 모델 + 그 t
-    5. 기준도 후보가 못 되면 서버 변경 없음 (eye_cnn_548 + 0.4 유지)   6. 분모 = 얼굴 찾은 사진, 판정 불가는 따로
+    5. 후보가 하나도 없을 때만 서버 변경 없음 (eye_cnn_548 + 0.4 유지). 기준만 탈락이면 2%p 비교 없이 후보 중 최저
+    6. 분모 = 얼굴 찾은 사진, 판정 불가는 따로
     7. 시드가 여러 개면 시드마다 t 다시 · 모든 시드가 2번 통과 · 반쯤 취소율 평균으로 비교
     8. 서버에 넣는 건 시드 0 모델 + 그 t   9. 동점이면 기준에 가까운 설정
     ⚠️ 151명(Validation) CSV 는 넣지 않음 — 여기서 고른 t 로 final 에서 한 번만 잼"""
@@ -695,26 +696,34 @@ def pick(csv_names, fa=0.03, margin=0.02, base="k100_100"):
     rank = sorted(cand, key=lambda c: (round(half[c], 4), _dist(c)))  # 동점이면 기준에 가까운 쪽 (규칙 9)
     print(f"\n후보 (반쯤 취소 낮은 순{', 시드 평균' if n_seed > 1 else ''}):", " · ".join(f"{c} {half[c]:.1%}" for c in rank) or "없음")
     print("후보 아님:", [c for c in pool if c not in cand] or "없음")
-    if n_seed == 1 and base in cand:  # 기준이 탈락하면 결과가 '변경 없음' 으로 정해져서 재확인할 것이 없음
+    if not rank:
+        print("\n판정: 후보가 하나도 없음 → **서버 변경 없음** (eye_cnn_548.pt + 0.4 유지), 결과만 보고 (규칙 5)")
+        return
+    if n_seed == 1:  # 기준이 탈락해도 재확인은 상위 2개 + 기준 (규칙 5 · 7)
         top2 = [c for c in rank if c != base][:2]
         print(f"시드 1 로 한 번 더 (규칙 7): {top2} + 기준 {base} → 노트북 12-5 의 TOP2 = {[_cfg_tuple(c) for c in top2]}")
-    if base not in cand:
-        print(f"\n판정: 기준 {base} 가 후보가 못 됨 → **서버 변경 없음** (eye_cnn_548.pt + 0.4 유지), 결과만 보고 (규칙 5)")
-        return
     best = rank[0]
-    gap = half[base] - half[best]
-    if best != base and gap > margin:
-        choice, why = best, f"기준보다 반쯤 취소 {gap * 100:.1f}%p 낮음 (> {margin * 100:.0f}%p) → vscale 보정 채택"
+    if base not in cand:  # 기준 탈락 · 다른 후보 있음 → 2%p 비교 없이 후보 중 최저 (규칙 5, 11/04 수정)
+        choice, why = best, f"기준 {base} 탈락 → 2%p 비교 없이 후보 중 반쯤 취소 최저 → vscale 보정 채택"
     else:
-        choice, why = base, ("기준이 가장 낮음" if best == base else f"차이 {gap * 100:.1f}%p ≤ {margin * 100:.0f}%p") + " → 보정 안 씀, 새 기준 모델"
+        gap = half[base] - half[best]
+        if best != base and gap > margin:
+            choice, why = best, f"기준보다 반쯤 취소 {gap * 100:.1f}%p 낮음 (> {margin * 100:.0f}%p) → vscale 보정 채택"
+        else:
+            choice, why = base, ("기준이 가장 낮음" if best == base else f"차이 {gap * 100:.1f}%p ≤ {margin * 100:.0f}%p") + " → 보정 안 씀, 새 기준 모델"
     if n_seed == 1:
         print(f"\n(시드 0 만 본 잠정 판정: {choice} — {why}. 시드 재확인 뒤 다시 pick)")
         return
-    c0, b0 = runs[choice]["s0"], runs[base]["s0"]
-    print(f"\n판정: {choice} — {why}")
-    print(f"  서버에 넣을 것 (규칙 8): {c0['file'].replace('result_trainval_', '').replace('.csv', '.pt')} + CNN_CLOSED_PROB = {c0['t']:.2f}")
+    c0, b0 = runs[choice]["s0"], runs.get(base, {}).get("s0")
     model = lambda x: x["file"].replace("result_trainval_", "").replace(".csv", ".pt")
-    finals = [(c0, "최종")] + ([] if choice == base else [(b0, "기준")])
+    print(f"\n판정: {choice} — {why}")
+    print(f"  서버에 넣을 것 (규칙 8): {model(c0)} + CNN_CLOSED_PROB = {c0['t']:.2f}")
+    finals = [(c0, "최종")]
+    if choice != base:
+        if b0 is None or b0["t"] is None:  # 기준이 오경보 3% 이하 t 를 못 찾음 → 151명에서 잴 t 가 없음
+            print(f"    기준 {base}: 해당 없음 (val 에서 오경보 {fa:.0%} 이하 t 를 못 찾음)")
+        else:  # 감은 눈 취소로 탈락했어도 t 는 있으니 그대로 잼
+            finals.append((b0, "기준"))
     print(f"  151명 (규칙 10, 각 1회): eval --set val --models {' '.join(model(x) for x, _ in finals)}")
     for x, what in finals:
         print(f"    {what}: final --csv {x['file'].replace('result_trainval_', 'result_val_')} --t {x['t']:.2f}")
