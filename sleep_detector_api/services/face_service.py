@@ -10,8 +10,10 @@
 #   - USE_CNN 이면 눈만 잘라 흑백 64×64 → eye_cnn.pt → 감았을 확률
 #       (자르기 · 흑백 · 크기는 services/eye_preprocess.py 의 crop_eye → prep_eye 사용, 학습과 같은 함수)
 #   - 결과: 감음 / 뜸 / 얼굴 없음 + ear · eye_closed_prob · method
-#   - 확인 규칙: microsleep → 서버도 감음이면 확정 / 확실히 뜸이면 취소 / 얼굴 없음이면 앱 판단대로(method mlkit)
+#   - 확인 규칙: microsleep → 서버도 감음이면 확정 / 확실히 뜸이면 취소 / 사진에서 얼굴을 못 찾으면 취소 (11/04 팀장 확인)
 #       확실히 뜸 = CNN 이 있으면 CNN · EAR 둘 다 확실히 뜸 (10/28 회의), 없으면 EAR 만
+#       얼굴 없음 취소: 손으로 가리거나 폰이 돌아가도 ML Kit 은 눈 확률을 내서 (0.07 · 0.33 · 0.37 · 0.55) 앱 값으로는 못 가림 (11/04 시연 폰 시험)
+#       사진이 아예 없는 경우 (detect.py, 고개를 떨궈 얼굴을 놓침) · 서버 판정 오류는 앱 판단대로 확정
 #   -           perclos → 앱 숫자로 확정 (method mlkit, 사진은 기록용)
 #   - 개인 기준 EAR: /drive/calibrate 사진 5장 중간값 × 0.7 (0.15~0.25)
 #
@@ -294,7 +296,7 @@ def _normalize(raw: dict, threshold: float, reason: str | None = None) -> dict:
     elif reason == "microsleep":
         if not face_found:
             method = "mlkit"
-            is_sleep = True
+            is_sleep = bool(raw.get("error"))  # 사진에 얼굴 없음 = 가려짐 · 폰 돌아감 → 취소, 서버 오류만 앱 판단대로
         elif is_definitely_open:
             is_sleep = False
         else:
@@ -335,7 +337,8 @@ def check_eyes(image_path: str, user_id=None, reason: str | None = None, **kwarg
                     "eye_closed_prob": None,
                     "method": "mlkit",
                     "ear_threshold": threshold,
-                    "result": "얼굴 없음"
+                    "result": "얼굴 없음",
+                    "error": True,  # 서버 오류 → 얼굴 없음 취소를 하지 않고 앱 판단대로
                 }
             else:
                 raise

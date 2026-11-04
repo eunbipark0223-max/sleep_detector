@@ -7,6 +7,7 @@
 // [이 파일이 하는 일]
 //   - 눈 판정을 앱이 하므로 판정 숫자는 여기 한곳에만 둔다
 //   - eyeClosedProb = 0.4      두 눈 평균 눈 뜸 확률이 이보다 작으면 '감김' (개인 기준이 없을 때, 10/27 0.3 → 0.2, 10/28 0.25, 11/02 0.4 확정)
+//   - smileOpenProb = 0.8      (🆕 11/04) 웃음 확률이 이 이상이면 감김으로 세지 않음
 //   - closedSec = 1.5          감김이 이만큼 이어지면 미세수면 의심
 //   - perclosWindowSec = 30    PERCLOS 계산 구간
 //   - perclosThreshold = 0.15  감김 비율이 이 이상이면 피로 누적 의심
@@ -14,6 +15,7 @@
 //   - minFaceSize = 0.15       ML Kit 최소 얼굴 크기 (조수석 · 뒷좌석 무시)
 //   - calibSec = 5 · calibRatio = 0.5 · calibMin = 0.2 · calibMax = 0.4 · calibMinFaces = 3   개인 기준
 //   - contourEarOn · useContourEar · earClosed   (🆕 10/27) ML Kit 눈 윤곽 점으로 폰에서 EAR — 반쯤 감은 눈용
+//   - headResendSec = 6        (🆕 11/04) 서버 취소 뒤 계속 숙이고 있으면 한 번 더 보내는 시간
 //   - headRuleOn · headDownDeg = 6 · headDownSec = 3 · headBaseSec · headBaseMinFrames   (🆕 10/28) 고개 숙임 3초 → 미세수면 의심
 //   - pingSec = 30             서버 config.PING_SEC 과 같은 값
 //   - baseUrl                  서버 주소 (에뮬레이터는 http://10.0.2.2:8000)
@@ -29,6 +31,9 @@ class AppConfig {
   //   11/02 0.4 확정: 뜬 눈 확률이 0.99 라 개인 기준이 5명 모두 상한 0.4 → 측정 성공 · 실패와 상관없이 같은 기준으로 통일
   //   KPI ① (0.25 → 0.4): 기본 놓침 0/159 · 오탐 0/160 같음, 반쯤 감음 42 → 49/109, 선글라스 놓침 10 → 8/10, 고개 돌림 오탐 0 → 1/20 (서버가 취소)
   static const double eyeClosedProb = 0.4;
+
+  // 웃음 확률이 이 이상이면 감김으로 세지 않음 — 크게 웃으면 눈이 가늘어져 오판 (11/03 웹캠 확인). 0.8 은 출발점 → 웃는 사진으로 측정 후 확정
+  static const double smileOpenProb = 0.8;
 
   // 미세수면: 연속 감김 시간 기준 (초)
   static const double closedSec = 1.5;
@@ -76,6 +81,7 @@ class AppConfig {
   static const bool headRuleOn = true;
   static const double headDownDeg = 6.0;
   static const double headDownSec = 3.0;
+  static const double headResendSec = 6.0; // 숙임 시작부터 이만큼 지나도 서버 취소 뒤 얼굴이 정상으로 안 돌아오면 사진 없이 한 번 더 (11/04, 재시험 후 확정)
   static const double headUpResetSec = 0.5; // 이만큼 계속 고개를 들어야 숙임 시간을 처음부터 (흔들림 1~2프레임은 숙임으로 이어 셈)
   static const int headBaseSec = 60;
   static const int headBaseMinFrames = 20;
