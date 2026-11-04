@@ -187,7 +187,7 @@ def s8():
 
 def s9():
     h, _ = new_driver()
-    r = doze(h, name="noface.png")                      # 서버가 얼굴을 못 찾음 → 앱 판단대로
+    r = doze(h, name="noface.png")                      # 사진에서 얼굴을 못 찾음 → 취소 (손 가리기 · 폰 돌아감, 11/04 A · 팀장)
     return f"{'확정' if r['is_sleep'] else '취소'} · {r['method']} · {r['stage']}단계"
 
 
@@ -296,6 +296,21 @@ def bonus_drive_end():
     return f"배너 {active} · {ping(h)['drive_min']}분"
 
 
+def bonus_error():
+    """서버 판정 오류면 사진이 있어도 앱 판단대로 확정 (얼굴 없음 취소와 구분, 11/04 A)"""
+    h, _ = new_driver()
+    real_flag, real_fn = face_service.USE_REAL_AI, face_service._real
+
+    def boom(*_a, **_k):
+        raise RuntimeError("시험용 오류")
+
+    face_service.USE_REAL_AI, face_service._real = True, boom
+    try:
+        return "확정" if doze(h)["is_sleep"] else "취소"
+    finally:
+        face_service.USE_REAL_AI, face_service._real = real_flag, real_fn
+
+
 SCENARIOS = [
     ("① 졸음 1회 → 1단계",                   1, s1),
     ("② 10분 안 졸음 2회 → 2단계",              2, s2),
@@ -305,7 +320,7 @@ SCENARIOS = [
     ("⑥ 15분 전 재개 → 거절, 2단계 그대로",       "409 · 2단계", s6),
     ("⑦ 3단계 → 관리자 조치완료 → 0단계",         0, s7),
     ("⑧ 짧은 깜빡임 (서버: 확실히 뜸) → 취소",     "취소 · 0단계", s8),
-    ("⑨ 얼굴 없음 · 모름 → 앱 판단대로 확정",      "확정 · mlkit · 1단계", s9),
+    ("⑨ 사진에서 얼굴 못 찾음 → 취소",             "취소 · mlkit · 0단계", s9),
     ("⑩ 연속 2시간 → 휴게 알림 1번",             "True · 다음 ping False", s10),
     ("⑪ 운전 중 퀴즈 통과 → 단계 그대로",          "통과 · 1단계", s11),
     ("⑫ 운전 중 퀴즈 2번 실패 → 단계 +1",          "2단계 · no_response 1건", s12),
@@ -315,7 +330,8 @@ BONUS = [("(보너스) 3단계는 휴식으로 안 풀림 → 3단계", 3, bonus
          ("(보너스) 1 · 2 · 3단계에서 운행 다시 시작", "0 · 2 · 3", bonus_restart),
          ("(보너스) 2단계 휴식 중 졸음 의심 → 무시", "무시 · 2단계", bonus_rest_detect),
          ("(보너스) 재시작 복원: 3단계 · 2단계 · 휴식 뒤", "3 · 2 · 0", bonus_restore),
-         ("(보너스) 운행 종료 뒤 연속 운전 시간 유지", "배너 False · 100분", bonus_drive_end)]
+         ("(보너스) 운행 종료 뒤 연속 운전 시간 유지", "배너 False · 100분", bonus_drive_end),
+         ("(보너스) 서버 판정 오류 → 앱 판단대로 확정", "확정", bonus_error)]
 
 
 def run(items):

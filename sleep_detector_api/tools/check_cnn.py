@@ -11,6 +11,7 @@
 #   B. 모델 : 실제로 읽히는지, 빈 입력에 0~1 확률이 나오는지, CPU 시간
 #   C. 사진 : --closed / --open 사진을 서버 판정(check_eyes) 그대로 → method = cnn 인지, 감음 · 뜸이 맞는지
 #   D. 폴백 : 모델 없음 · 깨짐 · 추론 오류 · 눈 작음 · MediaPipe 오류를 일부러 일으켜 → 의도한 대로 넘어가는지, 원래대로 돌아오는지
+#             + 사진에 진짜 얼굴이 없을 때 취소
 #   E. 서버 : 켜져 있는 서버의 /health 가 같은 모델을 쓰는지 (옛 코드로 돌고 있으면 실패)
 #
 # [실행] (sleep_detector_api 폴더, 서버 venv — torch 필요)
@@ -181,6 +182,15 @@ def part_d(fs, photo):
 
         r, _ = judge(fs, photo)
         check("오류를 치운 뒤 다시 CNN", r["method"] == "cnn", f"method={r['method']} cnn={r['eye_closed_prob']}")
+
+        # 진짜 얼굴이 없는 사진 (회색 빈 사진, 임시 폴더) → 취소 (손 가리기 · 폰 돌아감)
+        import cv2
+        import numpy as np
+        blank = os.path.join(tmp, "blank.jpg")
+        cv2.imencode(".jpg", np.full((640, 480, 3), 128, np.uint8))[1].tofile(blank)
+        nf, _ = judge(fs, blank)
+        check("사진에 얼굴 없음 → 취소", nf["face_found"] is False and nf["is_sleep"] is False,
+              f"method={nf['method']} 졸음={nf['is_sleep']}")
     finally:
         fs.CNN_MODEL_PATH, fs._cnn_closed_prob, ep.crop_eye, fs._get_detector = good_path, good_prob, good_crop, good_det
         shutil.rmtree(tmp, ignore_errors=True)
