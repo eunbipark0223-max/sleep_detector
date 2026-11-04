@@ -36,6 +36,12 @@
 #   ... wrong --csv result_val_eye_cnn_548.csv   틀린 사진의 눈만 모은 그림 → D:\aihub548\wrong_*.png (저장소 X)
 #   ... curve [--csvs result_val.csv,result_val_eye_cnn_548.csv]   기준값 0.05~0.95 곡선 (오경보 ↔ 반쯤 · 감은 눈 취소) 모델끼리 겹침
 #       + 오경보 0.5 · 1 · 3% 고정점 + 지금 기준값 보고 형식 (전체 / 판정됨 / 판정 불가 / 해당 / 비율 / 95% 범위) — 중간 점검 피드백 11/04
+#   ── 12번 실험 (11/04 강사님 중간 점검 2 — vscale 설정 5개) ──
+#   ... eval --set trainval --models eye_cnn12_k100_100_s0.pt eye_cnn12_k085_100_s0.pt ...   548 학습용 val 115명 (고르기)
+#       → result_trainval_eye_cnn12_<설정>_<시드>.csv (사진은 한 번 읽고 모델마다)
+#   ... pick [--csvs a.csv,b.csv] [--fa 0.03] [--margin 0.02]   모델마다 t (오경보 ≤ 3% 인 가장 낮은 t) → 설정 고르기 규칙
+#   ... eval --set val --models <고른 모델> <기준 모델>   151명 (한 번만)
+#   ... final --csv result_val_eye_cnn12_<설정>_s0.csv --t <pick 의 t>   세 숫자 + 건수 (기준 모델도 자기 t 로)
 #   ... cond [--csvs team_a.csv,team_b.csv]   팀 사진 · 조건 사진을 조건별로 (감은 눈 취소 / 뜬 눈 오경보 / 판정 불가, 같은 보고 형식)
 #       기본 = team_eye_cnn_aihub.csv · team_eye_cnn_548.csv (team --model 로 먼저 만들기)
 #   ... extra [--dir D:\aihub71421\sel] [--model ...]   외부 사진 시험 (하위 폴더 closed · open, 학습에 안 씀)
@@ -63,6 +69,7 @@ import argparse
 import collections
 import csv
 import glob
+import json
 import os
 import random
 import re
@@ -198,7 +205,10 @@ EVAL_SETS = {
     "val_g1": ("VL.zip", "G1", ["VS_G1.zip"], False, "result_g1.csv"),  # 11/02 첫 시험 (65명)
     "val": ("VL.zip", None, ["VS_G1.zip", "VS_G2.zip", "VS_U.zip"], False, "result_val.csv"),  # Validation 전부 (151명)
     "train": ("TL.zip", None, ["TS_G1_1.[zZ]ip"], True, "result_train.csv"),  # 학습용 묶음 — 지금 모델은 548 을 안 봤으니 시험지로도 됨 (Validation 사람 뺌)
+    # 학습용 묶음 3개 중 crop 의 val 사람 (people_split.json 'val', 115명) — 12번 실험의 '고르기' 시험지 (기준값 t · 설정 고르기)
+    "trainval": ("TL.zip", None, ["TS_G1_1.[zZ]ip", "TS_G2_1.[zZ]ip", "TS_U_1.[zZ]ip"], True, "result_trainval.csv"),
 }
+ONLY_SPLIT = {"trainval": "val"}  # 이 묶음은 people_split.json 에서 이 split 인 사람만
 
 
 def make_net(arch):
@@ -304,10 +314,11 @@ def _sharp(img, pts):
     return round(float(np.mean(out)), 1) if out else None
 
 
-def evaluate(which="val_g1", model="", tta=False, scale=1.0):
+def evaluate(which="val_g1", model="", tta=False, scale=1.0, models=()):
     """지금 서버 판정(face_service 그대로)으로 548 시험 — 감음 · 반쯤 전부 + 사람 · 거리마다 뜸 OPEN_PER 장
     model: 다른 CNN 파일로 시험 (use_model — 쉼표로 여러 개면 앙상블) → 결과 CSV 이름 뒤에 모델 이름
-    scale: 사진을 이 배율로 줄여서 시험 (CEW 처럼 눈이 작을 때 오경보가 오르나 — 해상도 원인 확인) → 이름 뒤 _s배율"""
+    scale: 사진을 이 배율로 줄여서 시험 (CEW 처럼 눈이 작을 때 오경보가 오르나 — 해상도 원인 확인) → 이름 뒤 _s배율
+    models: 모델 여러 개를 **따로** (앙상블 X) 같은 사진으로 — 사진은 한 번 읽고 모델마다 서버 판정 → 모델마다 CSV 하나 (12번 실험)"""
     import tempfile
     import cv2
     import numpy as np
@@ -316,12 +327,18 @@ def evaluate(which="val_g1", model="", tta=False, scale=1.0):
     from services import face_service as fs  # 서버 판정 그대로 (config.py 의 CNN · EAR 기준)
 
     label_zip, group, img_zips, drop_val, out_name = EVAL_SETS[which]
-    if model or tta:
-        out_name = out_name.replace(".csv", f"_{use_model(fs, model, tta)}.csv")
-    if scale != 1.0:
-        out_name = out_name.replace(".csv", f"_s{scale:g}.csv")
+    runs = []  # (결과 CSV 이름, CNN) — 보통 하나, models 면 모델마다
+    for mdl in (models or [model]):
+        name = out_name.replace(".csv", f"_{use_model(fs, mdl, tta)}.csv") if mdl or tta else out_name
+        if scale != 1.0:
+            name = name.replace(".csv", f"_s{scale:g}.csv")
+        runs.append((name, fs._cnn))
     label = read_labels(find(label_zip), group)
     drop = val_people(find("VL.zip")) if drop_val else set()
+    only = None
+    if which in ONLY_SPLIT:
+        split = json.load(open(os.path.join(ROOT, "people_split.json"), encoding="utf-8"))
+        only = {p for p, sp in split.items() if sp == ONLY_SPLIT[which]}
     zips, items, meta = {}, {}, {}  # 사진 이름 → (zip, 안 이름) / (zip, 번호) → 사람 정보
     for pattern in img_zips:
         zp = find(pattern)
@@ -336,7 +353,7 @@ def evaluate(which="val_g1", model="", tta=False, scale=1.0):
     rng, groups, pick = random.Random(SEED), collections.defaultdict(list), []
     for f in sorted(items):
         lab = label.get(f)
-        if not lab or person_of(f) in drop:
+        if not lab or person_of(f) in drop or (only is not None and person_of(f) not in only):
             continue
         if lab == "open":
             groups[(person_of(f), f.split("_")[4])].append(f)
@@ -344,32 +361,38 @@ def evaluate(which="val_g1", model="", tta=False, scale=1.0):
             pick.append(f)
     for k in sorted(groups):
         pick += rng.sample(groups[k], min(OPEN_PER, len(groups[k])))
-    print(f"[{which}] 라벨 {len(label)} / RGB {len(items)} / 뺀 Validation 사람 {len(drop)} / 고른 사진 {len(pick)}",
-          dict(collections.Counter(label[f] for f in pick)), flush=True)
+    print(f"[{which}] 라벨 {len(label)} / RGB {len(items)} / 뺀 Validation 사람 {len(drop)}"
+          + (f" / {ONLY_SPLIT[which]} 사람만 {len({person_of(f) for f in pick})}명" if only is not None else "")
+          + f" / 고른 사진 {len(pick)}", dict(collections.Counter(label[f] for f in pick)), flush=True)
 
-    rows, tmp = [], os.path.join(tempfile.gettempdir(), "aihub548_eval.png")  # 사진은 한 장씩 임시 파일에만 (저장소 · 드라이브에 안 남김)
+    rows, tmp = [[] for _ in runs], os.path.join(tempfile.gettempdir(), "aihub548_eval.png")  # 사진은 한 장씩 임시 파일에만 (저장소 · 드라이브에 안 남김)
+    t0 = time.time()
     for k, f in enumerate(pick, 1):
         zp, info = items[f]
         img = cv2.imdecode(np.frombuffer(zips[zp].read(info), np.uint8), cv2.IMREAD_COLOR)
-        n, eye_w = _judge(fs, img, tmp, scale)
-        rows.append(dict(file=f, person=person_of(f), dist=f.split("_")[4], view=f.split("_")[6], label=label[f],
-                         **{"age": "", "gender": "", "glasses": "", **meta.get((zp, f.split("_")[3]), {})},
-                         face=n["face_found"], prob=n["eye_closed_prob"], ear=n["ear"], closed=n["is_closed"],
-                         cancel=n["is_definitely_open"], eye_w=eye_w))
+        for (name, net), rs in zip(runs, rows):
+            fs._cnn, fs._cnn_failed = net, False
+            n, eye_w = _judge(fs, img, tmp, scale)
+            rs.append(dict(file=f, person=person_of(f), dist=f.split("_")[4], view=f.split("_")[6], label=label[f],
+                           **{"age": "", "gender": "", "glasses": "", **meta.get((zp, f.split("_")[3]), {})},
+                           face=n["face_found"], prob=n["eye_closed_prob"], ear=n["ear"], closed=n["is_closed"],
+                           cancel=n["is_definitely_open"], eye_w=eye_w))
         if k % 1000 == 0:
-            print(k, "/", len(pick), flush=True)
+            print(k, "/", len(pick), f"{time.time() - t0:.0f}초", flush=True)
     os.remove(tmp)
     for z in zips.values():
         z.close()
 
-    out = os.path.join(ROOT, out_name)
-    with open(out, "w", newline="", encoding="utf-8-sig") as fh:
-        w = csv.DictWriter(fh, fieldnames=list(rows[0]))
-        w.writeheader()
-        w.writerows(rows)
-    for line in report(rows):
-        print(line)
-    print("CSV:", out)
+    for (name, _), rs in zip(runs, rows):
+        out = os.path.join(ROOT, name)
+        with open(out, "w", newline="", encoding="utf-8-sig") as fh:
+            w = csv.DictWriter(fh, fieldnames=list(rs[0]))
+            w.writeheader()
+            w.writerows(rs)
+        if len(runs) == 1:
+            for line in report(rs):
+                print(line)
+        print("CSV:", out)
 
 
 def _stat(rows, lab, **cond):
@@ -601,6 +624,103 @@ def curve(csv_names, fa_fix=(0.005, 0.01, 0.03)):
     fig.tight_layout()
     fig.savefig(out, dpi=150)
     print("\n그림:", out, "(숫자만 들어 있음 — 노션 · 발표 OK)")
+
+
+T_GRID = [round(0.11 + 0.01 * k, 2) for k in range(85)]  # 0.11 ~ 0.95 (0.10 이하는 취소가 아예 안 생김 — CNN < t − 0.1)
+
+
+def _rates_at(rows, t):
+    """eval CSV 줄들 → 기준값 t 일 때 서버 판정 (face_service._normalize 규칙, CNN_CLOSED_PROB = t)
+    → {라벨: (해당 건수, 판정된 수, 전체)} — 뜸 = 오경보 (취소 못 함), 반쯤 · 감음 = 취소 (확실히 뜸)"""
+    sys.path.insert(0, API_DIR)
+    import config
+    ear_thr, ear_margin = config.EAR_THRESHOLD, config.CONFIRM_OPEN_MARGIN
+    open_margin = getattr(config, "CNN_OPEN_MARGIN", 0.1)
+    out = {}
+    for lab in ("open", "half", "closed"):
+        rs = [r for r in rows if r["label"] == lab]
+        ok = [r for r in rs if str(r["face"]) == "True" and r["prob"] not in ("", None)]
+        k = sum(_judge_at(r, t, ear_thr, ear_margin, open_margin)[1] == (lab != "open") for r in ok)  # 뜸: 취소 못 한 수 · 나머지: 취소한 수
+        out[lab] = (k, len(ok), len(rs))
+    return out
+
+
+def _cfg_of(name):
+    """result_trainval_eye_cnn12_k085_100_s1.csv → ('k085_100', 's1')"""
+    m = re.search(r"eye_cnn12_(k\d{3}_\d{3})_(s\d+)", name)
+    return (m[1], m[2]) if m else (os.path.splitext(name)[0], "s0")
+
+
+def pick(csv_names, fa=0.03, margin=0.02, base="k100_100"):
+    """12번 실험 — 548 학습용 val 115명 (eval --set trainval) 으로 **고르기** (11/04 강사님 중간 점검 2)
+    1. 모델마다 기준값 t 를 훑어 뜬 눈 오경보 ≤ fa 가 되는 가장 낮은 t → 그때 감은 눈 · 반쯤 감은 눈 취소
+    2. 감은 눈 취소가 0 이 아닌 설정은 뺌 → 남은 것 중 반쯤 취소가 가장 낮은 설정 (시드 여러 개면 평균)
+    3. 기준(base, vscale 없음)이 이기거나 차이가 margin 이내면 보정 안 씀
+    ⚠️ 151명(Validation) CSV 는 넣지 않음 — 여기서 고른 t 로 final 에서 한 번만 잼"""
+    if not csv_names:
+        csv_names = sorted(os.path.basename(f) for f in glob.glob(os.path.join(ROOT, "result_trainval_eye_cnn12_*.csv")))
+    assert csv_names, "result_trainval_eye_cnn12_*.csv 가 없음 — 먼저 eval --set trainval --models ..."
+    assert not any(n.startswith("result_val") for n in csv_names), "151명 CSV 로 고르면 안 됨"
+    res = []
+    for name in csv_names:
+        rows = list(csv.DictReader(open(os.path.join(ROOT, name), encoding="utf-8-sig")))
+        cfg, seed = _cfg_of(name)
+        hit = next(((t, r) for t in T_GRID for r in [_rates_at(rows, t)] if r["open"][0] / r["open"][1] <= fa), None)
+        if hit is None:
+            print(f"{name}: 오경보 {fa:.0%} 이하가 되는 t 없음 (0.95 까지)")
+            continue
+        t, r = hit
+        res.append(dict(cfg=cfg, seed=seed, t=t, fa=r["open"], closed=r["closed"], half=r["half"], file=name))
+    print(f"== 모델마다: 뜬 눈 오경보 ≤ {fa:.0%} 가 되는 가장 낮은 t (548 학습용 val, 사람 {'115'}명) ==")
+    print("설정 | 시드 | t | 오경보 | 감은 눈 취소 | 반쯤 감은 눈 취소 | (해당/판정됨, 전체)")
+    for x in sorted(res, key=lambda x: (x["cfg"], x["seed"])):
+        f = lambda v: f"{v[0] / v[1]:.1%} ({v[0]}/{v[1]}, {v[2]})"
+        print(f"{x['cfg']} | {x['seed']} | {x['t']:.2f} | {f(x['fa'])} | {f(x['closed'])} | {f(x['half'])}")
+
+    cfgs = collections.defaultdict(list)
+    for x in res:
+        cfgs[x["cfg"]].append(x)
+    half = {c: sum(x["half"][0] / x["half"][1] for x in xs) / len(xs) for c, xs in cfgs.items()}
+    alive = [c for c, xs in cfgs.items() if all(x["closed"][0] == 0 for x in xs)]
+    dead = sorted(set(cfgs) - set(alive))
+    print()
+    print(f"감은 눈 취소가 0 이 아니라 뺌: {dead or '없음'}")
+    rank = sorted(alive, key=lambda c: half[c])
+    print("남은 설정 (반쯤 취소 낮은 순, 시드 평균):", " · ".join(f"{c} {half[c]:.1%} (시드 {len(cfgs[c])})" for c in rank))
+    if not rank:
+        print("판정: 남은 설정 없음 — 기준 포함 전부 감은 눈 취소 있음 → 팀장 · 강사님 확인")
+        return
+    print("시드 바꿔 더 돌릴 상위 2개:", rank[:2], "(아직 시드 1개뿐이면 노트북 12-5)")
+    best = rank[0]
+    if base not in cfgs:
+        print(f"판정 보류: 기준 {base} 결과가 없음")
+        return
+    gap = half[base] - half[best]
+    if best == base or gap <= margin:
+        choice = base
+        why = "기준이 이김" if best == base else f"차이 {gap * 100:.1f}%p ≤ {margin * 100:.0f}%p"
+    else:
+        choice, why = best, f"기준보다 반쯤 취소 {gap * 100:.1f}%p 낮음"
+    seeds = [x for x in cfgs[choice] if x["seed"] == "s0"] or cfgs[choice]
+    bseed = [x for x in cfgs[base] if x["seed"] == "s0"] or cfgs[base]
+    print()
+    print(f"판정: {choice} ({why}) — {'보정 안 씀' if choice == base else 'vscale 보정 씀'}")
+    print(f"  151명 final: 고른 모델 {seeds[0]['file']} → t = {seeds[0]['t']:.2f}"
+          + ("" if choice == base else f" / 기준 {bseed[0]['file']} → t = {bseed[0]['t']:.2f} (기준도 자기 t 로 한 번)"))
+
+
+def final(csv_name, t):
+    """12번 실험 — 151명 (Validation) 최종 보고: val 에서 고른 t 로 **한 번만** (결과 보고 다시 고르지 않음)
+    세 숫자를 건수와 함께: 뜬 눈 오경보 (취소 못 함) / 감은 눈 취소 / 반쯤 감은 눈 취소"""
+    assert csv_name.startswith("result_val"), "final 은 151명 (eval --set val) CSV"
+    rows = list(csv.DictReader(open(os.path.join(ROOT, csv_name), encoding="utf-8-sig")))
+    r = _rates_at(rows, t)
+    print(f"== {csv_name} · t = {t:.2f} (548 학습용 val 에서 고름) ==")
+    print("지표 | 해당 | 판정됨 | 판정 불가 (얼굴 못 찾음) | 전체 | 비율 | 95% 범위")
+    for lab, what in (("open", "뜬 눈 오경보 (취소 못 함)"), ("closed", "감은 눈 취소"), ("half", "반쯤 감은 눈 취소")):
+        k, n, tot = r[lab]
+        lo, hi = _wilson(k, n)
+        print(f"{what} | {k} | {n} | {tot - n} | {tot} | {k / n:.1%} | {lo:.1%} ~ {hi:.1%}")
 
 
 COND_NAME = {"": None, "turn": "고개 돌림", "down": "고개 숙임", "mask": "마스크", "sun": "선글라스"}
@@ -857,7 +977,7 @@ def to_wandb():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("step", choices=["download", "eval", "wandb", "crop", "team", "wrong", "extra", "curve", "cond"])
+    ap.add_argument("step", choices=["download", "eval", "wandb", "crop", "team", "wrong", "extra", "curve", "cond", "pick", "final"])
     ap.add_argument("--dir", default=r"D:\aihub71421\sel", help="extra: 외부 사진 폴더 (하위 폴더 이름에 closed / open)")
     ap.add_argument("--pad", type=float, default=0.0, help="extra: 얼굴이 꽉 찬 사진이면 사방을 이 비율만큼 늘림 (CEW 0.4, 얼굴 전체 사진은 0)")
     ap.add_argument("--root", default=ROOT, help="받기 · 결과 폴더 (저장소 밖)")
@@ -869,9 +989,15 @@ if __name__ == "__main__":
     ap.add_argument("--color", action="store_true", help="crop: 컬러(BGR)로 저장 → eye_npz_color/ (8번 색온도 증강용, 사람 분할은 같음)")
     ap.add_argument("--set", default="val_g1", choices=list(EVAL_SETS), help="eval: 시험할 묶음 (val_g1 · val · train)")
     ap.add_argument("--scale", type=float, default=1.0, help="eval · extra: 사진을 이 배율로 줄여서 (저해상도 원인 확인, 결과 이름 끝 _s배율)")
+    ap.add_argument("--models", nargs="+", default=[], help="eval: 모델 여러 개를 따로 (앙상블 X) — 사진은 한 번 읽고 모델마다 CSV (12번 실험)")
+    ap.add_argument("--t", type=float, default=0.4, help="final: pick 이 val 에서 고른 기준값")
+    ap.add_argument("--fa", type=float, default=0.03, help="pick: 뜬 눈 오경보 목표 (이하가 되는 가장 낮은 t)")
+    ap.add_argument("--margin", type=float, default=0.02, help="pick: 기준과 반쯤 취소 차이가 이 이내면 보정 안 씀 (1~2%p — 팀장 확인)")
     ap.add_argument("--model", default="", help="eval · team: 다른 CNN 파일 (예: eye_cnn_548.pt, ml_models/ 안). 쉼표로 여러 개면 앙상블 (감음 확률 평균)")
     a = ap.parse_args()
     ROOT = a.root
-    {"download": lambda: download(a.keys), "eval": lambda: evaluate(a.set, a.model, a.tta, a.scale), "wrong": lambda: wrong(a.csv), "wandb": to_wandb, "crop": lambda: crop(a.limit, a.color),
+    {"download": lambda: download(a.keys), "eval": lambda: evaluate(a.set, a.model, a.tta, a.scale, a.models), "wrong": lambda: wrong(a.csv), "wandb": to_wandb, "crop": lambda: crop(a.limit, a.color),
      "team": lambda: team(a.model, a.tta), "curve": lambda: curve(a.csvs.split(",")),
+     "pick": lambda: pick(a.csvs.split(",") if a.csvs != ap.get_default("csvs") else [], a.fa, a.margin),
+     "final": lambda: final(a.csv, a.t),
      "cond": lambda: cond_table(a.csvs.split(",") if a.csvs != ap.get_default("csvs") else ["team_eye_cnn_aihub.csv", "team_eye_cnn_548.csv"]),"extra": lambda: extra(a.dir, a.model, a.tta, a.pad, a.scale)}[a.step]()
