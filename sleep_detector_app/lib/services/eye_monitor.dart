@@ -16,7 +16,10 @@
 //       평소 각도 = 최근 60초 '눈 뜨고 숙이지 않은' 프레임의 ML Kit headEulerAngleX 중간값, 그보다 6° 이상 숙이면 숙임
 //       숙인 채 얼굴을 놓치면 (화면 밖으로 떨굼) 모름이 아니라 숙임으로 계속 셈 — 얼굴이 다시 잡힐 때까지
 //       PERCLOS 는 눈 감김만 (고개만 숙인 프레임은 넣지 않음)
+//       서버가 취소한 뒤 얼굴이 정상으로 돌아오지 않은 채 6초가 되면 사진 없이 한 번 더 → 서버가 앱 판단대로 확정 (11/04)
 //       10/29 시연 폰 시험: 계기판 보기 1.0~2.3초 · 졸아서 숙이기 3.8~7.4초 → 1.5초였을 때 계기판에서 경고 3번 → 3초
+//   - 🆕 (AppConfig.smileOpenProb) 웃음 확률이 기준 이상이면 감김으로 세지 않음 ('뜸' 으로 셈, '모름' 아님 → PERCLOS 에도 뜸)
+//       크게 웃으면 볼이 올라가 눈이 가늘어져 감김으로 오판 (11/03 웹캠 확인). 졸면서 크게 웃는 경우는 거의 없음
 //   - 사진 파일 1장 분석 (사진 1장 테스트 · KPI ① 측정) · 개인 기준 측정 (평소 확률 중간값 × 0.5, 0.2~0.4, 실패 시 기본값 + 예외)
 //   - 🆕 (AppConfig.contourEarOn) 눈 윤곽 점 16개로 폰 EAR 계산 — 반쯤 감은 눈은 뜸 확률이 높게 나와서 보완용
 //       AppConfig.useContourEar 를 켜면 "뜸 확률 < 기준 또는 EAR < earClosed" 를 감김으로 봄 (시연 폰 확인 뒤에만)
@@ -28,6 +31,7 @@
 //       (null 이면 변환 실패 — 사진 없이 보내거나 다음 의심을 기다림)
 //   - onCheckCamera()  ← drive_screen 이 받는 콜백
 //   - reset()  ← drive_screen 이 경고 화면이 닫힐 때 부름 (판정 기록 비우기, 개인 기준은 그대로, 11/03 팀장)
+//   - serverCancelled()  ← drive_screen 이 서버 취소 응답을 받으면 부름 (안 부르면 한 번 더 보내기가 동작하지 않음)
 //   - onFrameResult(eyeOpenProb, perclos, ear)  ← (선택) 0단계 화면 표시용, 모름이면 eyeOpenProb · ear = null
 //   - analyzeFile(String path) → 눈 뜸 확률
 //   - analyzeFileDetail(String path) → EyeReading(눈 뜸 확률 · 폰 EAR · 처리 ms) — 사진 비교 · KPI ① 측정용
@@ -36,7 +40,7 @@
 //   - currentPerclos (ping 에 실어 보낼 값) · close()
 //
 // [주의]
-//   - 눈 + 고개 숙임만 판단 — 미소 확률 · 하품은 쓰지 않는다
+//   - 눈 + 고개 숙임으로 판단 — 웃음 확률은 감김 오판을 막는 데만 쓴다 (웃음 · 하품으로 졸음을 판정하지 않음)
 //       (10/28 CNN 채택 회의: 고개 숙임은 CNN 으로 해결 안 됨 → 앱 고개 규칙. 고개 좌우 각도는 쓰지 않음)
 //   - C 의 drive_screen 과는 위 함수 이름만 약속하고 서로 파일을 고치지 않는다
 //   - 실제 fps 는 폰마다 다름 → 시연 폰에서 측정, 판정은 프레임 수가 아니라 시간(초) 기준
@@ -69,7 +73,8 @@ class EyeReading {
   final int ms;              // ML Kit 처리 시간
   final double? headX;       // 고개 위아래 각도 (ML Kit headEulerAngleX, 얼굴 없음이면 null) — 고개 숙임 기준 측정용
   final double? headY;       // 고개 좌우 각도 (headEulerAngleY)
-  EyeReading(this.eyeOpenProb, this.ear, this.ms, [this.headX, this.headY]);
+  final double? smileProb;   // 웃음 확률 (smilingProbability) — 웃음 기준 측정용
+  EyeReading(this.eyeOpenProb, this.ear, this.ms, [this.headX, this.headY, this.smileProb]);
 
   @override
   String toString() => 'prob=${eyeOpenProb?.toStringAsFixed(3)} ear=${ear?.toStringAsFixed(3)} '
@@ -103,12 +108,15 @@ class EyeMonitor {
   DateTime? _headStartTime;   // 고개 숙임이 시작된 시각 (고개를 headUpResetSec 동안 들면 null)
   DateTime? _headUpSince;     // 숙임 중 고개를 든 첫 시각 (다시 숙이면 null)
   bool _headTriggered = false; // 이번 숙임으로 이미 의심을 냈는지 (고개를 들어야 다음)
+  DateTime? _cancelledAt;      // 고개 숙임 의심을 서버가 취소한 시각 (얼굴이 정상으로 돌아오면 null)
+  DateTime? _normalSince;      // 취소 뒤 얼굴이 정상으로 보이기 시작한 시각
   CameraImage? _headFrame;    // 이번 숙임 동안 찍은 마지막 얼굴 프레임 (서버로 갈 사진)
   CameraDescription? _headCamera;
 
   // 시험 화면용 (tools/eye_live_main.dart) — 판정에는 안 씀
   double? lastHeadX;  // 마지막 프레임 고개 위아래 각도 (얼굴 없음이면 그대로)
   double? headBase;   // 지금 평소 각도 (아직 못 냈으면 null)
+  double? lastSmileProb; // 마지막 프레임 웃음 확률 (시험 기록용)
   bool get isHeadDown => _headDown;
 
   // 감긴 순간의 프레임 임시 보관
@@ -228,6 +236,7 @@ class EyeMonitor {
       //    (고개 규칙) 바로 전 프레임에서 고개를 숙이고 있었으면 → 숙여서 얼굴을 놓친 것 → 숙임으로 계속 셈
       //    (눈 상태는 모르니 PERCLOS 에는 넣지 않음)
       if (faces.isEmpty) {
+        _checkAfterCancel(now, false, null);
         if (AppConfig.headRuleOn && _headDown) {
           _keepNotUnknown();
           _checkHeadDown(now, null, cam, null);
@@ -243,6 +252,7 @@ class EyeMonitor {
       final rightProb = face.rightEyeOpenProbability;
 
       if (leftProb == null || rightProb == null) {
+        _checkAfterCancel(now, false, null);
         // 이미 숙이던 중이면 → 눈 확률은 없어도 고개 각도로 숙임을 이어서 셈 (각도도 없으면 그대로)
         //   눈 확률이 없는 프레임으로 숙임을 새로 시작하지는 않음 — 손으로 얼굴을 가릴 때 각도가 틀어져
         //   숙임으로 잡히고 이어서 얼굴을 놓쳐 미세수면이 됐음 (10/29 시연 폰 시험) → 그때는 '모름' (카메라 확인)
@@ -261,10 +271,15 @@ class EyeMonitor {
 
       final double avgProb = (leftProb + rightProb) / 2.0;
       final double? ear = AppConfig.contourEarOn ? contourEar(face) : null;
+      lastSmileProb = face.smilingProbability;
+      // 크게 웃으면 볼이 올라가 눈이 가늘어짐 → 감김으로 오판 (11/03 웹캠 확인)
+      //   졸면서 크게 웃는 경우는 거의 없어서, 웃는 프레임은 감김으로 세지 않음
+      final bool smiling = (lastSmileProb ?? 0) >= AppConfig.smileOpenProb;
       // 완전히 감음 = 뜸 확률, (useContourEar 켜면) 반쯤 감음 = 폰 EAR
-      final bool eyesClosed = avgProb < threshold ||
-          (AppConfig.useContourEar && ear != null && ear < AppConfig.earClosed);
+      final bool eyesClosed = !smiling &&
+          (avgProb < threshold || (AppConfig.useContourEar && ear != null && ear < AppConfig.earClosed));
       _headDown = AppConfig.headRuleOn && _isHeadDown(face.headEulerAngleX, now, eyesClosed);
+      _checkAfterCancel(now, !_headDown && !eyesClosed, avgProb);
 
       // 눈 감김 · PERCLOS 는 눈만으로 (고개만 숙이고 눈 뜬 프레임은 '뜸')
       _judge(now, eyesClosed, image, cam, avgProb, ear);
@@ -309,6 +324,34 @@ class EyeMonitor {
     onSuspect?.call('microsleep', sec, _calculatePerclos(), avgProb ?? _lastEyeOpenProb, jpg);
   }
 
+  /// 서버가 의심을 취소했을 때 drive_screen 이 부름 — 이번 숙임에서 난 의심이면 headResendSec 에 한 번 더 보낼 수 있게
+  ///   숙여서 사진에 얼굴이 안 잡히면 서버는 손으로 가린 경우처럼 취소 → 숙인 채 계속 자면 들 때까지 경고가 안 남 (11/04 시연 폰 시험)
+  void serverCancelled() {
+    if (!_headTriggered) return;
+    _cancelledAt = DateTime.now();
+    _normalSince = null;
+  }
+
+  /// 서버 취소 뒤 얼굴이 정상으로 (고개 들고 눈 뜸) 돌아오지 않은 채 시간이 지나면 사진 없이 한 번 더
+  ///   숙임 각도만 보면 얼굴이 화면 밖으로 나갈 때 숙임이 풀려서 재전송이 안 됨 (11/04 시연 폰 시험)
+  void _checkAfterCancel(DateTime now, bool normal, double? avgProb) {
+    final at = _cancelledAt;
+    if (at == null) return;
+    if (normal) {
+      _normalSince ??= now;
+      if (now.difference(_normalSince!).inMilliseconds >= AppConfig.headUpResetSec * 1000) {
+        _cancelledAt = null;
+      }
+      return;
+    }
+    _normalSince = null;
+    final waited = now.difference(at).inMilliseconds / 1000.0;
+    if (waited < AppConfig.headResendSec - AppConfig.headDownSec) return;
+    _cancelledAt = null;
+    _lastSuspectAt = now;
+    onSuspect?.call('microsleep', AppConfig.headDownSec + waited, _calculatePerclos(), avgProb ?? _lastEyeOpenProb, null);
+  }
+
   /// 판정 기록을 처음 상태로 (경고 · 퀴즈 · 휴식 화면이 닫히고 운행 화면으로 돌아올 때, drive_screen 이 부름)
   ///   그 화면들이 떠 있는 동안에도 아래 운행 화면 카메라는 돌아서 PERCLOS 30초 창에 눈 감김이 쌓임
   ///   → 돌아오자마자 PERCLOS 의심 → 재개한 1단계가 바로 2단계 (11/03 팀장 확인). 평소 고개 각도도 쉬는 자세로 바뀌어 있어서 같이 비움
@@ -327,6 +370,8 @@ class EyeMonitor {
     _headStartTime = null;
     _headUpSince = null;
     _headTriggered = false;
+    _cancelledAt = null;
+    _normalSince = null;
     _headFrame = null;
     _lastClosedFrame = null;
     _frameInStreak = false;
@@ -507,7 +552,7 @@ class EyeMonitor {
       final l = face.leftEyeOpenProbability, r = face.rightEyeOpenProbability;
       final prob = (l == null || r == null) ? null : (l + r) / 2.0;
       return EyeReading(prob, AppConfig.contourEarOn ? contourEar(face) : null, ms,
-          face.headEulerAngleX, face.headEulerAngleY);
+          face.headEulerAngleX, face.headEulerAngleY, face.smilingProbability);
     } catch (e) {
       debugPrint('[eye_monitor] 사진 분석 실패: $e');
       return EyeReading(null, null, watch.elapsedMilliseconds);
