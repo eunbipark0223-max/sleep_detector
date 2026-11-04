@@ -20,8 +20,10 @@
 // ═══════════════════════════════════════════════════════════════
 import 'package:flutter/material.dart';
 
+import '../models/drive_status.dart';
 import '../models/sleep_event.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
 import '../theme.dart';
 import 'calibration_screen.dart';
 import 'drive_screen.dart';
@@ -38,7 +40,14 @@ class HomeScreen extends StatefulWidget {
   /// 운행 화면. 기준 값을 받아 만든다. 비워 두면 진짜 DriveScreen (카메라 필요). 테스트 · 미리보기에서 바꿔 끼우는 입구.
   final Widget Function(double threshold)? driveBuilder;
 
-  const HomeScreen({super.key, this.loadEvents, this.calibrationBuilder, this.driveBuilder});
+  /// 서버가 기억하는 '진행 중인 운행'을 가져오는 함수 (GET /drive/state). 비워 두면 진짜 서버. 테스트 · 미리보기에서 바꿔 끼우는 입구.
+  final Future<DriveState?> Function()? loadDriveState;
+
+  /// [이어서 운행] 으로 여는 운행 화면. 비워 두면 진짜 DriveScreen(resume: 상태). 테스트 · 미리보기에서 바꿔 끼우는 입구.
+  final Widget Function(DriveState state)? resumeBuilder;
+
+  const HomeScreen(
+      {super.key, this.loadEvents, this.calibrationBuilder, this.driveBuilder, this.loadDriveState, this.resumeBuilder});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -48,6 +57,15 @@ class _HomeScreenState extends State<HomeScreen> {
   static const int _recentCount = 3;
 
   late Future<List<SleepEvent>?> _recent = _fetch();
+  late Future<DriveState?> _driveState = _fetchDriveState();
+
+  // 앱을 껐다 켰을 때 서버가 기억하는 운행 상태. 못 받으면 (서버 연결 오류 등) null — 배너만 안 뜨고 홈은 그대로
+  Future<DriveState?> _fetchDriveState() {
+    final future = (widget.loadDriveState ?? _defaultLoadDriveState)().catchError((_) => null);
+    return future;
+  }
+
+  static Future<DriveState?> _defaultLoadDriveState() => ApiService.fetchDriveState();
 
   // 화면(FutureBuilder)이 받기 전에 요청이 먼저 실패해도 '처리 안 된 오류'로 새지 않게 ignore() 를 붙인다
   Future<List<SleepEvent>?> _fetch() {
@@ -63,6 +81,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _reload() {
     setState(() {
       _recent = _fetch();
+      _driveState = _fetchDriveState();
     });
   }
 
@@ -105,10 +124,22 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(builder: (_) => (widget.calibrationBuilder ?? () => const CalibrationScreen())()),
     );
     if (t == null || !mounted) return;
+    AuthService.saveEyeThreshold(t).ignore(); // 앱을 껐다 켜고 [이어서 운행]으로 들어올 때 같은 기준을 쓰도록 폰에 저장
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => (widget.driveBuilder ?? (t) => DriveScreen(threshold: t))(t)),
     );
     if (mounted) _reload(); // 운행 중 새로 생긴 경고가 '최근 경고'에 바로 보이게
+  }
+
+  // [이어서 운행] — 측정 화면을 건너뛰고 운행 화면으로. 서버가 기억하는 단계 · 휴식을 그대로 이어받는다
+  Future<void> _resumeDrive(DriveState state) async {
+    final saved = await AuthService.getEyeThreshold(); // 측정할 때 저장해 둔 내 눈 기준 (없으면 null → 기본 기준)
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+          builder: (_) => (widget.resumeBuilder ?? (st) => DriveScreen(resume: st, threshold: saved))(state)),
+    );
+    if (mounted) _reload();
   }
 
   void _openMap() {
@@ -128,6 +159,18 @@ class _HomeScreenState extends State<HomeScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         children: [
+          // 앱을 껐다 켠 뒤에도 진행 중인 운행(2 · 3단계 · 휴식 중 · 방금까지 운행)이 있으면 이어서 운행하는 배너
+          FutureBuilder<DriveState?>(
+            future: _driveState,
+            builder: (context, snapshot) {
+              final state = snapshot.data;
+              if (state == null || !state.active) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _ResumeBanner(state: state, onResume: () => _resumeDrive(state)),
+              );
+            },
+          ),
           FutureBuilder<List<SleepEvent>?>(
             future: _recent,
             builder: (context, snapshot) => _StatusCard(stage: currentStage(snapshot.data)),
@@ -180,6 +223,52 @@ class _HomeScreenState extends State<HomeScreen> {
               final latest = [...events]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
               return Column(children: [for (final e in latest.take(_recentCount)) _EventTile(event: e)]);
             },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// [이어서 운행] 배너 — 서버가 기억하는 진행 중인 운행 (GET /drive/state)
+class _ResumeBanner extends StatelessWidget {
+  final DriveState state;
+  final VoidCallback onResume;
+  const _ResumeBanner({required this.state, required this.onResume});
+
+  String get _detail {
+    if (state.resting) {
+      final min = (state.restLeftSec / 60).ceil();
+      return state.restLeftSec <= 0 ? '충분히 쉬었어요. [운행 재개]를 눌러 주세요.' : '쉬는 중이에요 (약 $min분 남음)';
+    }
+    if (state.stage >= 3) return '관리자가 조치하기 전까지 3단계가 이어져요.';
+    if (state.stage == 2) return '쉬어야 2단계가 풀려요.';
+    return '운행 중이던 상태 그대로 이어서 운행해요.';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = AppColors.stage(state.stage);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: state.stage >= 1 ? color : AppColors.cardBorder, width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('진행 중인 운행이 있어요',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+          const SizedBox(height: 4),
+          Text(_detail, style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: onResume,
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: const Text('이어서 운행'),
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
           ),
         ],
       ),

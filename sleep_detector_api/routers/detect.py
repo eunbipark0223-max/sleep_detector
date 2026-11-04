@@ -20,6 +20,8 @@
 #   - POST /drive/calibrate — 개인 기준 측정 사진 1장씩, 5장 모이면 서버 개인 기준 EAR 완성
 #   - POST /drive/ping — 30초마다 (사진 없음). 응답: stage · status · drive_min · rest_due · rest_message
 #   - POST /drive/rest — [정차했어요] → 휴식 시작 시각 기록
+#   - GET  /drive/state — 앱을 껐다 켰을 때 이어 가기: active · stage · resting · rest_left_sec · summary · guidance
+#   - POST /drive/end — [운행 종료] (홈 배너가 안 뜨게. 2 · 3단계는 그대로)
 #   - POST /drive/resume — [운행 재개] → 15분 지났는지 서버 시각으로 검사 → 2단계면 1단계, 상태 '휴식완료'
 #
 # [주의]
@@ -52,7 +54,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import config
-from auth.jwt import get_current_user
+from fastapi.security import HTTPAuthorizationCredentials
+
+from auth.jwt import bearer, get_current_user, refreshed_token
 from database.db_connection import get_session
 from models.models import SleepEvent, User
 from schema.request import DrivePing
@@ -61,6 +65,7 @@ from services import (agent_service, drive_timer, face_service, llm_service, rag
 
 router = APIRouter(tags=["운행 · 감지"])
 
+ACTIVE_PING_SEC = 5 * 60   # 앱이 꺼진 지 이 시간 안이면 홈 화면이 '진행 중인 운행' 으로 봄 (2 · 3단계 · 휴식 중은 시간과 상관없이)
 ALLOWED_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
@@ -169,8 +174,9 @@ def drive_ping_handler(
     body: Optional[DrivePing] = None,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
+    authorization: HTTPAuthorizationCredentials | None = Depends(bearer),
 ):
-    """30초마다. 단계(1단계 자동 해제 · 조치완료 반영) · 연속 운전 시간 · 휴게 알림."""
+    """30초마다. 단계(1단계 자동 해제 · 조치완료 반영) · 연속 운전 시간 · 휴게 알림 · (토큰이 곧 끝나면) 새 토큰."""
     t = drive_timer.ping(user.id)
     stage = int(sleep_state.get_stage(user.id))
 
@@ -184,21 +190,72 @@ def drive_ping_handler(
         ))
         session.commit()
 
-    return {"stage": stage, "status": _label(stage), "drive_min": int(t["drive_min"]),
-            "rest_due": bool(t["rest_due"]), "rest_message": t["rest_message"]}
+    out = {"stage": stage, "status": _label(stage), "drive_min": int(t["drive_min"]),
+           "rest_due": bool(t["rest_due"]), "rest_message": t["rest_message"]}
+    new_token = refreshed_token(authorization, user)
+    if new_token:                            # 앱이 저장해서 다음 요청부터 씀 (운행 중 401 방지)
+        out["access_token"] = new_token
+    return out
+
+
+@router.get("/drive/state")
+def drive_state_handler(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    """앱을 껐다 켰을 때 '진행 중인 운행'을 이어 가기 위한 지금 상태 (홈 화면 배너 · 운행 화면 이어받기).
+
+    active  : 이어서 운행할 것이 있음 — 2 · 3단계(풀릴 때까지) · 휴식 중 · 최근 ping 이 ACTIVE_PING_SEC 안
+    resting : [정차했어요] 뒤 쉬는 중 (rest_left_sec = 남은 초, 0 이면 [운행 재개] 가능)
+    summary · guidance : 지금 단계를 만든 가장 최근 경고의 글 (이어서 연 경고 화면에 보여 줌)
+    """
+    stage = int(sleep_state.get_stage(user.id))
+    elapsed = sleep_state.rest_elapsed_min(user.id)
+    resting = elapsed is not None
+    age = drive_timer.last_ping_age(user.id)
+    recent = age is not None and age <= ACTIVE_PING_SEC
+    summary = guidance = ""
+    if stage >= 1:
+        event = session.scalar(
+            select(SleepEvent)
+            .where(SleepEvent.user_id == user.id, SleepEvent.stage >= 1, SleepEvent.reason != "rest_overdue",
+                   SleepEvent.status.in_(["미확인", "확인"]))
+            .order_by(SleepEvent.id.desc())
+        )
+        if event:
+            summary, guidance = event.summary or "", event.guidance or ""
+    return {"active": bool(stage >= 2 or resting or recent), "stage": stage, "status": _label(stage),
+            "resting": resting,
+            "rest_left_sec": max(0, int(round(config.REST_MIN * 60 - elapsed * 60))) if resting else 0,
+            "drive_min": int(drive_timer.drive_min(user.id)), "summary": summary, "guidance": guidance}
+
+
+@router.post("/drive/end")
+def drive_end_handler(user: User = Depends(get_current_user)):
+    """[운행 종료] — 단계는 그대로(2 · 3단계는 계속 이어짐), 진행 중인 운행만 끝냄."""
+    drive_timer.end(user.id)
+    return {"success": True}
 
 
 @router.post("/drive/rest")
 def drive_rest_handler(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    """[정차했어요] → 휴식 시작 시각 기록 (서버 시각)."""
-    sleep_state.start_rest(user.id)
-    event = _open_stage2_event(session, user.id)
-    with _lock:
-        if event:
-            _rest_event[user.id] = event.id
-        else:
-            _rest_event.pop(user.id, None)
-    return {"success": True, "message": f"{config.REST_MIN}분 쉬고 출발하세요", "rest_sec": config.REST_MIN * 60,
+    """[정차했어요] → 휴식 시작 시각 기록 (서버 시각). 이미 쉬는 중이면 시작 시각은 그대로 두고 남은 시간만 돌려준다
+    (앱을 껐다 켜고 휴식 화면을 이어 열어도 15분이 처음부터 다시 시작되지 않게)."""
+    elapsed = sleep_state.rest_elapsed_min(user.id)
+    if elapsed is None:
+        sleep_state.start_rest(user.id)
+        elapsed = 0.0
+        event = _open_stage2_event(session, user.id)
+        with _lock:
+            if event:
+                _rest_event[user.id] = event.id
+            else:
+                _rest_event.pop(user.id, None)
+    else:
+        with _lock:
+            if user.id not in _rest_event:   # 서버가 다시 켜져 기억이 비었으면 다시 찾아 둔다
+                event = _open_stage2_event(session, user.id)
+                if event:
+                    _rest_event[user.id] = event.id
+    left_sec = max(1, int(round(config.REST_MIN * 60 - elapsed * 60)))
+    return {"success": True, "message": f"{config.REST_MIN}분 쉬고 출발하세요", "rest_sec": left_sec,
             "started": datetime.now().strftime("%H:%M")}
 
 

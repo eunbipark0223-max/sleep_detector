@@ -46,7 +46,20 @@ class WarningScreen extends StatefulWidget {
   /// 운행 화면의 카메라 — 있으면 맨 위에 내 얼굴(카메라 화면)을 보여 준다 (사진 1장 테스트처럼 없으면 큰 아이콘)
   final ValueListenable<CameraController?>? camera;
 
-  const WarningScreen({super.key, required this.response, this.liveStage, this.pauseDetect, this.camera});
+  /// 앱을 껐다 켰을 때 쉬는 중이었다면 true — 경고 음성 대신 바로 휴식 화면을 이어 연다 (남은 시간은 서버가 알려 줌)
+  final bool resumeRest;
+
+  /// 같은 단계에서 또 졸았을 때 true — 알람 · 고정 문구 · 음성 보고를 다시 내지 않고 퀴즈만 (기획안 6-6)
+  final bool silent;
+
+  const WarningScreen(
+      {super.key,
+      required this.response,
+      this.liveStage,
+      this.pauseDetect,
+      this.camera,
+      this.silent = false,
+      this.resumeRest = false});
 
   @override
   State<WarningScreen> createState() => _WarningScreenState();
@@ -56,6 +69,13 @@ class _WarningScreenState extends State<WarningScreen> {
   late int _stage; // 지금 화면의 단계 (정차 후 돌려받은 단계로 바뀜)
   Timer? _repeat; // 3단계 30초 반복 음성
   String _restMessage = ''; // 휴식 뒤 서버가 준 안내 (예: 주의 단계로 다시 출발합니다). 있으면 이전 단계의 요약 · 안내 · 음성 보고 대신 보여 준다
+  bool _voiceDone = false; // 알람 · 음성 · 퀴즈가 다 끝났는지 ([규정 듣기] 는 그 뒤에 켜짐)
+  bool _flowStopped = false; // [정차했어요] 를 눌러 음성 · 퀴즈 순서를 그만둠 (휴식 화면 위로 퀴즈가 뜨지 않게)
+  bool _readingRegs = false; // 규정을 읽는 중 (30초 반복이 끊지 않게)
+  bool _keepSpeaking = false; // 닫혀도 말을 끊지 않음 (운행 재개 안내를 끝까지 듣게)
+
+  // 운행 중 2 · 3단계 경고는 뒤로 가기로 끌 수 없다 (2단계는 쉬어야, 3단계는 관리자만 해제). 사진 1장 테스트는 나갈 수 있음
+  bool get _locked => widget.liveStage != null && _stage >= 2;
 
   @override
   void initState() {
@@ -63,15 +83,22 @@ class _WarningScreenState extends State<WarningScreen> {
     _stage = widget.response.stage;
     widget.liveStage?.addListener(_onLiveStage);
     widget.pauseDetect?.value = true; // 알람 · 음성 · 퀴즈가 끝날 때까지 졸음 판정 쉬기
-    _speakWarning();
+    if (widget.resumeRest) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _goRest(); // 앱을 껐다 켠 뒤 — 쉬던 중이니 알람 없이 바로 휴식 화면
+      });
+    } else {
+      _speakWarning();
+    }
   }
 
   @override
   void dispose() {
     widget.liveStage?.removeListener(_onLiveStage);
     widget.pauseDetect?.value = false; // 혹시 쉬는 중에 닫혀도 판정은 다시 켠다
-    VoiceService.stop(); // 말하기 멈춤
+    if (!_keepSpeaking) VoiceService.stop(); // 말하기 멈춤
     _repeat?.cancel(); // 3단계 반복 멈춤
+    _repeat = null;
     super.dispose();
   }
 
@@ -92,30 +119,42 @@ class _WarningScreenState extends State<WarningScreen> {
       }
     }
     setState(() => _stage = s);
-    if (s == 3) _startRepeat();
+    if (s == 3 && _voiceDone) _startRepeat(); // 음성 · 퀴즈 중이면 끝난 뒤에 시작 (퀴즈 듣기를 끊지 않게)
   }
 
-  // 3단계 30초 반복 시작 (이미 돌고 있으면 그대로)
+  // 3단계 30초 반복 시작 (이미 돌고 있으면 그대로) — 알람 + 고정 문구 (기획안 8-7)
   void _startRepeat() {
-    _repeat ??= Timer.periodic(const Duration(seconds: 30), (_) {
-      VoiceService.speak('관리자에게 알렸습니다. 정차해 주세요.');
+    _repeat ??= Timer.periodic(const Duration(seconds: 30), (_) async {
+      if (_readingRegs) return; // 규정을 듣는 중에는 끊지 않음
+      await VoiceService.alarm();
+      if (!mounted || _repeat == null || _readingRegs) return;
+      await VoiceService.speak('관리자에게 알렸습니다. 정차해 주세요.');
     });
   }
 
   // 🔔 알람 → 고정 문구(1·2단계) → 기사 음성 보고 → (3단계) 30초마다 반복
+  //   silent 면 알람 · 문구 · 음성 보고를 건너뛰고 퀴즈부터 (같은 단계에서 또 졸았을 때)
+  //   [정차했어요] 를 누르면 _flowStopped → 뒤 순서를 하지 않는다
   Future<void> _speakWarning() async {
-    await VoiceService.alarm(); // 시작음
-    if (!mounted) return;
-    // 1·2단계 고정 문구 (3단계는 고정 문구 없이 음성 보고만 — 기획안 8-7)
-    if (_stage == 1) await VoiceService.speak('일어나세요');
-    if (_stage == 2) await VoiceService.speak('계속 졸고 있습니다. 가까운 졸음쉼터로 이동하세요');
-    if (!mounted) return;
-    final voice = widget.response.driverVoice; // 기사 음성 보고 ("최근 10분 동안 2번 졸았습니다…")
-    if (voice.isNotEmpty) await VoiceService.speak(voice);
-    if (!mounted) return;
+    if (!widget.silent) {
+      await VoiceService.alarm(); // 시작음
+      if (!mounted || _flowStopped) return;
+      // 1·2단계 고정 문구 (3단계는 고정 문구 없이 음성 보고만 — 기획안 8-7)
+      if (_stage == 1) await VoiceService.speak('일어나세요');
+      if (_stage == 2) await VoiceService.speak('계속 졸고 있습니다. 가까운 졸음쉼터로 이동하세요');
+      if (!mounted || _flowStopped) return;
+      final voice = widget.response.driverVoice; // 기사 음성 보고 ("최근 10분 동안 2번 졸았습니다…")
+      if (voice.isNotEmpty) await VoiceService.speak(voice);
+      if (!mounted || _flowStopped) return;
+    } else {
+      // 화면이 만들어지는 중에는 퀴즈 화면을 띄울 수 없어서 잠깐 기다린다
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (!mounted || _flowStopped) return;
+    }
     // 운전 중 음성 퀴즈 (D님 QuizScreen) — 서버가 2분 간격으로만 보내서 없을 수도 있음
     final quiz = widget.response.voiceQuiz;
     if (quiz != null) {
+      final before = _stage;
       final newStage = await Navigator.push<int>(
         context,
         MaterialPageRoute(builder: (_) => QuizScreen(quiz: quiz, stage: _stage)),
@@ -128,9 +167,14 @@ class _WarningScreenState extends State<WarningScreen> {
         return;
       }
       if (newStage != null) setState(() => _stage = newStage); // 2번 실패하면 단계가 올라옴
+      if (newStage != null && newStage > before) {
+        await VoiceService.alarm(); // 2번 실패로 단계가 올라감 → 알람 (기획안 8-7)
+        if (!mounted || _flowStopped) return;
+      }
     }
     // 알람 · 음성 · 퀴즈가 다 끝났으니 이제부터 졸음 판정 (퀴즈가 없었으면 음성 보고가 끝난 뒤부터)
     widget.pauseDetect?.value = false;
+    setState(() => _voiceDone = true);
     // 3단계 30초 반복은 퀴즈가 끝난 뒤에 시작
     if (_stage == 3) _startRepeat();
   }
@@ -221,6 +265,10 @@ class _WarningScreenState extends State<WarningScreen> {
   Future<void> _goRest() async {
     // RestScreen 은 닫힐 때 서버 응답(Map: stage · status · message)을 돌려줘요.
     // 휴식 시작에 실패해서 닫히면 null 이 와요.
+    _flowStopped = true; // 남은 음성 · 퀴즈는 하지 않음 (쉬러 가는 기사에게 퀴즈를 내지 않게)
+    setState(() => _voiceDone = true);
+    await VoiceService.stop();
+    if (!mounted) return;
     widget.pauseDetect?.value = true; // 휴식 중에는 졸음 판정 쉬기 (기획안: 휴식 중 눈 판정 멈춤)
     final result = await Navigator.push<Map<String, dynamic>>(
       context,
@@ -231,6 +279,12 @@ class _WarningScreenState extends State<WarningScreen> {
     final s = result['stage'];
     final newStage = s is num ? s.toInt() : int.tryParse('$s');
     if (newStage == null) return;
+    // 운행 중 휴식이 끝나 1단계 이하면 운행 화면으로 돌아간다 (기획안 8-5). 안내 음성은 끊지 않음
+    if (widget.liveStage != null && newStage < 2) {
+      _keepSpeaking = true;
+      Navigator.of(context).pop(newStage);
+      return;
+    }
     final m = result['message'];
     setState(() {
       _stage = newStage; // 돌려받은 단계로 색 바꾸기
@@ -242,8 +296,10 @@ class _WarningScreenState extends State<WarningScreen> {
   // [규정 듣기] — 운전 중에는 글을 읽기 어려우니 소리로 읽어 주고, 화면에도 띄운다. 창을 닫으면 읽기도 멈춘다
   Future<void> _showRegulations() async {
     final regs = widget.response.regulations;
+    _readingRegs = true;
     _speakRegulations(regs);
     await showRegulationSheet(context, regs); // regulation_screen 의 공용 카드 창
+    _readingRegs = false;
     VoiceService.stop(); // 창을 닫으면 읽기도 멈춘다
   }
 
@@ -276,94 +332,99 @@ class _WarningScreenState extends State<WarningScreen> {
     final fg = AppColors.onStage(_stage);
     final stageChanged = _stage != r.stage; // 휴식 뒤 단계가 바뀌었으면 처음 경고의 글은 숨긴다
 
-    return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
+    return PopScope(
+      canPop: !_locked,
+      child: Scaffold(
         backgroundColor: bg,
-        foregroundColor: fg,
-        elevation: 0,
-        title: Text('$_stage단계 경고'),
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
-          children: [
-            _topVisual(bg, fg),
-            const SizedBox(height: 16),
-            // 큰 글씨 한 줄
-            Text(
-              _headline,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: fg, height: 1.25),
-            ),
-            const SizedBox(height: 10),
-            // 요약
-            if (stageChanged && _restMessage.isNotEmpty)
-              Text(_restMessage,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: fg))
-            else if (!stageChanged && r.summary.isNotEmpty)
-              Text(r.summary,
-                  textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: fg)),
-            const SizedBox(height: 12),
-            // 안내
-            if (!stageChanged && r.guidance.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Text(r.guidance,
-                    style: const TextStyle(fontSize: 15, color: AppColors.textPrimary, height: 1.4)),
+        appBar: AppBar(
+          backgroundColor: bg,
+          foregroundColor: fg,
+          elevation: 0,
+          automaticallyImplyLeading: !_locked,
+          title: Text('$_stage단계 경고'),
+        ),
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+            children: [
+              _topVisual(bg, fg),
+              const SizedBox(height: 16),
+              // 큰 글씨 한 줄
+              Text(
+                _headline,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: fg, height: 1.25),
               ),
-            const SizedBox(height: 8),
-            // 기사 음성 보고 문장 (보라 카드)
-            if (!stageChanged && r.driverVoice.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: AppColors.aiPurple,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('🔊 기사 음성 보고',
-                        style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70)),
-                    const SizedBox(height: 4),
-                    Text(r.driverVoice,
-                        style: const TextStyle(fontSize: 14, color: Colors.white, height: 1.35)),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 14),
-            // 버튼들
-            OutlinedButton.icon(
-              onPressed: _showRegulations,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: fg,
-                side: BorderSide(color: fg, width: 2),
-                minimumSize: const Size.fromHeight(50),
-                textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700), // 주황 · 빨강 바탕에서도 글자가 또렷하게
-              ),
-              icon: const Icon(Icons.volume_up_rounded),
-              label: const Text('규정 듣기'),
-            ),
-            if (_stage == 2) ...[
               const SizedBox(height: 10),
-              FilledButton(
-                onPressed: _goRest,
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: AppColors.textPrimary,
-                  minimumSize: const Size.fromHeight(50),
+              // 요약
+              if (stageChanged && _restMessage.isNotEmpty)
+                Text(_restMessage,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: fg))
+              else if (!stageChanged && r.summary.isNotEmpty)
+                Text(r.summary,
+                    textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: fg)),
+              const SizedBox(height: 12),
+              // 안내
+              if (!stageChanged && r.guidance.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(r.guidance,
+                      style: const TextStyle(fontSize: 15, color: AppColors.textPrimary, height: 1.4)),
                 ),
-                child: const Text('정차했어요'),
+              const SizedBox(height: 8),
+              // 기사 음성 보고 문장 (보라 카드)
+              if (!stageChanged && r.driverVoice.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.aiPurple,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('🔊 기사 음성 보고',
+                          style: TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70)),
+                      const SizedBox(height: 4),
+                      Text(r.driverVoice,
+                          style: const TextStyle(fontSize: 14, color: Colors.white, height: 1.35)),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 14),
+              // 버튼들
+              OutlinedButton.icon(
+                onPressed: _voiceDone ? _showRegulations : null, // 알람 · 음성 · 퀴즈가 끝난 뒤에 누를 수 있음
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: fg,
+                  disabledForegroundColor: fg.withValues(alpha: 0.5),
+                  side: BorderSide(color: fg, width: 2),
+                  minimumSize: const Size.fromHeight(50),
+                  textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700), // 주황 · 빨강 바탕에서도 글자가 또렷하게
+                ),
+                icon: const Icon(Icons.volume_up_rounded),
+                label: const Text('규정 듣기'),
               ),
+              if (_stage == 2) ...[
+                const SizedBox(height: 10),
+                FilledButton(
+                  onPressed: _goRest,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: AppColors.textPrimary,
+                    minimumSize: const Size.fromHeight(50),
+                  ),
+                  child: const Text('정차했어요'),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

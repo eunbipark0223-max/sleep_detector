@@ -71,6 +71,7 @@ PING_SEC = 30                 # 앱 /drive/ping 간격 (앱 config.dart 와 같�
 
 # ── 로그인 (auth/jwt.py) ──────────────────────────────
 TOKEN_EXPIRE_MIN = 12 * 60    # 수업은 60분 → 운행(2시간 이상) 중에 토큰이 끝나면 /detect 가 401 이라 12시간
+TOKEN_REFRESH_MIN = 6 * 60    # 운행 중 ping 때 남은 시간이 이 값보다 적으면 새 토큰을 내려 줌 (운행 중에 로그인이 끊기지 않게)
 
 # ── 기사 음성 보고 (agent_service) ────────────────────
 DRIVER_VOICE_MAX_CHARS = 90

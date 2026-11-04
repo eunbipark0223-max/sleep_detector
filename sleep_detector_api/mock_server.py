@@ -10,6 +10,7 @@
 #       POST /users/signup · /users/login · /users/google  ·  GET · PATCH /users/me (PATCH = 전화번호 · 차량번호)
 #       POST /detect                       졸음 의심 사진 1장 + reason · closed_sec · perclos · eye_open_prob · latitude · longitude (Form)
 #       POST /drive/start · /drive/calibrate · /drive/ping · /drive/rest · /drive/resume
+#       GET  /drive/state · POST /drive/end   앱을 껐다 켰을 때 [이어서 운행] (진짜 서버와 같은 모양)
 #       POST /quiz/answer                  VoiceQuizAnswer (quiz_id · answer_text · answer_sec)
 #       GET  /events/my · PATCH /events/{id}/status
 #       GET  /admin/events · /admin/users · /admin/stats/stage · /admin/stats/hourly
@@ -101,7 +102,7 @@ def _new_state() -> dict:
         "stage": 0, "sleeps": [], "last_closed_sec": 0.0,
         "drive_start": None, "drive_offset_min": 0, "rest_due_sent": False,
         "rest_started": None, "rest_event_id": None,
-        "last_quiz_at": 0.0, "quiz_fail": 0, "last_ping": None,
+        "last_quiz_at": 0.0, "quiz_fail": 0, "last_ping": None, "ended": False,
         "calib": 0, "ear_threshold": DEFAULT_EAR_THRESHOLD,
     }
 
@@ -567,6 +568,7 @@ def drive_ping(body: Optional[DrivePing] = None, user: dict = Depends(current_us
     if st["drive_start"] is None:  # /drive/start 없이 와도 시작한 것으로 본다
         st["drive_start"] = time.time()
     st["last_ping"] = time.time()
+    st["ended"] = False  # 운행 종료 뒤 다시 ping 이 오면 이어서 운전 중 (진짜 서버 drive_timer.ping 과 같음)
     fs = forced_stage()
     if fs:
         st["stage"], st["sleeps"] = fs, [time.time()] * fs
@@ -580,13 +582,45 @@ def drive_ping(body: Optional[DrivePing] = None, user: dict = Depends(current_us
     return {"stage": stage, "status": STAGE_LABELS[stage], "drive_min": minutes, "rest_due": rest_due, "rest_message": rest_message}
 
 
+# 앱을 껐다 켰을 때 '진행 중인 운행'을 이어 가기 위한 지금 상태 (진짜 서버 GET /drive/state 와 같은 모양)
+ACTIVE_PING_SEC = 5 * 60  # 마지막 ping 이 이 시간 안이면 진행 중 (2 · 3단계 · 휴식 중은 시간과 상관없이)
+
+
+@app.get("/drive/state")
+def drive_state(user: dict = Depends(current_user)):
+    st = state_of(user["id"])
+    stage = refresh_stage(st)
+    resting = st["rest_started"] is not None
+    last = st["last_ping"]
+    recent = last is not None and not st["ended"] and time.time() - last <= ACTIVE_PING_SEC
+    summary = guidance = ""
+    if stage >= 1:
+        open_events = [e for e in EVENTS if e["user_id"] == user["id"] and e["stage"] >= 1 and e["reason"] != "rest_overdue"
+                       and e["status"] in ("미확인", "확인")]
+        if open_events:
+            summary, guidance = open_events[-1].get("summary") or "", open_events[-1].get("guidance") or ""
+    left = max(0, int(round(REST_SEC - (time.time() - st["rest_started"])))) if resting else 0
+    return {"active": bool(stage >= 2 or resting or recent), "stage": stage, "status": STAGE_LABELS[stage],
+            "resting": resting, "rest_left_sec": left, "drive_min": drive_min_of(st), "summary": summary, "guidance": guidance}
+
+
+@app.post("/drive/end")
+def drive_end(user: dict = Depends(current_user)):
+    """[운행 종료] — 단계는 그대로, 운전 시간 기록도 그대로 ('끝남' 표시만)."""
+    state_of(user["id"])["ended"] = True
+    return {"success": True}
+
+
 @app.post("/drive/rest")
 def drive_rest(user: dict = Depends(current_user)):
     st = state_of(user["id"])
-    st["rest_started"] = time.time()
-    open_events = [e for e in EVENTS if e["user_id"] == user["id"] and e["stage"] == 2 and e["status"] in ("미확인", "확인")]
-    st["rest_event_id"] = open_events[-1]["id"] if open_events else None
-    return {"success": True, "message": "15분 쉬고 출발하세요", "rest_sec": REST_SEC, "started": _now_text()}
+    if st["rest_started"] is None:
+        st["rest_started"] = time.time()
+        open_events = [e for e in EVENTS if e["user_id"] == user["id"] and e["stage"] == 2 and e["status"] in ("미확인", "확인")]
+        st["rest_event_id"] = open_events[-1]["id"] if open_events else None
+    # 이미 쉬는 중이면 시작 시각은 그대로, 남은 시간만 (앱을 껐다 켜고 휴식 화면을 이어 열어도 처음부터 다시 시작하지 않게)
+    left = max(1, int(round(REST_SEC - (time.time() - st["rest_started"]))))
+    return {"success": True, "message": "15분 쉬고 출발하세요", "rest_sec": left, "started": _now_text()}
 
 
 @app.post("/drive/resume")

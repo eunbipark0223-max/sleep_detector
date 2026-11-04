@@ -260,8 +260,44 @@ def bonus_rest_detect():
     return f"{'무시' if not r['is_sleep'] else '확정'} · {r['stage']}단계"
 
 
+def bonus_restore():
+    """서버를 다시 켜도 3 · 2단계는 DB 경고로 되살아남, 휴식을 마친 2단계는 안 되살아남 (11/04 D)"""
+    def restart(uid):                     # 이 기사의 메모리만 비우고, 서버를 켤 때처럼 DB 로 되살림
+        sleep_state._states.pop(uid, None)
+        with TestSession() as s:
+            sleep_state.restore_all(s)
+        return sleep_state.get_stage(uid)
+
+    out = []
+    h, uid = new_driver()
+    for _ in range(3):
+        doze(h)
+    out.append(restart(uid))
+    h, uid = new_driver()
+    doze(h)
+    doze(h)
+    out.append(restart(uid))
+    h, uid = new_driver()
+    doze(h)
+    doze(h)
+    client.post("/drive/rest", headers=h)
+    back(uid, 16)
+    client.post("/drive/resume", headers=h)
+    out.append(restart(uid))
+    return " · ".join(map(str, out))
+
+
+def bonus_drive_end():
+    """[운행 종료] → 홈 배너는 안 뜨고, 다시 시작해도 연속 운전 시간은 그대로 (휴게 알림을 피할 수 없게, 11/04 D)"""
+    h, uid = new_driver()
+    drive_timer._drives[uid]["start"] -= 100 * 60
+    client.post("/drive/end", headers=h)
+    active = client.get("/drive/state", headers=h).json()["active"]
+    return f"배너 {active} · {ping(h)['drive_min']}분"
+
+
 SCENARIOS = [
-    ("① 졸음 1회 → 1단계",                    1, s1),
+    ("① 졸음 1회 → 1단계",                   1, s1),
     ("② 10분 안 졸음 2회 → 2단계",              2, s2),
     ("③ 10분 안 졸음 3회 → 3단계",              3, s3),
     ("④ 1단계에서 10분 졸음 없음 → 0단계",        0, s4),
@@ -277,7 +313,9 @@ SCENARIOS = [
 BONUS = [("(보너스) 3단계는 휴식으로 안 풀림 → 3단계", 3, bonus),
          ("(보너스) 사진 없는 졸음 → 앱 판단대로 확정", "확정 · mlkit · 1단계 · 사진 없음 · 사진 테스트 400", bonus_no_photo),
          ("(보너스) 1 · 2 · 3단계에서 운행 다시 시작", "0 · 2 · 3", bonus_restart),
-         ("(보너스) 2단계 휴식 중 졸음 의심 → 무시", "무시 · 2단계", bonus_rest_detect)]
+         ("(보너스) 2단계 휴식 중 졸음 의심 → 무시", "무시 · 2단계", bonus_rest_detect),
+         ("(보너스) 재시작 복원: 3단계 · 2단계 · 휴식 뒤", "3 · 2 · 0", bonus_restore),
+         ("(보너스) 운행 종료 뒤 연속 운전 시간 유지", "배너 False · 100분", bonus_drive_end)]
 
 
 def run(items):

@@ -155,6 +155,65 @@ def reset(user_id: int) -> int:
 reset_by_admin = reset
 
 
+def restore_from_events(user_id: int, events: list[tuple[int, str, str, datetime]]) -> int:
+    """서버를 다시 켠 뒤 DB 경고로 단계 · 10분 졸음 기록을 되살린다 (앱 홈 화면 currentStage 와 같은 규칙).
+
+    events : [(stage, status, reason, created_at), ...] 그 기사의 경고 전부
+      - 관리자 [조치완료]는 그 기사 단계를 전부 0 으로 되돌림 → 조치완료된 경고와 그보다 오래된 경고는 세지 않음
+      - 가장 최근 휴식완료도 같은 식으로: 그 경고보다 오래된 1 · 2단계 경고는 세지 않음 (3단계는 그대로)
+        (2단계 경고가 2건이고 최근 것만 휴식완료여도 오래된 2단계가 다시 살아나지 않게)
+      - 3단계: 조치완료 전까지 / 2단계: 휴식완료 · 조치완료 전까지 / 1단계: 10분 안
+      - 휴게 미준수(rest_overdue)는 단계를 올린 경고가 아니라서 세지 않음
+    이미 메모리에 단계가 있으면(서버가 켜진 뒤 쓰던 기사) 건드리지 않음. 되살린 단계를 돌려줌.
+    """
+    if user_id in _states:
+        return _states[user_id]["stage"]
+    now = datetime.now()
+    window = timedelta(minutes=_get_window_minutes())
+    reset_at = max((c for _, st, _, c in events if st == "조치완료"), default=None)
+    rest_done_at = max((c for _, st, _, c in events if st == "휴식완료"), default=None)
+    stage, sleeps = 0, []
+    for ev_stage, status, reason, created in events:
+        if status == "조치완료" or reason == "rest_overdue":
+            continue
+        if reset_at is not None and created <= reset_at:
+            continue
+        if rest_done_at is not None and created <= rest_done_at and int(ev_stage) < 3:
+            continue                        # 휴식을 마치면 그 전의 1 · 2단계 경고는 끝난 것 (3단계는 조치완료만 해제)
+        age = now - created
+        active = {3: True, 2: status != "휴식완료", 1: age <= window}.get(int(ev_stage), False)
+        if active:
+            stage = max(stage, int(ev_stage))
+        if reason in ("microsleep", "perclos") and status != "휴식완료" and age <= window:
+            sleeps.append(created)
+    state = get_state(user_id)
+    state["sleep_times"] = sorted(sleeps)
+    state["last_sleep_at"] = state["sleep_times"][-1] if sleeps else None
+    if stage:
+        _change_stage(state, stage)
+    return stage
+
+
+def restore_all(session) -> dict[int, int]:
+    """서버를 켤 때 한 번 — 단계가 남아 있는 기사들의 단계를 DB 경고로 되살린다 (main.py lifespan 이 부름).
+    {user_id: 되살린 단계} 중 0 이 아닌 것만 돌려줌."""
+    from sqlalchemy import select
+    from models.models import SleepEvent
+    rows = session.execute(
+        select(SleepEvent.user_id, SleepEvent.stage, SleepEvent.status, SleepEvent.reason, SleepEvent.created_at)
+        .where(SleepEvent.user_id.is_not(None))
+    ).all()
+    by_user: dict[int, list] = {}
+    for uid, stage, status, reason, created in rows:
+        by_user.setdefault(uid, []).append((stage, status or "", reason or "", created))
+    restored = {}
+    for uid, events in by_user.items():
+        stage = restore_from_events(uid, events)
+        if stage:
+            restored[uid] = stage
+    return restored
+
+
 def start_rest(user_id: int) -> datetime:
     """[정차했어요] 호출 시 휴식 시작 시각 기록"""
     state = get_state(user_id)

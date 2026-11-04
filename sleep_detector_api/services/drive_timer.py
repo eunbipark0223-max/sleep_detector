@@ -16,6 +16,7 @@
 #   - ping(user_id) → {"drive_min", "rest_due", "rest_message", "rest_overdue"}
 #   - rest_done(user_id)            → 15분 휴식을 마치고 [운행 재개] (운전 시간 0부터)
 #   - drive_min(user_id)            → 지금까지 연속 운전 분 (음성 보고 숫자용)
+#   - end(user_id) · last_ping_age(user_id) → [운행 종료] '끝남' 표시(시간 기록은 유지) · 마지막 ping 이 얼마 전인지 (GET /drive/state 가 '진행 중' 판단에 씀)
 #
 # [주의]
 #   - GPS 속도 · 정차 판단은 쓰지 않는다
@@ -40,7 +41,7 @@ FALLBACK_RULE = "운수종사자 휴게시간 규정"
 
 
 def _new(now):
-    return {"start": now, "last_ping": now, "rest_due_at": None, "overdue_sent": False}
+    return {"start": now, "last_ping": now, "rest_due_at": None, "overdue_sent": False, "ended": False}
 
 
 def _find_rest_rule():
@@ -84,6 +85,23 @@ def rest_done(user_id):
     start(user_id)
 
 
+def end(user_id):
+    """앱의 [운행 종료] — '끝남' 표시만 한다 (홈 화면에 '진행 중인 운행' 배너가 안 뜨게).
+    운전 시간 기록은 지우지 않는다: 종료 → 바로 다시 시작해도 연속 운전이 0분이 되지 않게 (휴게 알림을 피할 수 없게).
+    시간이 0 으로 돌아가는 것은 ping 이 15분 이상 끊겼을 때 · [운행 재개](휴식 완료) · /drive/start 뿐. 다음 ping 이 오면 표시를 푼다."""
+    with _lock:
+        d = _drives.get(user_id)
+        if d is not None:
+            d["ended"] = True
+
+
+def last_ping_age(user_id):
+    """마지막 ping 으로부터 지난 초. 운행 기록이 없거나(서버가 다시 켜짐) 끝났으면(end) None"""
+    with _lock:
+        d = _drives.get(user_id)
+        return None if d is None or d.get("ended") else time.time() - d["last_ping"]
+
+
 def drive_min(user_id):
     with _lock:
         d = _drives.get(user_id)
@@ -100,6 +118,7 @@ def ping(user_id):
         elif now - d["last_ping"] >= REST_MIN * 60:     # ping 이 15분 이상 안 옴 = 앱을 끄고 쉼 → 휴식 인정
             d.update(_new(now))
         d["last_ping"] = now
+        d["ended"] = False                              # 운행 종료 뒤 다시 ping 이 오면 이어서 운전 중 (시간 기록은 그대로)
 
         minutes = int((now - d["start"]) // 60)
         rest_due, overdue = False, False
