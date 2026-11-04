@@ -87,3 +87,22 @@ def get_current_user(
             detail="사용자를 찾을 수 없습니다. 다시 로그인해주세요",
         )
     return user
+
+
+def refreshed_token(authorization: HTTPAuthorizationCredentials | None, user: User) -> str | None:
+    """운행 중 로그인이 끊기지 않게 — 토큰 남은 시간이 TOKEN_REFRESH_MIN 보다 적으면 새 토큰, 아니면 None.
+
+    /drive/ping 이 30초마다 부른다. 12시간 토큰을 하루 넘게 켜 둔 폰이 경고 · 퀴즈 도중에 401 로
+    로그인 화면으로 쫓겨나는 일을 막는다 (이미 만료된 토큰은 get_current_user 에서 401 이라 여기까지 못 옴).
+    """
+    if authorization is None:
+        return None
+    try:
+        exp = jwt.decode(authorization.credentials, SECRET_KEY, algorithms=[ALGORITHM])["exp"]
+    except (jwt.InvalidTokenError, KeyError):
+        return None
+    remaining_min = (datetime.fromtimestamp(exp, timezone.utc) - datetime.now(timezone.utc)).total_seconds() / 60
+    if remaining_min >= getattr(config, "TOKEN_REFRESH_MIN", 6 * 60):
+        return None
+    return create_access_token(user.id, user.role)
+

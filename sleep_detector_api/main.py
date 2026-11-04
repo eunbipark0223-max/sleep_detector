@@ -84,6 +84,17 @@ async def lifespan(app: FastAPI):   # ← app: FastAPI 매개변수 필수!
     except Exception as e:
         print(f"⚠️ DB 초기화 실패(앱은 계속 실행): {type(e).__name__}: {e}")
 
+    # 서버를 다시 켜도 3단계 · 2단계가 풀리지 않게 DB 경고로 단계를 되살린다 (단계는 메모리에만 있어서 재시작하면 0 이 됐음)
+    try:
+        from database.db_connection import SessionLocal
+        from services import sleep_state
+        with SessionLocal() as db:
+            restored = sleep_state.restore_all(db)
+        if restored:
+            print("✅ 단계 되살림: " + ", ".join(f"기사 {u} → {s}단계" for u, s in sorted(restored.items())))
+    except Exception as e:
+        print(f"⚠️ 단계 되살리기 실패(서버는 계속 켜짐): {type(e).__name__}: {e}")
+
     for d in (config.UPLOAD_TMP_DIR, config.UPLOAD_EVENT_DIR):
         os.makedirs(d, exist_ok=True)
 

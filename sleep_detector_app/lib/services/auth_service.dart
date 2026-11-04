@@ -62,6 +62,26 @@ class AuthService {
 
   static Future<bool> isLoggedIn() async => (await getToken()) != null;
 
+  // ── 내 눈 기준 (운행 시작 전 측정값) ─────────────────────────────
+  // 앱을 껐다 켜고 [이어서 운행]으로 들어올 때 측정 화면을 건너뛰어도 같은 기준을 쓰도록 폰에 저장해 둔다.
+  // 로그아웃하면 같이 지운다 (다른 사람이 같은 폰으로 로그인해도 남의 기준이 쓰이지 않게)
+  static const String _eyeThresholdKey = 'eye_threshold';
+
+  static Future<void> saveEyeThreshold(double value) =>
+      _storage.write(key: _eyeThresholdKey, value: value.toString());
+
+  /// 저장된 내 눈 기준. 없거나 이상한 값이면 null → 받는 쪽이 기본 기준을 쓴다
+  static Future<double?> getEyeThreshold() async {
+    try {
+      final v = double.tryParse(await _storage.read(key: _eyeThresholdKey) ?? '');
+      return (v != null && v >= AppConfig.calibMin && v <= AppConfig.calibMax) ? v : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> clearEyeThreshold() => _storage.delete(key: _eyeThresholdKey);
+
   /// 로그인이 필요한 요청에 붙일 헤더 (토큰이 없으면 Authorization 없이)
   static Future<Map<String, String>> authHeaders() async {
     final token = await getToken();
@@ -185,6 +205,9 @@ class AuthService {
   /// 로그아웃 — 토큰을 지우고 Firebase · 구글 로그인도 푼다 (둘 중 하나가 실패해도 토큰은 이미 지워진다).
   static Future<void> logout() async {
     await clearToken();
+    try {
+      await clearEyeThreshold();
+    } catch (_) {}
     try {
       await FirebaseAuth.instance.signOut();
     } catch (_) {}

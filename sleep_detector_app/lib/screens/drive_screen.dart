@@ -29,6 +29,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../config.dart';
+import '../models/drive_status.dart';
 import '../models/sleep_response.dart';
 import '../services/api_service.dart';
 import '../services/eye_monitor.dart';
@@ -41,7 +42,11 @@ class DriveScreen extends StatefulWidget {
   /// 홈 화면에서 이렇게 연다:  DriveScreen(threshold: t)
   final double? threshold;
 
-  const DriveScreen({super.key, this.threshold});
+  /// 앱을 껐다 켠 뒤 [이어서 운행]으로 들어왔을 때 서버가 알려 준 상태 (홈 화면 배너). 새 운행이면 null.
+  /// 있으면 단계 색을 바로 맞추고, 2 · 3단계면 경고 화면을, 쉬던 중이면 휴식 화면을 이어 연다.
+  final DriveState? resume;
+
+  const DriveScreen({super.key, this.threshold, this.resume});
 
   @override
   State<DriveScreen> createState() => _DriveScreenState();
@@ -110,7 +115,45 @@ class _DriveScreenState extends State<DriveScreen> {
     _pingTimer = Timer.periodic(const Duration(seconds: AppConfig.pingSec), (_) => _ping());
 
     _initLocation(); // 위치 권한 묻고 첫 위치 받기
+    // 첫 프레임이 그려진 뒤에 — initState 안에서 경고 화면을 바로 push 하면 'setState() called during build' 가 남
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _begin(); // 서버가 기억하는 단계 · 휴식을 바로 이어받고 첫 ping (30초 기다리지 않음)
+    });
   }
+
+  // 운행 화면을 열자마자 — 서버가 기억하는 상태(단계 · 휴식 중)를 받아 화면에 이어 준다.
+  //   앱을 껐다 켜도 3단계가 끊기지 않게: 30초 뒤 첫 ping 까지 "정상"으로 보이던 문제 + 경고 화면 · 휴식 화면이 사라지던 문제
+  Future<void> _begin() async {
+    var state = widget.resume;
+    if (state == null) {
+      try {
+        state = await ApiService.fetchDriveState();
+      } catch (_) {
+        // 못 받아도 운행은 계속 (다음 ping 에서 단계를 받음)
+      }
+    }
+    if (!mounted) return;
+    if (state != null) {
+      _setStage(state.stage);
+      // 2 · 3단계이거나 쉬던 중이면 경고 화면을 이어 연다 (3단계는 30초 반복 음성도 다시, 쉬던 중이면 남은 시간으로 휴식 화면)
+      if (state.resting || state.stage >= 2) _showWarning(_restoredResponse(state), resumeRest: state.resting);
+    }
+    _ping();
+  }
+
+  // 서버가 기억하는 상태로 경고 화면에 넣을 응답을 만든다 (졸음을 새로 감지한 것이 아니라서 퀴즈 · 음성 보고는 없음)
+  SleepResponse _restoredResponse(DriveState s) => SleepResponse(
+        isSleep: true,
+        stage: s.stage,
+        status: s.status,
+        reason: '',
+        method: 'mlkit',
+        summary: s.summary,
+        guidance: s.guidance,
+        driverVoice: '',
+        sleepCount10min: 0,
+        regulations: const [],
+      );
 
   // 단계를 바꾸고 경고 화면에도 알린다
   void _setStage(int stage) {
@@ -288,7 +331,7 @@ class _DriveScreenState extends State<DriveScreen> {
 
   // 경고 화면 띄우기 — 이미 떠 있으면 닫고 새 경고로 바꾼다 (새 알람 · 음성 · 퀴즈)
   //   퀴즈 · 휴식 화면이 위에 떠 있으면 그대로 둔다 (대답하는 중 · 쉬는 중을 끊지 않게)
-  Future<void> _showWarning(SleepResponse res) async {
+  Future<void> _showWarning(SleepResponse res, {bool resumeRest = false}) async {
     final old = _warningRoute;
     if (old != null) {
       if (!old.isCurrent) return;
@@ -303,6 +346,7 @@ class _DriveScreenState extends State<DriveScreen> {
         liveStage: _liveStage,
         pauseDetect: _pauseDetect,
         camera: _cameraNote,
+        resumeRest: resumeRest,
       ),
     );
     _warningRoute = route;
@@ -457,7 +501,10 @@ class _DriveScreenState extends State<DriveScreen> {
             ],
             const SizedBox(height: 24),
             OutlinedButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () {
+                ApiService.endDrive().ignore(); // 서버에 운행이 끝났다고 알림 (홈 배너가 안 뜨게, 2 · 3단계는 그대로)
+                Navigator.of(context).pop();
+              },
               style: OutlinedButton.styleFrom(
                 foregroundColor: fg,
                 side: BorderSide(color: fg),

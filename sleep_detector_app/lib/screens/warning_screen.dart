@@ -46,7 +46,11 @@ class WarningScreen extends StatefulWidget {
   /// 운행 화면의 카메라 — 있으면 맨 위에 내 얼굴(카메라 화면)을 보여 준다 (사진 1장 테스트처럼 없으면 큰 아이콘)
   final ValueListenable<CameraController?>? camera;
 
-  const WarningScreen({super.key, required this.response, this.liveStage, this.pauseDetect, this.camera});
+  /// 앱을 껐다 켰을 때 쉬는 중이었다면 true — 경고 음성 대신 바로 휴식 화면을 이어 연다 (남은 시간은 서버가 알려 줌)
+  final bool resumeRest;
+
+  const WarningScreen(
+      {super.key, required this.response, this.liveStage, this.pauseDetect, this.camera, this.resumeRest = false});
 
   @override
   State<WarningScreen> createState() => _WarningScreenState();
@@ -63,7 +67,13 @@ class _WarningScreenState extends State<WarningScreen> {
     _stage = widget.response.stage;
     widget.liveStage?.addListener(_onLiveStage);
     widget.pauseDetect?.value = true; // 알람 · 음성 · 퀴즈가 끝날 때까지 졸음 판정 쉬기
-    _speakWarning();
+    if (widget.resumeRest) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _goRest(); // 앱을 껐다 켠 뒤 — 쉬던 중이니 알람 없이 바로 휴식 화면
+      });
+    } else {
+      _speakWarning();
+    }
   }
 
   @override
