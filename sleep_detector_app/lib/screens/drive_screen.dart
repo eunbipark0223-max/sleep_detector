@@ -34,6 +34,7 @@ import '../services/api_service.dart';
 import '../services/eye_monitor.dart';
 import '../services/voice_service.dart';
 import '../theme.dart';
+import 'rest_screen.dart';
 import 'warning_screen.dart';
 
 class DriveScreen extends StatefulWidget {
@@ -63,7 +64,7 @@ class _DriveScreenState extends State<DriveScreen> {
   double _perclos = 0; // 최근 30초 눈 감은 비율
   String _notice = ''; // 화면에 보여 줄 안내 글
   bool _sending = false; // 서버에 보내는 중인지 (같은 졸음을 두 번 보내지 않게)
-  MaterialPageRoute<void>? _warningRoute; // 지금 떠 있는 경고 화면 (없으면 null)
+  MaterialPageRoute<int>? _warningRoute; // 지금 떠 있는 경고 화면 (없으면 null). 휴식이 끝나 닫히면 새 단계를 돌려줌
 
   // 카메라 지킴이: 사진(프레임)이 마지막으로 들어온 시각을 기억했다가, 오래 안 들어오면 카메라를 다시 켠다
   Timer? _watchdog;
@@ -108,6 +109,7 @@ class _DriveScreenState extends State<DriveScreen> {
 
     // 30초마다 ping
     _pingTimer = Timer.periodic(const Duration(seconds: AppConfig.pingSec), (_) => _ping());
+    _ping(); // 출발하자마자 한 번 — 2 · 3단계로 다시 출발하면 30초를 기다리지 않고 바로 경고 화면
 
     _initLocation(); // 위치 권한 묻고 첫 위치 받기
   }
@@ -159,6 +161,21 @@ class _DriveScreenState extends State<DriveScreen> {
       // 휴게 알림은 서버가 한 번만 true 로 보내 줌 → 한 번만 읽기
       // (경고 음성 · 퀴즈 · 휴식 중이면 배너만 띄우고 소리는 내지 않음)
       if (status.restDue && !_pauseDetect.value) VoiceService.speak(status.restMessage);
+      // 경고 화면 없이 2 · 3단계 (앱을 껐다 켬) → 경고 화면을 다시 띄운다. 그래야 2단계는 쉴 수 있고 3단계는 반복 음성이 나옴
+      if (status.stage >= 2 && _warningRoute == null && !_sending && !_pauseDetect.value) {
+        _showWarning(SleepResponse(
+          isSleep: true,
+          stage: status.stage,
+          status: status.status,
+          reason: '',
+          method: '',
+          summary: '',
+          guidance: '',
+          driverVoice: '',
+          sleepCount10min: 0,
+          regulations: const [],
+        ));
+      }
     } catch (_) {
       // ping 실패는 조용히 넘어간다 (30초 뒤 다시 보냄)
     }
@@ -274,11 +291,15 @@ class _DriveScreenState extends State<DriveScreen> {
       );
       if (!mounted) return;
       _notice = res.isSleep ? '졸음 확정 (${res.stage}단계)' : '서버 확인: 눈 뜸 → 취소';
+      // 경고 화면이 떠 있고 단계가 그대로면 알람 · 음성을 다시 내지 않는다 (단계가 올라갈 때만, 기획안 6-6)
+      final sameStage = _warningRoute != null && res.stage == _stage;
       _setStage(res.stage);
       // 경고 화면이 떠 있는 동안에도 다음 졸음을 받을 수 있게 여기서 '보내는 중'을 푼다
       _sending = false;
-      // 졸음이 맞고 1단계 이상이면 경고 화면을 띄운다
-      if (res.isSleep && res.stage >= 1) _showWarning(res);
+      // 졸음이 맞고 1단계 이상이면 경고 화면을 띄운다. 같은 단계면 낼 퀴즈가 있을 때만 (퀴즈는 2분 간격, 기획안 8-1)
+      if (res.isSleep && res.stage >= 1 && (!sameStage || res.voiceQuiz != null)) {
+        _showWarning(res, silent: sameStage);
+      }
     } catch (e) {
       if (mounted) setState(() => _notice = '서버 연결 실패: $e');
     } finally {
@@ -288,7 +309,7 @@ class _DriveScreenState extends State<DriveScreen> {
 
   // 경고 화면 띄우기 — 이미 떠 있으면 닫고 새 경고로 바꾼다 (새 알람 · 음성 · 퀴즈)
   //   퀴즈 · 휴식 화면이 위에 떠 있으면 그대로 둔다 (대답하는 중 · 쉬는 중을 끊지 않게)
-  Future<void> _showWarning(SleepResponse res) async {
+  Future<void> _showWarning(SleepResponse res, {bool silent = false}) async {
     final old = _warningRoute;
     if (old != null) {
       if (!old.isCurrent) return;
@@ -297,20 +318,40 @@ class _DriveScreenState extends State<DriveScreen> {
       await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
     }
-    final route = MaterialPageRoute<void>(
+    final route = MaterialPageRoute<int>(
       builder: (_) => WarningScreen(
         response: res,
         liveStage: _liveStage,
         pauseDetect: _pauseDetect,
         camera: _cameraNote,
+        silent: silent,
       ),
     );
     _warningRoute = route;
-    await Navigator.of(context).push(route);
+    final restedStage = await Navigator.of(context).push(route);
+    if (!mounted) return;
     if (_warningRoute == route) {
       _warningRoute = null; // 이 경고 화면이 닫혔으면 다시 띄울 수 있게
       _eye.reset(); // 경고 화면 동안 쌓인 눈 감김으로 돌아오자마자 의심이 나지 않게 (11/03 팀장)
+      if (restedStage != null) _setStage(restedStage); // 휴식 뒤 단계로 화면 색을 바로 맞춤 (다음 ping 을 기다리지 않게)
     }
+  }
+
+  // 휴게 배너의 [정차했어요] → 휴식 15분 → [운행 재개] (2시간 연속 운전 휴식 인정, 기획안 3-2)
+  Future<void> _goRest() async {
+    await VoiceService.stop();
+    if (!mounted) return;
+    _pauseDetect.value = true;
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(builder: (_) => const RestScreen()),
+    );
+    if (!mounted) return;
+    _pauseDetect.value = false;
+    if (result == null) return; // 휴식 시작 실패 → 배너를 그대로 둠
+    setState(() => _restMessage = '');
+    final s = result['stage'];
+    final stage = s is num ? s.toInt() : int.tryParse('$s');
+    if (stage != null) _setStage(stage);
   }
 
   // 판정을 쉬다가(경고 음성 · 퀴즈 · 휴식) 다시 켤 때 — 그동안 쌓인 눈 감김(쉬면서 감은 눈 등)은 세지 않음
@@ -371,22 +412,34 @@ class _DriveScreenState extends State<DriveScreen> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            // 휴게 배너 (연속 운전 2시간) — [닫기]로 숨김
+            // 휴게 배너 (연속 운전 2시간) — [닫기]로 숨김, [정차했어요]로 휴식 시작
             if (_restMessage.isNotEmpty)
               Container(
-                padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
+                padding: const EdgeInsets.fromLTRB(16, 8, 4, 12),
                 decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
-                child: Row(
+                child: Column(
                   children: [
-                    const Icon(Icons.local_cafe, color: AppColors.textPrimary),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(_restMessage,
-                          style: const TextStyle(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w700)),
+                    Row(
+                      children: [
+                        const Icon(Icons.local_cafe, color: AppColors.textPrimary),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(_restMessage,
+                              style: const TextStyle(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w700)),
+                        ),
+                        IconButton(
+                          onPressed: () => setState(() => _restMessage = ''),
+                          icon: const Icon(Icons.close, color: AppColors.textSecondary),
+                        ),
+                      ],
                     ),
-                    IconButton(
-                      onPressed: () => setState(() => _restMessage = ''),
-                      icon: const Icon(Icons.close, color: AppColors.textSecondary),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: FilledButton(
+                        onPressed: _goRest,
+                        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+                        child: const Text('정차했어요'),
+                      ),
                     ),
                   ],
                 ),
