@@ -16,6 +16,7 @@
 #   - ping(user_id) → {"drive_min", "rest_due", "rest_message", "rest_overdue"}
 #   - rest_done(user_id)            → 15분 휴식을 마치고 [운행 재개] (운전 시간 0부터)
 #   - drive_min(user_id)            → 지금까지 연속 운전 분 (음성 보고 숫자용)
+#   - end(user_id) · last_ping_age(user_id) → [운행 종료] 기억 · 마지막 ping 이 얼마 전인지 (GET /drive/state 가 '진행 중' 판단에 씀)
 #
 # [주의]
 #   - GPS 속도 · 정차 판단은 쓰지 않는다
@@ -82,6 +83,19 @@ def start(user_id):
 def rest_done(user_id):
     """[운행 재개] — 휴식을 인정하고 운전 시간을 0부터 다시 잰다."""
     start(user_id)
+
+
+def end(user_id):
+    """앱의 [운행 종료] — 운행이 끝났다고 기억 (홈 화면에 '진행 중인 운행' 배너가 안 뜨게). 다음 ping 이 오면 새 운행."""
+    with _lock:
+        _drives.pop(user_id, None)
+
+
+def last_ping_age(user_id):
+    """마지막 ping 으로부터 지난 초. 운행 기록이 없으면(끝냈거나 서버가 다시 켜짐) None"""
+    with _lock:
+        d = _drives.get(user_id)
+        return None if d is None else time.time() - d["last_ping"]
 
 
 def drive_min(user_id):

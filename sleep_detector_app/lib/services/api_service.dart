@@ -10,6 +10,8 @@
 // [만들 것 (이름 약속 — 다른 파일이 이 이름으로 부름)]
 //   - sendDetect(jpgBytes, reason, closedSec, perclos, eyeOpenProb, lat, lng) → SleepResponse   POST /detect
 //   - sendPing(perclos) → DriveStatus   POST /drive/ping
+//   - fetchDriveState() → DriveState   GET /drive/state   (앱을 껐다 켰을 때 이어 가기)
+//   - endDrive()    POST /drive/end
 //   - startDrive()   POST /drive/start
 //   - sendCalibration(사진 파일)   POST /drive/calibrate
 //   - startRest() · resumeDrive()   POST /drive/rest · /drive/resume
@@ -139,8 +141,25 @@ class ApiService {
   // sendPing (30초마다 "운전 중이에요, 눈 감긴 비율은 이만큼이에요" 알리고 현재 단계 받기)
   static Future<DriveStatus> sendPing([double? perclos]) async {
     final data = await _postJson('/drive/ping', {'perclos': perclos});
+    // 토큰이 곧 끝나면 서버가 새 토큰을 같이 내려 준다 → 저장해 두면 하루 넘게 켜 둔 폰도 경고 · 퀴즈 도중에 로그인 화면으로 쫓겨나지 않는다
+    final fresh = data['access_token'];
+    if (fresh is String && fresh.isNotEmpty) await AuthService.saveToken(fresh);
     return DriveStatus.fromJson(data);
   }
+
+  // fetchDriveState (앱을 껐다 켰을 때 서버가 기억하는 '진행 중인 운행' — 단계 · 휴식 중 · 최근 경고 글)
+  static Future<DriveState> fetchDriveState() async {
+    final headers = await AuthService.authHeaders();
+    final res = await http.get(_uri('/drive/state'), headers: headers).timeout(const Duration(seconds: 15));
+    await _checkUnauthorized(res);
+    if (res.statusCode != 200) {
+      throw Exception(_errorMessage(res));
+    }
+    return DriveState.fromJson(jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  // endDrive (운행 종료 — 서버가 진행 중인 운행을 끝냄. 2 · 3단계는 그대로 이어짐)
+  static Future<Map<String, dynamic>> endDrive() => _postJson('/drive/end');
 
   // startDrive (운전 시작했어요)
   static Future<Map<String, dynamic>> startDrive() => _postJson('/drive/start');
