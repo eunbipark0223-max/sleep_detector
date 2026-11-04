@@ -9,7 +9,7 @@
 //   - 프레임마다: 분석 중이면 그 프레임은 버림(_busy) → 두 눈 평균 눈 뜸 확률
 //   -   → 감김 / 뜸 / 모름 (확률 null · 얼굴 없음 = 모름, 감김으로 세지 않음)
 //   - 연속 감김 1.5초 이상 → 미세수면 의심 (다시 떠야 다음 졸음을 셈)
-//   - 최근 30초 PERCLOS 15% 이상 → 피로 누적 의심 (모름은 빼고 계산, 내려갔다 다시 넘어야 셈)
+//   - 최근 30초 PERCLOS 15% 이상 → 피로 누적 의심 (모름은 빼고 계산, 내려갔다 다시 넘어야 셈, 직전 의심 뒤 30초 안에는 안 냄)
 //   - 감긴 프레임을 잠깐 들고 있다가 의심이 확정되면 그 프레임을 넘김 (이미 눈을 뜬 뒤 찍지 않게)
 //   - 모름이 3초 이어지면 카메라 확인 신호
 //   - 🆕 (AppConfig.headRuleOn) 고개 숙임이 3초 이어지면 → 미세수면 의심 (reason 그대로 microsleep)
@@ -27,6 +27,7 @@
 //       jpg = 눈 감긴 순간의 프레임을 eye_monitor 가 이미 jpg 로 바꾼 것 → drive_screen 은 그대로 sendDetect
 //       (null 이면 변환 실패 — 사진 없이 보내거나 다음 의심을 기다림)
 //   - onCheckCamera()  ← drive_screen 이 받는 콜백
+//   - reset()  ← drive_screen 이 경고 화면이 닫힐 때 부름 (판정 기록 비우기, 개인 기준은 그대로, 11/03 팀장)
 //   - onFrameResult(eyeOpenProb, perclos, ear)  ← (선택) 0단계 화면 표시용, 모름이면 eyeOpenProb · ear = null
 //   - analyzeFile(String path) → 눈 뜸 확률
 //   - analyzeFileDetail(String path) → EyeReading(눈 뜸 확률 · 폰 EAR · 처리 ms) — 사진 비교 · KPI ① 측정용
@@ -87,6 +88,8 @@ class EyeMonitor {
   DateTime? _unknownStartTime;
   bool _microsleepTriggered = false;
   bool _perclosTriggered = false;
+  // 마지막 미세수면 · PERCLOS 의심 시각 — 이후 30초 창에는 같은 눈 감김이 남아 있으므로 PERCLOS 를 다시 내지 않음
+  DateTime? _lastSuspectAt;
   bool _cameraWarnTriggered = false;
 
   // 최근 30초 PERCLOS 계산용 큐 ("모름" 제외)
@@ -296,6 +299,7 @@ class EyeMonitor {
     if (sec < AppConfig.headDownSec || _headTriggered || _microsleepTriggered) return;
 
     _headTriggered = true;
+    _lastSuspectAt = now;
     _microsleepTriggered = true; // 고개를 든 채 눈을 감고 있어도 같은 졸음 → 미세수면 다시 안 냄 (눈을 떠야 다음)
     _perclosTriggered = true;
     final target = _headFrame;
@@ -303,6 +307,30 @@ class EyeMonitor {
         ? null
         : CameraImageUtils.toJpg(target, rotation: _headCamera?.sensorOrientation ?? 270);
     onSuspect?.call('microsleep', sec, _calculatePerclos(), avgProb ?? _lastEyeOpenProb, jpg);
+  }
+
+  /// 판정 기록을 처음 상태로 (경고 · 퀴즈 · 휴식 화면이 닫히고 운행 화면으로 돌아올 때, drive_screen 이 부름)
+  ///   그 화면들이 떠 있는 동안에도 아래 운행 화면 카메라는 돌아서 PERCLOS 30초 창에 눈 감김이 쌓임
+  ///   → 돌아오자마자 PERCLOS 의심 → 재개한 1단계가 바로 2단계 (11/03 팀장 확인). 평소 고개 각도도 쉬는 자세로 바뀌어 있어서 같이 비움
+  ///   개인 기준(threshold) 은 그대로
+  void reset() {
+    _closedStartTime = null;
+    _unknownStartTime = null;
+    _microsleepTriggered = false;
+    _perclosTriggered = false;
+    _lastSuspectAt = null;
+    _cameraWarnTriggered = false;
+    _history.clear();
+    _windowStart = null; // PERCLOS 는 다시 30초를 채운 뒤부터 판정
+    _headHistory.clear();
+    _headDown = false;
+    _headStartTime = null;
+    _headUpSince = null;
+    _headTriggered = false;
+    _headFrame = null;
+    _lastClosedFrame = null;
+    _frameInStreak = false;
+    _lastEyeOpenProb = 1.0;
   }
 
   /// 숙이지 않은 프레임 — headUpResetSec 동안 계속 들고 있어야 숙임 시간을 처음부터 (한두 프레임 흔들림은 숙임이 이어짐)
@@ -383,6 +411,7 @@ class EyeMonitor {
         if (_headDown) _headTriggered = true; // 숙인 채 눈 감김으로 이미 경고 → 같은 숙임으로 다시 안 냄
         // 같은 감김이 눈 뜬 직후 PERCLOS 로 한 번 더 잡히지 않게 — PERCLOS 도 기준 아래로 내려갔다 다시 넘어야 셈
         _perclosTriggered = true;
+        _lastSuspectAt = now;
         // 이번 감김 동안 찍은 프레임만 보냄 — 얼굴을 놓친 채 시작된 감김이면 몇 분 전 사진이 갈 수 있어서 (10/28 팀장 확인)
         final target = _frameInStreak ? _lastClosedFrame : null;
         final jpg = target == null
@@ -407,9 +436,15 @@ class EyeMonitor {
     final bool hasEnoughWindow = _windowStart != null &&
         now.difference(_windowStart!).inSeconds >= AppConfig.perclosWindowSec;
 
+    // 직전 의심 뒤 30초 안이면 창에 같은 눈 감김이 남아 있음 → 또 세지 않음
+    //   11/03 시연 폰 시험: 15% 근처를 오가며 PERCLOS 가 17초에 3번 → 0단계에서 3단계까지 올라감
+    final bool inCooldown = _lastSuspectAt != null &&
+        now.difference(_lastSuspectAt!).inSeconds < AppConfig.perclosWindowSec;
+
     if (hasEnoughWindow && perclos >= AppConfig.perclosThreshold) {
-      if (!_perclosTriggered && !_microsleepTriggered) {
+      if (!_perclosTriggered && !_microsleepTriggered && !inCooldown) {
         _perclosTriggered = true; // 기준 아래로 내려갔다 다시 넘어야 셈
+        _lastSuspectAt = now;
         final targetFrame = _lastClosedFrame ?? frame;
         final jpg = targetFrame == null
             ? null

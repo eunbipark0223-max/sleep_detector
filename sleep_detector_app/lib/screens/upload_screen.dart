@@ -22,6 +22,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../models/sleep_response.dart';
 import '../services/api_service.dart';
+import '../services/eye_monitor.dart';
 import '../theme.dart';
 import 'warning_screen.dart';
 
@@ -38,7 +39,18 @@ class _UploadScreenState extends State<UploadScreen> {
   String? _error; // 화면에 보여 줄 오류 글
   bool _loading = false; // 서버 응답을 기다리는 중
 
-  // 사진 고르기 (갤러리 / 카메라)
+  // A님 눈 감시 도구 — 여기서는 사진 1장의 ML Kit 눈 뜸 확률만 잰다 (analyzeFile)
+  final EyeMonitor _eye = EyeMonitor();
+  double? _mlkitProb; // ML Kit 눈 뜸 확률 (얼굴 없으면 null)
+  bool _analyzing = false; // ML Kit 재는 중
+
+  @override
+  void dispose() {
+    _eye.close(); // 다 쓰면 닫기 (A님 약속)
+    super.dispose();
+  }
+
+  // 사진 고르기 (갤러리 / 카메라) → 바로 ML Kit 눈 뜸 확률 재기
   Future<void> _pick(ImageSource source) async {
     try {
       final file = await ImagePicker().pickImage(source: source, maxWidth: 1280, imageQuality: 85);
@@ -49,10 +61,21 @@ class _UploadScreenState extends State<UploadScreen> {
         _photo = bytes;
         _result = null;
         _error = null;
+        _mlkitProb = null;
+        _analyzing = true;
+      });
+      final prob = await _eye.analyzeFile(file.path);
+      if (!mounted) return;
+      setState(() {
+        _mlkitProb = prob;
+        _analyzing = false;
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _error = '사진을 불러오지 못했어요. 사진 · 카메라 권한을 확인해 주세요');
+      setState(() {
+        _analyzing = false;
+        _error ??= '사진을 불러오지 못했어요. 사진 · 카메라 권한을 확인해 주세요';
+      });
     }
   }
 
@@ -68,8 +91,8 @@ class _UploadScreenState extends State<UploadScreen> {
     });
 
     try {
-      // TODO: A의 eye_monitor가 완성되면 눈 뜸 확률을 여기서 같이 보내기
-      final result = await ApiService.sendDetect(photo);
+      // ML Kit 눈 뜸 확률도 같이 보낸다 (서버 보고서 기록용 — 판정은 서버 EAR)
+      final result = await ApiService.sendDetect(photo, eyeOpenProb: _mlkitProb);
       if (!mounted) return;
       setState(() => _result = result);
     } catch (e) {
@@ -122,9 +145,22 @@ class _UploadScreenState extends State<UploadScreen> {
                 ),
               ],
             ),
+            if (_photo != null) ...[
+              const SizedBox(height: 12),
+              // ML Kit (폰) 눈 뜸 확률 — 서버 판정(EAR)과 비교해서 볼 수 있게
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: _infoRow(
+                    'ML Kit 눈 뜸 확률 (폰)',
+                    _analyzing ? '재는 중…' : (_mlkitProb == null ? '얼굴 없음' : _mlkitProb!.toStringAsFixed(2)),
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             FilledButton(
-              onPressed: (_photo == null || _loading) ? null : _send,
+              onPressed: (_photo == null || _loading || _analyzing) ? null : _send,
               child: _loading
                   ? const SizedBox(
                 height: 22,

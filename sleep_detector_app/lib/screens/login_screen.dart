@@ -13,6 +13,7 @@
 
 import 'package:flutter/material.dart'; // 안드로이드,ios 스타일의 기본 디자인 UI 요소가 들어있는 Flutter 공식 핵심 라이브러리
 import '../theme.dart'; // 앱 전체에 적용할 디자인 시스템
+import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'main_screen.dart';
 
@@ -48,6 +49,7 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
   }
 
   void _goHome() {
+    ApiService.resetUnauthorized(); // 다시 로그인했으니 다음 만료 때 또 로그인 화면으로 보낼 수 있게
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => const MainScreen()),

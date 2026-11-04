@@ -15,7 +15,7 @@
 // [수업과 다른 점]
 //   - 응답 키: 수업 reply · suggestions → 우리 서버 message / answer · sources · is_real
 //     추천 질문은 서버가 주지 않아서 _greetingSuggestions — 답이 올 때마다 아직 안 물어본 것만 다시 보여 줌
-//   - 답 아래에 근거 규정(sources) — regulation_screen.dart 규정 카드 모양, 누르면 원문
+//   - 답 아래에 근거 규정(sources) — regulation_screen.dart 의 RegulationCard (collapsible), 누르면 원문
 //   - is_real == false → "AI 답변 아님 — 규정 원문" 표시
 //   - MainScreen(D) 의 '규정 도우미' 탭 안에 들어가므로 AppBar 없음 (제목은 MainScreen 이 보여 줌)
 //   - 서버 호출: 수업은 ApiService.chatHello · sendChat 인데 api_service.dart(C) 에 아직 없어서 이 파일 아래 _chatHello · _sendChat.
@@ -32,6 +32,7 @@ import 'package:http/http.dart' as http;
 
 import '../services/auth_service.dart';
 import '../theme.dart';
+import 'regulation_screen.dart';
 
 const String _baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://10.0.2.2:8000');
 const Duration _timeout = Duration(seconds: 40); // RAG + Gemini 라 조금 길게
@@ -277,56 +278,13 @@ class _ChatScreenState extends State<ChatScreen> {
                       '관련 규정 ${m.sources.length}건',
                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
                     ),
-                    ...m.sources.map(_sourceTile),
+                    ...m.sources.map((src) => RegulationCard.fromJson(src, collapsible: true)), // 근거 규정 (눌러서 원문)
                   ],
                 ],
               ),
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  // 근거 규정 한 건 - regulation_screen.dart 규정 카드 모양 (제목 · 출처 배지 · 원문), 누르면 원문이 펼쳐짐
-  Widget _sourceTile(Map<String, dynamic> s) {
-    final title = (s['title'] as String?) ?? '';
-    final source = (s['source'] as String?) ?? '';
-    return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent), // 펼칠 때 위아래 선 없애기
-      child: Material(
-        // 말풍선 흰 배경 위에서도 누를 때 물결이 보이게 (없으면 ListTile 오류)
-        type: MaterialType.transparency,
-        child: ExpansionTile(
-          tilePadding: EdgeInsets.zero,
-          childrenPadding: const EdgeInsets.only(bottom: 8),
-          dense: true,
-          leading: const Icon(Icons.article, color: Color(0xFF0891B2), size: 20),
-          title: Text(
-            title.isNotEmpty ? title : source,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-          ),
-          subtitle: source.isEmpty
-              ? null
-              : Align(
-                  alignment: Alignment.centerLeft,
-                  child: Container(
-                    margin: const EdgeInsets.only(top: 4),
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(color: const Color(0xFFCFFAFE), borderRadius: BorderRadius.circular(8)),
-                    child: Text(source, // 출처 뒤 긴 주소는 한 줄로 줄임 (폰에서 규정 4건이 화면을 다 차지하지 않게)
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Color(0xFF0891B2), fontSize: 11)),
-                  ),
-                ),
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text((s['content'] as String?) ?? '', style: TextStyle(color: Colors.grey[700], height: 1.4)),
-            ),
-          ],
-        ),
       ),
     );
   }

@@ -37,6 +37,25 @@ class ApiService {
   // 서버 주소는 AppConfig.baseUrl 한 곳에서만 가져와요 (팀 규칙)
   static Uri _uri(String path) => Uri.parse('${AppConfig.baseUrl}$path');
 
+  // ── 로그인 만료 (401) ─────────────────────────────────────────
+  // 토큰이 만료(12시간)되면 서버가 401 로 거절한다. 그대로 두면 운행 · 측정 · 졸음 전송이 조용히 전부 실패하므로
+  // 토큰을 지우고 이 함수를 불러 로그인 화면으로 보낸다. 실제 화면 이동은 splash_screen 이 넣어 둔다.
+  static void Function()? onUnauthorized;
+  static bool _sentToLogin = false; // 여러 요청이 동시에 401 이어도 로그인 화면은 한 번만
+
+  static Future<void> _checkUnauthorized(http.Response res) async {
+    if (res.statusCode != 401) return;
+    await AuthService.clearToken();
+    if (!_sentToLogin) {
+      _sentToLogin = true;
+      onUnauthorized?.call();
+    }
+    throw Exception('로그인이 만료됐어요. 다시 로그인해 주세요');
+  }
+
+  /// 다시 로그인했으면 부른다 (다음 만료 때 또 로그인 화면으로 보낼 수 있게)
+  static void resetUnauthorized() => _sentToLogin = false;
+
   // ── 공통 도우미 (이 파일 안에서만 쓰는 것) ──────────────────────
 
   // 서버가 알려 준 실패 이유를 꺼내요. 못 꺼내면 기본 문구를 써요
@@ -54,6 +73,7 @@ class ApiService {
     final res = await http
         .post(_uri(path), headers: headers, body: body == null ? null : jsonEncode(body))
         .timeout(const Duration(seconds: 15));
+    await _checkUnauthorized(res);
     if (res.statusCode != 200) {
       throw Exception(_errorMessage(res));
     }
@@ -92,6 +112,7 @@ class ApiService {
     }
     final streamed = await request.send().timeout(const Duration(seconds: 30));
     final res = await http.Response.fromStream(streamed);
+    await _checkUnauthorized(res);
 
     if (res.statusCode != 200) {
       throw Exception('요청에 실패했습니다 (${res.statusCode})');
@@ -105,6 +126,7 @@ class ApiService {
   static Future<List<SleepEvent>> fetchMyEvents() async {
     final headers = await AuthService.authHeaders();
     final res = await http.get(_uri('/events/my'), headers: headers).timeout(const Duration(seconds: 15));
+    await _checkUnauthorized(res);
 
     if (res.statusCode != 200) {
       throw Exception('경고 목록을 불러오지 못했습니다 (${res.statusCode})');
@@ -137,6 +159,7 @@ class ApiService {
       ));
     final streamed = await request.send().timeout(const Duration(seconds: 30));
     final res = await http.Response.fromStream(streamed);
+    await _checkUnauthorized(res);
 
     if (res.statusCode != 200) {
       throw Exception(_errorMessage(res));

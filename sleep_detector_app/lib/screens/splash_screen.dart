@@ -13,6 +13,7 @@
 
 import 'package:flutter/material.dart';
 import '../theme.dart';
+import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
 import 'main_screen.dart';
@@ -33,8 +34,23 @@ class _SplashScreenState extends State<SplashScreen> {
 
   // 자동 로그인 - 토큰 확인 후 분기
   Future<void> _goNext() async {
+    // 로그인 만료(401) 때 어느 화면에 있든 로그인 화면으로 보내는 함수를 ApiService 에 넣어 둔다
+    // (스플래시는 앱의 첫 화면이라 여기서 받은 Navigator 는 앱이 끝날 때까지 그대로 쓸 수 있다)
+    final navigator = Navigator.of(context);
+    ApiService.onUnauthorized = () => navigator.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (_) => false,
+        );
+
     await Future.delayed(const Duration(seconds: 2));
-    final loggedIn = await AuthService.isLoggedIn();
+    var loggedIn = await AuthService.isLoggedIn();
+    // 토큰이 있어도 만료됐을 수 있다 → 서버에 확인 (만료면 me() 가 토큰을 지우고 null)
+    // 서버 연결 오류는 로그아웃시키지 않고 그대로 들어간다 (운행 중 401 이 오면 그때 로그인 화면으로)
+    if (loggedIn) {
+      try {
+        loggedIn = await AuthService.me() != null;
+      } catch (_) {}
+    }
     if (!mounted) return;
 
     Navigator.pushReplacement(
