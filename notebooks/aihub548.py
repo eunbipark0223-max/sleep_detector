@@ -36,6 +36,8 @@
 #   ... wrong --csv result_val_eye_cnn_548.csv   틀린 사진의 눈만 모은 그림 → D:\aihub548\wrong_*.png (저장소 X)
 #   ... curve [--csvs result_val.csv,result_val_eye_cnn_548.csv]   기준값 0.05~0.95 곡선 (오경보 ↔ 반쯤 · 감은 눈 취소) 모델끼리 겹침
 #       + 오경보 0.5 · 1 · 3% 고정점 + 지금 기준값 보고 형식 (전체 / 판정됨 / 판정 불가 / 해당 / 비율 / 95% 범위) — 중간 점검 피드백 11/04
+#   ... cond [--csvs team_a.csv,team_b.csv]   팀 사진 · 조건 사진을 조건별로 (감은 눈 취소 / 뜬 눈 오경보 / 판정 불가, 같은 보고 형식)
+#       기본 = team_eye_cnn_aihub.csv · team_eye_cnn_548.csv (team --model 로 먼저 만들기)
 #   ... extra [--dir D:\aihub71421\sel] [--model ...]   외부 사진 시험 (하위 폴더 closed · open, 학습에 안 씀)
 #       기본 = AI-Hub 71421 「디스플레이 중심 안구 움직임」 Validation 13명 (한국인 · 스마트폰 · 차량 LCD 등, 라벨: 홍채 없음 + 눈꺼풀 세로/가로 < 0.15 = 감음)
 #       (참고: CEW 는 --dir D:\cew\faces\dataset_B_FacialImages --pad 0.4 — 외국인 얼굴이라 판단에는 안 씀, 11/03)
@@ -600,6 +602,29 @@ def curve(csv_names, fa_fix=(0.005, 0.01, 0.03)):
     print("\n그림:", out, "(숫자만 들어 있음 — 노션 · 발표 OK)")
 
 
+COND_NAME = {"": None, "turn": "고개 돌림", "down": "고개 숙임", "mask": "마스크", "sun": "선글라스"}
+
+
+def cond_table(csv_names):
+    """중간 점검 피드백 (11/04): 팀 사진 · 조건 사진을 조건별로 — 감은 눈 취소 / 뜬 눈 오경보 / 판정 불가 (team 결과 CSV 로 계산만)
+    판정 불가 = 얼굴 못 찾음 (또는 CNN 값 없음). 비율은 판정된 사진 기준, 95% 범위는 Wilson. 반쯤 감은 눈은 취소만"""
+    for name in csv_names:
+        rows = list(csv.DictReader(open(os.path.join(os.path.dirname(TEAM_DIRS[0]), name), encoding="utf-8-sig")))
+        print(f"\n== {name} ==")
+        print("조건 | 눈 | 전체 | 판정됨 | 판정 불가 | 해당 | 비율 | 95% 범위")
+        for c in ("", "turn", "down", "mask", "sun"):
+            for g in ((None,) if c else ("밝은 곳", "어두운 곳")):
+                for lab, what, key in (("closed", "취소", "cancel"), ("half", "취소", "cancel"), ("open", "오경보", "closed")):
+                    rs = [r for r in rows if r.get("cond", "") == c and (g is None or r["group"] == g) and r["label"] == lab]
+                    if not rs:
+                        continue
+                    ok = [r for r in rs if r["face"] == "True" and r["prob"] not in ("", None)]
+                    k = sum(r[key] == "True" for r in ok)
+                    lo, hi = _wilson(k, len(ok))
+                    rate = f"{k / len(ok):.1%} | {lo:.1%} ~ {hi:.1%}" if ok else "- | -"
+                    print(f"{COND_NAME[c] or g} | {lab} {what} | {len(rs)} | {len(ok)} | {len(rs) - len(ok)} | {k} | {rate}")
+
+
 def load_rows():
     return list(csv.DictReader(open(os.path.join(ROOT, "result_g1.csv"), encoding="utf-8-sig")))
 
@@ -831,7 +856,7 @@ def to_wandb():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("step", choices=["download", "eval", "wandb", "crop", "team", "wrong", "extra", "curve"])
+    ap.add_argument("step", choices=["download", "eval", "wandb", "crop", "team", "wrong", "extra", "curve", "cond"])
     ap.add_argument("--dir", default=r"D:\aihub71421\sel", help="extra: 외부 사진 폴더 (하위 폴더 이름에 closed / open)")
     ap.add_argument("--pad", type=float, default=0.0, help="extra: 얼굴이 꽉 찬 사진이면 사방을 이 비율만큼 늘림 (CEW 0.4, 얼굴 전체 사진은 0)")
     ap.add_argument("--root", default=ROOT, help="받기 · 결과 폴더 (저장소 밖)")
@@ -847,4 +872,5 @@ if __name__ == "__main__":
     a = ap.parse_args()
     ROOT = a.root
     {"download": lambda: download(a.keys), "eval": lambda: evaluate(a.set, a.model, a.tta, a.scale), "wrong": lambda: wrong(a.csv), "wandb": to_wandb, "crop": lambda: crop(a.limit, a.color),
-     "team": lambda: team(a.model, a.tta), "curve": lambda: curve(a.csvs.split(",")), "extra": lambda: extra(a.dir, a.model, a.tta, a.pad, a.scale)}[a.step]()
+     "team": lambda: team(a.model, a.tta), "curve": lambda: curve(a.csvs.split(",")),
+     "cond": lambda: cond_table(a.csvs.split(",") if a.csvs != ap.get_default("csvs") else ["team_eye_cnn_aihub.csv", "team_eye_cnn_548.csv"]),"extra": lambda: extra(a.dir, a.model, a.tta, a.pad, a.scale)}[a.step]()
