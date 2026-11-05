@@ -387,7 +387,7 @@ def evaluate(which="val_g1", model="", tta=False, scale=1.0, models=()):
     for z in zips.values():
         z.close()
 
-    for (name, _), rs in zip(runs, rows):
+    for (name, *_), rs in zip(runs, rows):
         out = os.path.join(ROOT, name)
         with open(out, "w", newline="", encoding="utf-8-sig") as fh:
             w = csv.DictWriter(fh, fieldnames=list(rs[0]))
