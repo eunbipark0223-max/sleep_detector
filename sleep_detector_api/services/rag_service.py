@@ -72,7 +72,10 @@ CORE_QUERY = "졸음운전 휴게시간 휴식 규정"
 LAW_WORDS = ("규정", "법", "조항", "의무", "위반", "허용", "금지", "되나", "근거", "보장",
              # 11/02: 규정을 묻는 낱말 — '연장 운행하면 쉬는 시간은 어떻게 돼?' 가 '어떻게' 때문에 일반 자료로만 가서 법령을 못 찾았음
              "쉬는 시간", "휴게시간", "휴식시간", "연장", "처벌", "벌금", "벌칙", "과태료", "정해져")
-GUIDE_WORDS = ("통계", "치사율", "예방", "방법", "주기", "어떻게", "찾", "요령", "건수")
+GUIDE_WORDS = ("통계", "치사율", "예방", "방법", "주기", "어떻게", "찾", "요령", "건수", "대처", "해소")
+# '-법' 이지만 법령이 아닌 낱말 (11/05) — LAW_WORDS 의 "법" 을 셀 때 빼고, 일반 자료 낱말로 셈
+#   '졸음 대처법' 이 "법" 에 걸려 법령으로만 가던 것 고침. '처벌하는 법' · '법적으로' 는 그대로 법령
+METHOD_WORDS = ("방법", "대처법", "예방법", "해결법", "극복법", "해소법", "퇴치법", "사용법", "이용법", "운전법", "요법", "비법")
 
 # 차종 → 함께 검색할 vehicle 값 ("all" = 모든 운전자에게 적용)
 VEHICLE_SCOPE = {
@@ -366,10 +369,13 @@ def search_regulations(summary="", vehicle=None, k=3):
 # 채팅 · Agent 도구: 질문으로 검색
 # ───────────────────────────────────────────────
 def _route(query):
-    # 11/05: '방법' 의 '법' 이 LAW_WORDS 의 "법" 에 걸려 '예방 방법' · '쉼터 이용 방법' 이 both 로 가던 것 고침
-    #        ('방법' 은 GUIDE_WORDS 에서만 셈, 다른 법령 낱말이 있으면 그대로 both)
-    law = any(w in query.replace("방법", "") for w in LAW_WORDS)
-    guide = any(w in query for w in GUIDE_WORDS)
+    # 11/05: '방법' · '대처법' 같은 METHOD_WORDS 의 '법' 은 법령 낱말로 세지 않음
+    #        ('예방 방법' · '졸음 대처법' → 일반 자료, 다른 법령 낱말이 같이 있으면 그대로 both)
+    plain = query
+    for w in METHOD_WORDS:
+        plain = plain.replace(w, " ")
+    law = any(w in plain for w in LAW_WORDS)
+    guide = any(w in query for w in GUIDE_WORDS + METHOD_WORDS)
     if law and not guide:
         return "law"
     if guide and not law:
