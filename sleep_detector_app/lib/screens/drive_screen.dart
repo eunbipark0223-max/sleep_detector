@@ -7,14 +7,15 @@
 // [이 파일이 하는 일]
 //   - 전면 카메라 미리보기 + startImageStream → eye_monitor.processFrame
 //   - onSuspect → camera_image_utils.toJpg → api_service.sendDetect (위도 · 경도 포함)
-//   -   → 응답 isSleep 이면 warning_screen 을 이 화면 위에 겹쳐 띄움 (Stack, 카메라 · 판정은 계속)
+//   -   → 응답 isSleep 이면 warning_screen 을 이 화면 위에 띄움 (이 화면은 살아 있어 카메라 · 판정은 계속)
+//   -   → 서버 답을 못 받으면 알람 (연결 실패는 바로, 답이 없으면 10초 뒤, 단계는 안 올림, 401 제외)
 //   - 30초마다 sendPing → stage 로 화면 색 (1단계 자동 해제 · 조치완료 반영), restDue 면 휴게 배너 + 🔊 1번
 //   - onCheckCamera → '카메라를 확인하세요' 배너 (얼굴이 다시 잡힐 때까지) + 🔊 10초마다
 //   - 화면 꺼짐 방지 (wakelock_plus), 0단계 화면에 눈 뜸 확률 · 내 기준 표시
 //   - 나갈 때 스트림 정지 · eye_monitor.close()
 //
 // [주의]
-//   - Navigator.push 로 경고 화면을 띄우면 카메라가 멈춤 → 반드시 Stack 으로 겹쳐 띄우기
+//   - 경고 알람 · 음성 · 퀴즈 · 휴식 중에는 졸음 판정을 쉰다 (pauseDetect, 11/03 팀장 확인)
 //   - 위치(geolocator)는 경고 기록용만 — 속도 · 정차 판단에 쓰지 않음
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
@@ -166,7 +167,10 @@ class _DriveScreenState extends State<DriveScreen> {
 
   // 단계를 바꾸고 경고 화면에도 알린다
   void _setStage(int stage) {
-    setState(() => _stage = stage);
+    setState(() {
+      if (stage < _stage && _notice.startsWith('졸음 확정')) _notice = ''; // 단계가 내려가면 지난 경고 글자를 지운다
+      _stage = stage;
+    });
     _liveStage.value = stage;
   }
 
@@ -456,8 +460,6 @@ class _DriveScreenState extends State<DriveScreen> {
     if (spokeAt != null && now.difference(spokeAt).inSeconds < _cameraRepeatSec) return;
     _cameraSpokeAt = now;
     _faceLostNote.value = true;
-    _cancelClear?.cancel();
-    _cancelNote.value = true; // 취소 글자도 배너와 함께 띄운다 (서버 답과 상관없이)
     VoiceService.speak('카메라를 확인하세요');
   }
 
@@ -473,7 +475,7 @@ class _DriveScreenState extends State<DriveScreen> {
       _faceLostNote.value = false;
       _cameraSpokeAt = null;
       final cancelledAt = _cancelledAt;
-      if (wasLost) {
+      if (cancelledAt != null && wasLost) {
         _cancelledAt = null;
         _cancelClear?.cancel();
         _cancelClear = Timer(const Duration(seconds: 1), () {
@@ -505,11 +507,11 @@ class _DriveScreenState extends State<DriveScreen> {
         title: const Text('운행 중'),
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            // 카메라 확인 배너 — 얼굴이 다시 잡히면 사라짐 (취소 글자는 맨 아래, 1초 뒤 사라짐)
-            CameraBanner(faceLost: _faceLostNote),
+        child: OnePageLayout(
+          // 카메라 확인 배너 — 얼굴이 다시 잡히면 사라짐 (취소 글자는 맨 아래, 1초 뒤 사라짐)
+          banner: CameraBanner(faceLost: _faceLostNote),
+          belowMax: 0.3,
+          above: [
             // 휴게 배너 (연속 운전 2시간) — [닫기]로 숨김, [정차했어요]로 휴식 시작
             if (_restMessage.isNotEmpty)
               Container(
@@ -558,38 +560,34 @@ class _DriveScreenState extends State<DriveScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-            // 카메라 미리보기 — 내 얼굴이 화면 안에 잘 보이는지 기사가 확인할 수 있게
-            //   가로는 화면 폭에 꽉 차게, 세로는 폰 화면 높이에 맞춰 (아래 표 · 버튼까지 한 화면에 들어가게)
-            //   세로로 긴 카메라 화면의 가운데(얼굴)만 잘라서 보여 준다
-            LayoutBuilder(
-              builder: (context, box) {
-                final w = box.maxWidth;
-                final h = (MediaQuery.of(context).size.height * 0.36).clamp(200.0, 330.0);
-                return ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: SizedBox(
-                    width: w,
-                    height: h,
-                    child: (_controller != null && _controller!.value.isInitialized)
-                        ? FittedBox(
-                            fit: BoxFit.cover,
-                            clipBehavior: Clip.hardEdge,
-                            child: SizedBox(
-                              width: w,
-                              height: w * _controller!.value.aspectRatio, // 세로 화면이라 높이 = 너비 × 가로세로비
-                              child: CameraPreview(_controller!),
-                            ),
-                          )
-                        : Container(
-                            color: Colors.black26,
-                            child: Icon(Icons.videocam_off_outlined, color: fg, size: 40),
-                          ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
+          ],
+          // 카메라 미리보기 — 내 얼굴이 화면 안에 잘 보이는지 기사가 확인할 수 있게
+          //   칸 크기는 남는 자리에 맞추고 (OnePageLayout), 세로로 긴 카메라 화면의 가운데(얼굴)만 잘라서 보여 준다
+          camera: LayoutBuilder(
+            builder: (context, box) {
+              final w = box.maxWidth;
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: (_controller != null && _controller!.value.isInitialized)
+                    ? FittedBox(
+                        fit: BoxFit.cover,
+                        clipBehavior: Clip.hardEdge,
+                        child: SizedBox(
+                          width: w,
+                          height: w * _controller!.value.aspectRatio, // 세로 화면이라 높이 = 너비 × 가로세로비
+                          child: CameraPreview(_controller!),
+                        ),
+                      )
+                    : Container(
+                        color: Colors.black26,
+                        child: Icon(Icons.videocam_off_outlined, color: fg, size: 40),
+                      ),
+              );
+            },
+          ),
+          below: [
+            const SizedBox(height: 12),
             // 내 기준 · 눈 뜸 확률 · PERCLOS
             Container(
               padding: const EdgeInsets.all(16),
@@ -606,7 +604,7 @@ class _DriveScreenState extends State<DriveScreen> {
               const SizedBox(height: 12),
               Text(_notice, textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: fg)),
             ],
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
             OutlinedButton(
               onPressed: () {
                 ApiService.endDrive().ignore(); // 서버에 운행이 끝났다고 알림 (홈 배너가 안 뜨게, 2 · 3단계는 그대로)

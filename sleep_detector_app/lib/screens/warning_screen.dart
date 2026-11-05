@@ -5,17 +5,17 @@
 // 수업 원본: road_hazard_app/lib/screens/detect_result_screen.dart (🟡 이름 변경 + 수정)
 //
 // [이 파일이 하는 일]
-//   - 단계별 색 · 아이콘 · 큰 글씨 한 줄 + AI 안내 카드(보라) + [규정 보기]
+//   - 단계별 색 · 내 얼굴(카메라) · 큰 글씨 한 줄 + AI 안내 카드(보라) + [규정 듣기]
 //   - 소리 순서: 🔔 알람 → 고정 문구(1단계 '일어나세요' / 2단계 '계속 졸고 있습니다. 가까운 졸음쉼터로 이동하세요') → driverVoice
-//   - 운전 중 음성 퀴즈 (부품 A): voiceQuiz.speak 읽기 + display 크게 → 7초 듣기
-//   -   화면: 문제 그대로 + '🎤 듣는 중이에요' + 말하는 글자 실시간 → submitAnswer → message 읽기
-//   -   → nextQuiz 가 오면 한 번 더 → stage 로 색 갱신 (stageUp 이면 한 단계 위)
-//   - 3단계: 관리자 조치완료 전까지 30초마다 '관리자에게 알렸습니다. 정차해 주세요.'
-//   - 2단계 [정차했어요] → rest_screen
+//   - 운전 중 음성 퀴즈 (부품 A): D 의 quiz_screen 을 띄우고, 돌려받은 단계로 색 갱신 (2번 실패면 한 단계 위 + 알람)
+//   - 같은 단계에서 또 졸면 알람 · 음성 보고 없이 낼 퀴즈만 (silent, 기획안 6-6)
+//   - 3단계: 관리자 조치완료 전까지 30초마다 알람 + '관리자에게 알렸습니다. 정차해 주세요.'
+//   - 2단계 [정차했어요] → 확인 창 → rest_screen → [운행 재개] 뒤 운행 화면으로 복귀
 //
 // [주의]
 //   - 화면 터치로 답하지 않는다 (답은 말로만)
-//   - drive_screen 위에 겹쳐 뜨는 위젯 — 별도 화면으로 이동하지 않음
+//   - 운행 중 2 · 3단계는 뒤로 가기로 끌 수 없다 (2단계는 쉬어야, 3단계는 관리자만 해제)
+//   - 운행 화면 위에 띄우는 화면 — 아래 운행 화면이 살아 있어 카메라 · 판정은 계속 (알람 · 음성 · 퀴즈 · 휴식 중에만 판정 쉼)
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
@@ -49,6 +49,61 @@ Future<bool> confirmRest(BuildContext context) async {
     ),
   );
   return yes == true;
+}
+
+/// 스크롤 없이 한 화면에 담는 배치 — 운행 화면 · 경고 화면이 같이 쓴다 (폰 크기 · 글자 크기 설정이 달라도 그대로)
+///   카메라 칸이 남는 자리를 전부 쓰고, 위 · 아래 내용은 자리가 모자라면 같이 줄어든다
+class OnePageLayout extends StatelessWidget {
+  final Widget? banner; // 맨 위 (항상 같은 자리)
+  final List<Widget> above; // 카메라 위 내용
+  final Widget camera;
+  final List<Widget> below; // 카메라 아래 내용
+  final double aboveMax; // 위 내용이 쓸 수 있는 높이 비율
+  final double belowMax; // 아래 내용이 쓸 수 있는 높이 비율
+
+  const OnePageLayout({
+    super.key,
+    this.banner,
+    this.above = const [],
+    required this.camera,
+    required this.below,
+    this.aboveMax = 0.25,
+    this.belowMax = 0.55,
+  });
+
+  static const double _bannerMax = 0.13; // 배너 자리 비율 — 위 · 아래 비율과 합쳐서 카메라 칸이 30% 이상 남게
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+      child: LayoutBuilder(
+        builder: (_, box) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (banner != null) _fit([banner!], box.maxWidth, box.maxHeight * _bannerMax),
+            if (above.isNotEmpty) _fit(above, box.maxWidth, box.maxHeight * aboveMax),
+            Expanded(child: camera),
+            _fit(below, box.maxWidth, box.maxHeight * belowMax),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _fit(List<Widget> children, double width, double maxHeight) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.topCenter,
+        child: SizedBox(
+          width: width,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+        ),
+      ),
+    );
+  }
 }
 
 /// 검은 배너 "카메라를 확인하세요" — 운행 화면 · 경고 화면이 같이 쓴다
@@ -91,7 +146,7 @@ class CameraBanner extends StatelessWidget {
   }
 }
 
-/// 흰 글자 "서버 확인: 취소" — 배너와 함께 떠서 배너가 사라진 1초 뒤 사라진다
+/// 흰 글자 "서버 확인: 취소" — 서버가 실제로 취소했을 때만 뜬다. 얼굴을 놓쳤다가 다시 잡히면 1초 뒤, 얼굴이 계속 보이면 5초 뒤 사라진다
 ///   운행 · 경고 화면 맨 아래에 고정 (Scaffold.bottomNavigationBar) — 내용이 길어도 스크롤 없이 보이게, 자리는 비워 둔다
 class ServerCancelText extends StatelessWidget {
   final ValueListenable<bool> cancelled;
@@ -303,53 +358,50 @@ class _WarningScreenState extends State<WarningScreen> {
 
   // 맨 위 그림 — 운행 중이면 카메라 화면(내 얼굴) + 오른쪽 아래 단계 아이콘 배지, 카메라가 없으면 큰 아이콘
   Widget _topVisual(Color bg, Color fg) {
-    final bigIcon = Icon(_icon, size: 88, color: fg);
+    final bigIcon = Center(child: FittedBox(child: Icon(_icon, size: 88, color: fg)));
     final cam = widget.camera;
     if (cam == null) return bigIcon;
     return ValueListenableBuilder<CameraController?>(
       valueListenable: cam,
       builder: (_, c, _) {
         if (c == null || !c.value.isInitialized) return bigIcon;
-        // 카메라 높이는 폰 화면 높이에 맞춘다 (아래 글 · 버튼까지 한 화면에 들어가게)
-        final camH = (MediaQuery.of(context).size.height * 0.28).clamp(170.0, 260.0);
-        return Center(
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white, width: 3),
-                ),
-                // 가로로 넓고 세로는 짧게 — 세로로 긴 카메라 화면의 가운데(얼굴)만 잘라서 (버튼까지 한 화면에 들어가게)
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(17),
-                  child: SizedBox(
-                    width: 330,
-                    height: camH,
+        // 카메라 칸 크기는 남는 자리에 맞춘다 (OnePageLayout) — 세로로 긴 카메라 화면의 가운데(얼굴)만 잘라서
+        return LayoutBuilder(
+          builder: (_, box) {
+            final w = box.maxWidth;
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white, width: 3),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(17),
                     child: FittedBox(
                       fit: BoxFit.cover,
                       clipBehavior: Clip.hardEdge,
                       child: SizedBox(
-                        width: 330,
-                        height: 330 * c.value.aspectRatio, // 세로 화면이라 높이 = 너비 × 가로세로비
+                        width: w,
+                        height: w * c.value.aspectRatio, // 세로 화면이라 높이 = 너비 × 가로세로비
                         child: CameraPreview(c),
                       ),
                     ),
                   ),
                 ),
-              ),
-              Positioned(
-                right: -10,
-                bottom: -10,
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                  child: Icon(_icon, size: 24, color: bg),
+                Positioned(
+                  right: 8,
+                  bottom: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                    child: Icon(_icon, size: 24, color: bg),
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            );
+          },
         );
       },
     );
@@ -439,12 +491,11 @@ class _WarningScreenState extends State<WarningScreen> {
           title: Text('$_stage단계 경고'),
         ),
         body: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
-            children: [
-              if (widget.faceLost != null) CameraBanner(faceLost: widget.faceLost!),
-              _topVisual(bg, fg),
-              const SizedBox(height: 16),
+          child: OnePageLayout(
+            banner: widget.faceLost == null ? null : CameraBanner(faceLost: widget.faceLost!),
+            camera: _topVisual(bg, fg),
+            below: [
+              const SizedBox(height: 12),
               // 큰 글씨 한 줄
               Text(
                 _headline,
