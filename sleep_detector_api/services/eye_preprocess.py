@@ -12,14 +12,14 @@
 # [만들 것 (이름 약속 — 다른 파일이 이 이름으로 부름)]
 #   - crop_eye(image, eye_points) → 눈 부분 사진 (서버만)
 #   - prep_eye(eye_img, size=64)  → float32 (size, size) 배열 (서버 · 노트북 공통)
-#   - vscale(img, k)              → 세로만 k배로 누른 눈 사진 (노트북 학습만 — 서버는 안 부름, 11/04 강사님 중간 점검 2)
+#   - vscale(img, k)              → 세로만 k배로 누른 눈 사진 (노트북 학습만 — 서버는 안 부름, 11/04 팀장 규칙)
 #
 # [이 파일의 규칙]
 #   1. cv2 · numpy 만 쓴다 — FastAPI · MediaPipe · config.py 를 불러오지 않는다 (Colab 에 이 파일만 올려도 돌게)
 #   2. 크기는 인자로 받는다 — 서버는 config.CNN_INPUT_SIZE, 노트북은 64 (두 값은 항상 같아야 함)
 #   3. 정규화는 이 파일에서만 한다 — 노트북에서 따로 /255 하지 않는다
 #   4. 증강(밝기 · 회전 등)은 넣지 않는다 — 학습할 때만 하는 것이라 노트북에 둔다
-#      예외: vscale (강사님 지시로 이 파일에 둠). 서버 추론(face_service)은 부르지 않는다
+#      예외: vscale (팀장 결정으로 이 파일에 둠). 서버 추론(face_service)은 부르지 않는다
 #   - 파일을 고치면 Colab 에 다시 올린다 (왼쪽 파일 탭 → 업로드 → from eye_preprocess import prep_eye)
 #
 # 자세한 내용: 노트북 eye_cnn.ipynb 1-9 · 1-10b · 1-13 (MRL 자르기 범위 측정)
@@ -128,7 +128,7 @@ def prep_eye(eye_img, size=64):
 def vscale(img, k):
     """눈 사진 세로만 k배로 누르고 원래 크기로 채운다 (가로는 그대로) — 크게 뜬 눈이 조금 가늘게 뜬 눈처럼 보이게.
 
-    학습(MRL train)에서만 쓴다. 서버 추론은 부르지 않는다 (11/04 강사님 중간 점검 2, 노트북 eye_cnn.ipynb 12번)
+    학습(MRL train)에서만 쓴다. 서버 추론은 부르지 않는다 (11/04 팀장 규칙, 노트북 eye_cnn.ipynb 12번)
     img : 눈 사진 numpy 배열 — 흑백(H×W) · BGR(H×W×3) 모두, uint8. prep_eye 보다 먼저 넣는다
     k   : 0 < k ≤ 1. 1 이면 그대로 돌려줌
     반환: img 와 같은 모양 · 같은 dtype

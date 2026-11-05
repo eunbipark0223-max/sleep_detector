@@ -36,7 +36,7 @@
 #   ... wrong --csv result_val_eye_cnn_548.csv   틀린 사진의 눈만 모은 그림 → D:\aihub548\wrong_*.png (저장소 X)
 #   ... curve [--csvs result_val.csv,result_val_eye_cnn_548.csv]   기준값 0.05~0.95 곡선 (오경보 ↔ 반쯤 · 감은 눈 취소) 모델끼리 겹침
 #       + 오경보 0.5 · 1 · 3% 고정점 + 지금 기준값 보고 형식 (전체 / 판정됨 / 판정 불가 / 해당 / 비율 / 95% 범위) — 중간 점검 피드백 11/04
-#   ── 12번 실험 (11/04 강사님 중간 점검 2 — vscale 설정 5개) ──
+#   ── 12번 실험 (11/04 팀장 규칙 — vscale 설정 5개) ──
 #   ... eval --set trainval --models eye_cnn12_k100_100_s0.pt eye_cnn12_k085_100_s0.pt ...   548 학습용 val 115명 (고르기)
 #       → result_trainval_eye_cnn12_<설정>_<시드>.csv (사진은 한 번 읽고 모델마다)
 #   ... pick [--csvs a.csv,b.csv] [--fa 0.03] [--margin 0.02]   팀 확정 규칙 (노트북 12번 맨 앞) 그대로 — 후보 · 시드 재확인 대상 · 판정
