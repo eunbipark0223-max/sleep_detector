@@ -38,6 +38,9 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
   - 색만으로 구분하지 않음: 단계는 아이콘 + 글자, 상태는 글자
   - 페이지가 바뀌면 제목(h1)으로 포커스 이동, 목록 · 상세는 진짜 링크(키보드 Enter · 새 탭 · 뒤로 가기)
   - 10초마다 새로 불러와도 바뀐 게 없으면 다시 그리지 않고, 그릴 때도 포커스 유지. 알림은 aria-live
+  - 서버가 끊기면 빨간 배너 + 몇 초 전 데이터인지 + 탭 제목 표시 (옛 목록을 최신처럼 보이지 않게). 일부만 실패하면 주황 배너
+  - 오류 알림은 사라지지 않고 닫을 때까지 남음 (조치완료 실패를 놓치지 않게, Esc 로도 닫힘)
+  - 주소를 못 찾으면 좌표와 지도 링크를 보여 줌 (긴급 때 기사 위치를 잃지 않게)
   - 주소 # (dashboard · hazards · drivers · settings · event/번호 · driver/번호) 로 화면을 기억해 뒤로 가기가 됨
 
 [주의]
@@ -54,11 +57,13 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
   <title>졸음 가드 관리자</title>
   <link rel="icon" type="image/png" href="img/favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&display=swap">
   <style>
     :root {
       --brand: #1E40AF; --brand-dark: #1E3A8A; --brand-light: #DBEAFE;
       --bg: #F8FAFC; --surface: #FFFFFF; --text-main: #1E293B; --text-sub: #55617A; --border: #E2E8F0;
+      --control-border: #64748B;   /* 버튼 · 입력 칸 테두리 (바탕과 3:1 이상, --border 는 장식용 선) */
       /* 단계 색 (확정본 값). 흰 글자를 올릴 때는 -solid 를, 글자색으로는 -text 를 쓴다 (모두 4.5:1 이상) */
       --stage-0: #1D9E75; --stage-0-solid: #0F7B5A;
       --stage-1: #E8AE1E; --stage-2: #EF7D27;
@@ -69,7 +74,8 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     svg { display: block; flex: none; }
     button { font-family: inherit; font-size: inherit; color: inherit; }
     :focus-visible { outline: 3px solid #2563EB; outline-offset: 2px; }
-    body { display: flex; height: 100vh; background: var(--bg); color: var(--text-main); overflow: hidden; font-size: 16px; line-height: 1.5; }
+    body { word-break: keep-all; overflow-wrap: anywhere; }   /* 한글 낱말 중간에서 줄이 바뀌지 않게 */
+    body { display: flex; height: 100vh; height: 100dvh; background: var(--bg); color: var(--text-main); overflow: hidden; font-size: 16px; line-height: 1.5; }
     .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .skip { position: absolute; left: 12px; top: -60px; background: #fff; color: var(--brand); padding: 10px 16px; border-radius: 8px; font-weight: 800; z-index: 300; }
     .skip:focus { top: 12px; }
@@ -85,19 +91,22 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     .sidebar-user { padding: 12px 22px; border-top: 1px solid var(--border); font-size: 14px; line-height: 1.4; min-width: 0; }
     .sidebar-user[hidden] { display: none; }
     .sidebar-user b { display: block; font-weight: 700; }
-    .sidebar-user small { color: var(--text-sub); font-size: 13px; word-break: break-all; }
+    .sidebar-user small { color: var(--text-sub); font-size: 14px; word-break: break-all; }
     .sidebar-footer { width: 100%; text-align: left; background: none; border: none; border-top: 1px solid var(--border); padding: 12px 22px; min-height: 48px; cursor: pointer; color: var(--text-sub); font-weight: 500; font-size: 15px; display: flex; align-items: center; gap: 12px; }
     .sidebar-footer:hover { color: var(--text-main); background: var(--bg); }
 
     /* ── 본문 ── */
     .main-content { flex: 1; overflow-y: auto; padding: 28px 40px 48px; min-width: 0; }
     .main-content:focus { outline: none; }
-    .topbar { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 8px; font-size: 14px; color: var(--text-sub); }
-    .topbar button { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; min-height: 34px; padding: 0 14px; font-weight: 700; color: var(--text-sub); cursor: pointer; }
+    .topbar { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 8px; font-size: 14px; color: var(--text-sub); }
+    .topbar button { white-space: nowrap; border: 1px solid var(--control-border); background: var(--surface); border-radius: 8px; min-height: 34px; padding: 0 14px; font-weight: 700; color: var(--text-sub); cursor: pointer; }
     .topbar button:hover { border-color: var(--brand); color: var(--brand); }
     /* 긴급 알림 배너: 새 3단계 · 음성 응답 없음이 생기면 위에 붙어서 보인다 */
     .urgent-banner { position: sticky; top: 0; z-index: 60; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--stage-3-solid); color: #fff; padding: 12px 16px; border-radius: 12px; margin-bottom: 12px; font-size: 15px; font-weight: 700; box-shadow: 0 4px 14px rgba(198,40,40,.35); }
     .urgent-banner[hidden] { display: none; }
+    .banners { position: sticky; top: 0; z-index: 60; }            /* 긴급 · 연결 배너가 겹치지 않게 함께 붙음 */
+    .banners .urgent-banner { position: static; }
+    .urgent-banner.warn { background: #8A4500; }
     .urgent-banner .ub-text { flex: 1 1 240px; line-height: 1.5; }
     .urgent-banner .ub-text small { display: block; font-weight: 500; opacity: .92; }
     .urgent-banner button { min-height: 40px; padding: 0 16px; border-radius: 20px; border: 2px solid #fff; background: transparent; color: #fff; font-weight: 700; cursor: pointer; }
@@ -152,8 +161,8 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     .blabels { display: flex; justify-content: space-around; gap: 14px; padding: 8px 8px 0; font-size: 14px; font-weight: 700; color: var(--text-sub); text-align: center; }
     .blabels span { flex: 1; max-width: 90px; }
     .linechart { width: 100%; height: auto; }
-    .linechart text { font-size: 12px; fill: var(--text-sub); font-family: inherit; }
-    .linechart .val { font-size: 12px; font-weight: 800; fill: var(--text-main); }
+    .linechart text { font-size: 14px; fill: var(--text-sub); font-family: inherit; }
+    .linechart .val { font-size: 14px; font-weight: 800; fill: var(--text-main); }
 
     /* ── 표 ── */
     .table-section { background: var(--surface); border-radius: 10px; border: 1px solid var(--border); overflow: hidden; }
@@ -167,12 +176,13 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     .tab-count.alert { background: var(--stage-3-solid); color: #fff; }
     .table-toolbar { padding: 12px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
     .result-count { font-size: 14px; color: var(--text-sub); }
-    .search-box { padding: 0 14px; min-height: 36px; border: 1px solid #94A3B8; border-radius: 8px; font-size: 15px; width: 280px; max-width: 100%; }
+    .search-box { padding: 0 14px; min-height: 36px; border: 1px solid var(--control-border); border-radius: 8px; font-size: 15px; width: 280px; max-width: 100%; }
     .table-wrap { overflow-x: auto; }
     table { width: 100%; min-width: 900px; border-collapse: collapse; text-align: left; }   /* 좁은 화면은 표만 가로로 스크롤 */
     td.loc { min-width: 200px; }
     td.kind { white-space: nowrap; }
     th { padding: 10px 14px; font-size: 14px; font-weight: 700; color: var(--text-sub); background: var(--bg); border-bottom: 1px solid var(--border); white-space: nowrap; }
+    td, .stat-value, #updated { font-variant-numeric: tabular-nums; }
     td { padding: 11px 14px; font-size: 15px; font-weight: 500; border-bottom: 1px solid var(--border); vertical-align: middle; }
     tbody tr:hover { background: #F1F5F9; }
     tr.row-link { cursor: pointer; }
@@ -262,7 +272,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     .kv a:hover { text-decoration: underline; }
     .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
 
-    .btn { min-height: 38px; padding: 0 16px; border-radius: 8px; border: 1px solid #CBD5E1; background: #fff; font-weight: 700; cursor: pointer; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; color: var(--text-main); }
+    .btn { min-height: 38px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--control-border); background: #fff; font-weight: 700; cursor: pointer; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; color: var(--text-main); }
     .btn:hover { background: #F1F5F9; }
     .btn.brand { background: var(--brand); border-color: var(--brand); color: #fff; }
     .btn.brand:hover { background: var(--brand-dark); }
@@ -282,7 +292,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; max-width: 960px; }
     .field { display: grid; gap: 6px; margin-bottom: 14px; }
     .field label { font-size: 14px; font-weight: 700; }
-    .field input { min-height: 40px; padding: 0 12px; border: 1px solid #94A3B8; border-radius: 8px; font-size: 15px; background: #fff; width: 100%; }
+    .field input { min-height: 40px; padding: 0 12px; border: 1px solid var(--control-border); border-radius: 8px; font-size: 15px; background: #fff; width: 100%; }
     .field input:disabled { background: var(--bg); color: var(--text-sub); border-color: var(--border); }
     .field .hint { font-size: 14px; color: var(--text-sub); }
     .form-msg { min-height: 22px; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
@@ -292,6 +302,14 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     /* ── 알림 ── */
     #toast { position: fixed; top: 20px; right: 24px; transform: translateY(-12px); background: rgba(15,23,42,.96); color: #fff; padding: 14px 22px; border-radius: 12px; font-size: 15px; font-weight: 700; max-width: min(420px, 90vw); text-align: left; line-height: 1.5; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; z-index: 200; }
     #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.error { background: var(--stage-3-solid); pointer-events: auto; display: flex; align-items: center; gap: 12px; }
+    #toast.error button { flex: none; min-height: 36px; padding: 0 14px; border-radius: 8px; border: 2px solid #fff; background: transparent; color: #fff; font-weight: 700; cursor: pointer; }
+    /* 확인 창: 브라우저 <dialog> (포커스 가두기 · Esc · 뒤 화면 막기를 브라우저가 해 줌) */
+    #confirmDlg { margin: auto; border: 0; border-radius: 14px; padding: 0; width: min(440px, 92vw); color: var(--text-main); box-shadow: 0 24px 48px rgba(0,0,0,.25); }
+    #confirmDlg::backdrop { background: rgba(15, 23, 42, .55); }
+    #confirmDlg h2 { padding: 18px 22px 0; font-size: 19px; font-weight: 800; }
+    #confirmDlg p { padding: 10px 22px 20px; font-size: 16px; line-height: 1.6; }
+    #confirmDlg form { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--border); background: var(--bg); }
     @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
     @media (max-width: 900px) { .settings-grid { grid-template-columns: 1fr; } }
@@ -314,21 +332,28 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
   <aside class="sidebar">
     <div class="sidebar-header"><img class="brand-logo" src="img/logo.png" alt="" width="34" height="34"><span class="t">졸음 가드 관리자</span></div>
     <nav class="menu" aria-label="주 메뉴">
-      <a class="menu-item" href="#dashboard" data-view="dashboard" aria-label="대시보드"><span data-icon="pie" data-size="22" aria-hidden="true"></span><span class="t">대시보드</span></a>
-      <a class="menu-item" href="#hazards" data-view="hazards" aria-label="졸음 경고"><span data-icon="warning" data-size="22" aria-hidden="true"></span><span class="t">졸음 경고</span><b class="menu-badge" id="menuBadge"></b></a>
-      <a class="menu-item" href="#drivers" data-view="drivers" aria-label="기사 관리"><span data-icon="people" data-size="22" aria-hidden="true"></span><span class="t">기사 관리</span></a>
-      <a class="menu-item" href="#settings" data-view="settings" aria-label="설정"><span data-icon="gear" data-size="22" aria-hidden="true"></span><span class="t">설정</span></a>
+      <a class="menu-item" href="#dashboard" data-view="dashboard" aria-label="대시보드" title="대시보드"><span data-icon="pie" data-size="22" aria-hidden="true"></span><span class="t">대시보드</span></a>
+      <a class="menu-item" href="#hazards" data-view="hazards" aria-label="졸음 경고" title="졸음 경고"><span data-icon="warning" data-size="22" aria-hidden="true"></span><span class="t">졸음 경고</span><b class="menu-badge" id="menuBadge"></b></a>
+      <a class="menu-item" href="#drivers" data-view="drivers" aria-label="기사 관리" title="기사 관리"><span data-icon="people" data-size="22" aria-hidden="true"></span><span class="t">기사 관리</span></a>
+      <a class="menu-item" href="#settings" data-view="settings" aria-label="설정" title="설정"><span data-icon="gear" data-size="22" aria-hidden="true"></span><span class="t">설정</span></a>
     </nav>
     <div class="sidebar-user" id="sidebarUser" hidden></div>
-    <button class="sidebar-footer" type="button" id="logoutBtn" aria-label="로그아웃"><span data-icon="logout" data-size="22" aria-hidden="true"></span><span class="t">로그아웃</span></button>
+    <button class="sidebar-footer" type="button" id="logoutBtn" aria-label="로그아웃" title="로그아웃"><span data-icon="logout" data-size="22" aria-hidden="true"></span><span class="t">로그아웃</span></button>
   </aside>
 
   <main class="main-content" id="main" tabindex="-1">
+    <div class="banners">
+    <div class="urgent-banner" id="connBanner" role="alert" hidden>
+      <span data-icon="warning" data-size="26" aria-hidden="true"></span>
+      <span class="ub-text"><span id="connText"></span><small id="connAgo" aria-hidden="true"></small></span>
+      <button type="button" id="connRetry">다시 시도</button>
+    </div>
     <div class="urgent-banner" id="urgentBanner" role="alert" hidden>
       <span data-icon="warning" data-size="26" aria-hidden="true"></span>
       <span class="ub-text" id="ubText"></span>
       <button type="button" class="primary" id="ubView">바로 보기</button>
       <button type="button" id="ubClose">닫기</button>
+    </div>
     </div>
     <div class="topbar"><span id="updated">불러오는 중…</span><button type="button" id="soundBtn" aria-pressed="true">알림음 켜짐</button><button type="button" id="refreshBtn">새로고침</button></div>
 
@@ -357,7 +382,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
           <label class="visually-hidden" for="hazardSearch">경고 검색 (기사 이름, 주소, 종류, 번호)</label>
           <input class="search-box" id="hazardSearch" type="search" placeholder="기사 · 주소 · 번호 검색" autocomplete="off">
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap" role="region" aria-label="졸음 경고 표, 가로로 스크롤할 수 있어요" tabindex="0">
           <table>
             <caption class="visually-hidden">졸음 경고</caption>
             <thead><tr><th scope="col">ID</th><th scope="col">기사</th><th scope="col">단계</th><th scope="col">종류</th><th scope="col">위치</th><th scope="col">시각</th><th scope="col">상태</th><th scope="col">관리</th></tr></thead>
@@ -377,7 +402,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
           <label class="visually-hidden" for="driverSearch">기사 이름, 차량번호, 전화번호 또는 이메일 검색</label>
           <input class="search-box" id="driverSearch" type="search" placeholder="이름 · 차량번호 · 전화번호 검색" autocomplete="off">
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap" role="region" aria-label="기사 표, 가로로 스크롤할 수 있어요" tabindex="0">
           <table>
             <caption class="visually-hidden">기사</caption>
             <thead><tr><th scope="col">이름</th><th scope="col">차량번호</th><th scope="col">전화번호</th><th scope="col">상태</th><th scope="col">오늘 경고</th><th scope="col">누적 경고</th><th scope="col">마지막 경고</th><th scope="col">관리</th></tr></thead>
@@ -401,9 +426,18 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
   </main>
 
 
+  <dialog id="confirmDlg" aria-labelledby="confirmTitle" aria-describedby="confirmBody">
+    <h2 id="confirmTitle"></h2>
+    <p id="confirmBody"></p>
+    <form method="dialog">
+      <button class="btn" value="no" autofocus>취소</button>
+      <button class="btn brand" value="yes" id="confirmYes"></button>
+    </form>
+  </dialog>
+
   <div id="toast" aria-hidden="true"></div>
 
-  <script src="js/api.js?v=20261105"></script>
+  <script src="js/api.js?v=20261105b"></script>
   <script>
     const REASON_LABEL = { microsleep: '미세수면', perclos: '피로 누적', rest_overdue: '휴게 미준수', no_response: '음성 응답 없음' };
     const QUIZ_LABEL = { repeat: '따라 말하기', add: '덧셈', reverse: '거꾸로 말하기' };
@@ -501,17 +535,21 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       const d = new Date(iso);
       if (isNaN(d)) return iso || '';
       const p = (n) => String(n).padStart(2, '0');
-      return p(d.getMonth() + 1) + '/' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+      const year = d.getFullYear() === new Date().getFullYear() ? '' : d.getFullYear() + '/';
+      return year + p(d.getMonth() + 1) + '/' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
     }
     const stageNum = (s) => { const n = Number(s); return n >= 0 && n <= 3 ? n : 0; };
     const isDone = (e) => e.status === '조치완료' || e.status === '휴식완료';
     const isOpenUrgent = (e) => !!e.urgent && e.status !== '조치완료';
     const isToday = (iso) => new Date(iso).toDateString() === new Date().toDateString();
-    const where = (e) => e.address || '주소를 확인할 수 없어요';   // 도로명 주소만. 좌표(숫자)는 화면에 보이지 않음
+    // 도로명 주소가 먼저. 주소를 못 찾으면 좌표라도 보여 줌 — 긴급 때 기사 위치를 잃으면 안 됨 (카카오 주소 변환 실패 · 키 없음)
+    const hasCoord = (e) => e.latitude != null && e.longitude != null;
+    const where = (e) => e.address || (hasCoord(e) ? '주소 확인 실패 · ' + Number(e.latitude).toFixed(4) + ', ' + Number(e.longitude).toFixed(4) : '위치 정보 없음');
     const byPriority = (a, b) => (isOpenUrgent(b) - isOpenUrgent(a)) || (new Date(b.created_at) - new Date(a.created_at));
 
     // ── 상태 ─────────────────────────────────────────────────
     let events = [], users = [], stageStats = [], hourStats = [];
+    let connLost = false, lastOkAt = null, refreshing = false;
     let view = 'dashboard', routeId = null, filter = 'all', driverFilter = 'all', driverQuery = '', hazardQuery = '';
     let busy = false, lastUrgent = null, loaded = false;
     const sig = {};
@@ -520,10 +558,26 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     function sayLive(msg) { const live = $('live'); if (live.textContent !== msg) live.textContent = msg; }
     let toastTimer;
     function toast(msg) {
-      const t = $('toast'); t.textContent = msg; t.classList.add('show');
+      const t = $('toast'); t.textContent = msg; t.classList.remove('error'); t.classList.add('show');
+      t.setAttribute('aria-hidden', 'true'); t.removeAttribute('role');
       sayLive(msg);
       clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 4000);
     }
+    // 오류 알림: 사라지지 않고 닫을 때까지 남음 (조치완료 실패 = 기사의 3단계가 안 풀림 → 놓치면 안 됨)
+    function toastError(msg) {
+      const t = $('toast');
+      clearTimeout(toastTimer);
+      t.replaceChildren(h('span', null, msg), h('button', { type: 'button', onclick: closeToastError }, '닫기'));
+      t.classList.add('show', 'error');
+      t.removeAttribute('aria-hidden'); t.setAttribute('role', 'alert');
+    }
+    function closeToastError() {
+      const t = $('toast');
+      if (!t.classList.contains('error')) return;
+      t.classList.remove('show', 'error'); t.replaceChildren();
+      t.setAttribute('aria-hidden', 'true'); t.removeAttribute('role');
+    }
+    document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !$('confirmDlg').open) closeToastError(); });
 
     // ── 화면 전환 (주소 # 로 기억): #dashboard · #hazards · #drivers · #event/번호 · #driver/번호 ──
     function parseHash() {
@@ -751,7 +805,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     const seenUrgent = new Set();
     let blinkTimer = null, blinkOn = false, soundOn = true, audioCtx = null;
     try { soundOn = localStorage.getItem('adminSound') !== 'off'; } catch (e) { /* 저장소를 못 쓰면 켜 둔다 */ }
-    function updateTitle() { document.title = blinkOn ? '🚨 새 긴급 경고! · 졸음 가드' : (lastUrgent ? '(' + lastUrgent + ') ' : '') + (view === 'event' ? '경고 #' + routeId + ' · ' : view === 'driver' ? '기사 상세 · ' : view === 'settings' ? '설정 · ' : '') + '졸음 가드 관리자'; }
+    function updateTitle() { document.title = blinkOn ? '🚨 새 긴급 경고! · 졸음 가드' : (connLost ? '⚠️ 연결 끊김 · ' : '') + (lastUrgent ? '(' + lastUrgent + ') ' : '') + (view === 'event' ? '경고 #' + routeId + ' · ' : view === 'driver' ? '기사 상세 · ' : view === 'settings' ? '설정 · ' : '') + '졸음 가드 관리자'; }
     function stopBlink() { clearInterval(blinkTimer); blinkTimer = null; blinkOn = false; updateTitle(); }
     function startBlink() { if (blinkTimer) return; blinkOn = true; updateTitle(); blinkTimer = setInterval(() => { blinkOn = !blinkOn; updateTitle(); }, 1000); }
     function dismissAlert() { $('urgentBanner').hidden = true; stopBlink(); }
@@ -913,7 +967,8 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
                 mockNote(r)))),
           h('div', { class: 'detail-side' },
             h('section', { class: 'card flush' }, photo,
-              h('div', { class: 'place' }, h('b', null, icon('pin', 16), '위치'), h('span', null, where(e)))),
+              h('div', { class: 'place' }, h('b', null, icon('pin', 16), '위치'), h('span', null, where(e)),
+                hasCoord(e) ? h('a', { href: 'https://map.kakao.com/link/map/기사 위치,' + Number(e.latitude) + ',' + Number(e.longitude), target: '_blank', rel: 'noopener noreferrer' }, '지도에서 보기') : null)),
             h('section', { class: 'card' },
               h('h3', null, icon('person', 20), who, driver ? h('small', null, h('a', { href: '#driver/' + driver.id }, '기사 상세 ›')) : null),
               contactBox({ name: e.user_name, email: e.user_email, phone: e.user_phone, vehicle: e.user_vehicle_no }))))));
@@ -951,7 +1006,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
                 stat('음성 응답 없음', count((e) => e.reason === 'no_response')), stat('휴게 미준수', count((e) => e.reason === 'rest_overdue')),
                 stat('조치 필요', count(isOpenUrgent), true))),
             h('section', { class: 'card flush' }, h('h3', null, '최근 경고'),
-              h('div', { class: 'table-wrap' }, h('table', null,
+              h('div', { class: 'table-wrap', role: 'region', 'aria-label': '최근 경고 표, 가로로 스크롤할 수 있어요', tabindex: '0' }, h('table', null,
                 h('caption', { class: 'visually-hidden' }, honor(u.name) + '의 최근 경고'),
                 h('thead', null, h('tr', null, ['ID', '단계', '종류', '시각', '상태', '관리'].map((t) => h('th', { scope: 'col' }, t)))),
                 h('tbody', null, rows))),
@@ -961,16 +1016,34 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
               contactBox({ name: u.name, email: u.email, phone: u.phone, vehicle: u.vehicle_no }))))));
     }
 
+    // 확인 창 (브라우저 기본 confirm 은 화면을 멈춰서 10초 갱신 · 긴급 알림까지 막음). 처음 포커스는 안전한 [취소]
+    function askConfirm(title, body, yesLabel) {
+      const dlg = $('confirmDlg');
+      $('confirmTitle').textContent = title;
+      $('confirmBody').textContent = body;
+      $('confirmYes').textContent = yesLabel;
+      dlg.returnValue = '';
+      dlg.showModal();
+      return new Promise((resolve) => {
+        dlg.addEventListener('close', () => {
+          // 10초 갱신으로 누른 버튼이 다시 그려졌으면 포커스가 사라지므로 제목으로
+          if (document.activeElement === document.body) { const t = $('pageTitle'); if (t) t.focus({ preventScroll: true }); }
+          resolve(dlg.returnValue === 'yes');
+        }, { once: true });
+      });
+    }
     async function changeStatus(e, status) {
-      if (busy) return;
-      if (status === '조치완료' && !confirm('#' + e.id + ' 경고를 조치완료로 바꿀까요?' + (e.stage === 3 ? '\n기사 앱의 3단계가 해제됩니다.' : ''))) return;
+      if (busy || $('confirmDlg').open) return;
+      if (status === '조치완료' && !(await askConfirm('#' + e.id + ' 경고 조치완료',
+        e.stage === 3 ? '조치완료로 바꾸면 기사 앱의 3단계가 해제됩니다.' : '이 경고를 조치완료로 바꿀까요?', '조치완료'))) return;
+      closeToastError();
       busy = true;
       try {
         const res = await updateEventStatus(e.id, status);
         await refreshAll(true);
         const t = $('pageTitle'); if (t) t.focus({ preventScroll: true });   // 누른 버튼은 사라졌을 수 있어서 제목으로
         toast(status === '확인' ? '확인한 경고로 표시했어요.' : res.stage_reset ? '조치완료로 바꿨어요. 3단계가 해제되며 기사 앱은 다음 갱신(약 30초 안)에 정상 화면이 돼요.' : '조치완료로 바꿨어요.');
-      } catch (err) { toast(err.message); }
+      } catch (err) { toastError(status + ' 실패: ' + err.message + (status === '조치완료' ? ' — 기사 앱의 단계가 풀리지 않았을 수 있어요.' : '')); }
       finally { busy = false; }
     }
 
@@ -1061,19 +1134,50 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     }
 
     // ── 불러오기 (10초마다) ───────────────────────────────────
+    // 연결 상태 표시: 경고 조회 실패 = 빨강 (새 긴급 경고가 안 보일 수 있음), 나머지 일부 실패 = 주황
+    function showConn(eventsFailed, partial) {
+      const banner = $('connBanner');
+      connLost = eventsFailed;
+      updateTitle();
+      if (!eventsFailed && !partial.length) { banner.hidden = true; return; }
+      banner.classList.toggle('warn', !eventsFailed);
+      const text = eventsFailed ? '서버에 연결할 수 없어요. 새 긴급 경고가 보이지 않을 수 있어요.'
+        : partial.join(' · ') + '을(를) 불러오지 못했어요. 경고 목록은 최신이에요.';
+      if ($('connText').textContent !== text) $('connText').textContent = text;   // 같은 말을 10초마다 다시 읽지 않게
+      const sec = lastOkAt ? Math.round((Date.now() - lastOkAt) / 1000) : null;
+      $('connAgo').textContent = !eventsFailed ? '' : sec === null ? '아직 받은 데이터가 없어요.' : '화면은 ' + sec + '초 전 데이터예요.';
+      banner.hidden = false;
+    }
     async function refreshAll(force) {
-      const [ev, us, st, hr] = await Promise.allSettled([fetchAdminEvents({}), fetchAdminUsers(), fetchStageStats(), fetchHourlyStats()]);
-      if (ev.status === 'fulfilled') events = scrub(ev.value); else { $('updated').textContent = ev.reason.message; return; }
-      if (us.status === 'fulfilled') users = scrub(us.value);
-      if (st.status === 'fulfilled') stageStats = st.value;
-      if (hr.status === 'fulfilled') hourStats = hr.value;
-      $('updated').textContent = '마지막 갱신 ' + new Date().toLocaleTimeString('ko-KR');
-      renderAll(!!force);
-      loaded = true;
+      if (refreshing) return;
+      refreshing = true;
+      try {
+        const [ev, us, st, hr] = await Promise.allSettled([fetchAdminEvents({}), fetchAdminUsers(), fetchStageStats(), fetchHourlyStats()]);
+        const partial = [];
+        if (us.status === 'fulfilled') users = scrub(us.value); else partial.push('기사 목록');
+        if (st.status === 'fulfilled') stageStats = st.value; else partial.push('단계별 통계');
+        if (hr.status === 'fulfilled') hourStats = hr.value; else partial.push('시간대별 통계');
+        if (ev.status !== 'fulfilled') {
+          showConn(true, partial);
+          $('updated').textContent = lastOkAt ? '갱신 실패 · 마지막 성공 ' + new Date(lastOkAt).toLocaleTimeString('ko-KR') : '불러오지 못했어요';
+          return;
+        }
+        events = scrub(ev.value);
+        lastOkAt = Date.now();
+        showConn(false, partial);
+        $('updated').textContent = (partial.length ? '일부 갱신 ' : '마지막 갱신 ') + new Date().toLocaleTimeString('ko-KR');
+        renderAll(!!force);
+        loaded = true;
+      } finally {
+        refreshing = false;
+      }
     }
 
     if (!getToken()) location.href = 'admin_login.html';
     fillIcons();
+    // 건너뛰기: 주소 # 는 화면 전환에 쓰여서 (#main 이면 대시보드로 감) 포커스만 옮긴다
+    document.querySelector('.skip').addEventListener('click', (ev) => { ev.preventDefault(); $('main').focus(); });
+    $('connRetry').addEventListener('click', () => refreshAll(true));
     document.querySelectorAll('.menu-item').forEach((b) => b.addEventListener('click', (ev) => {
       if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button) return;       // 새 탭으로 열기는 브라우저에 맡김
       ev.preventDefault(); go(b.dataset.view);

@@ -13,6 +13,7 @@
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
 const TOKEN_KEY = 'admin_token';
+const API_TIMEOUT_MS = 15000;
 
 function getToken() {
   try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; }
@@ -31,11 +32,22 @@ async function apiFetch(path, options = {}) {
   if (token) headers['Authorization'] = 'Bearer ' + token;
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
 
-  const res = await fetch(path, {
-    method: options.method || 'GET',
-    headers: headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-  });
+  // 서버가 꺼졌거나 응답 없이 멈추면 사람이 읽을 수 있는 말로 (fetch 는 멈춘 요청을 혼자 끝내지 않음 → 관제 화면이 끊김을 모름)
+  const timeout = new AbortController();
+  const timer = setTimeout(() => timeout.abort(), API_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(path, {
+      method: options.method || 'GET',
+      headers: headers,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      signal: timeout.signal,
+    });
+  } catch (e) {
+    throw new Error(e.name === 'AbortError' ? '서버 응답이 없어요' : '서버에 연결할 수 없어요');
+  } finally {
+    clearTimeout(timer);
+  }
   if (res.status === 401 && !path.startsWith('/users/login')) {
     clearToken();
     location.href = 'admin_login.html';

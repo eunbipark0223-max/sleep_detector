@@ -27,13 +27,13 @@ static/admin_login.html — 관리자 로그인 화면
     form { width: min(380px, 90vw); background: #fff; border-radius: 20px; padding: 36px 30px 30px; box-shadow: 0 12px 40px rgba(0, 0, 0, .28); }
     .logo { width: 88px; height: 88px; margin: 0 auto 14px; display: block; }
     h1 { margin: 0 0 4px; font-size: 24px; font-weight: 800; color: var(--navy); text-align: center; }
-    p.sub { margin: 0 0 24px; font-size: 13px; color: #667; text-align: center; }
-    label { display: block; margin: 14px 0 6px; font-size: 13px; font-weight: 700; }
-    input { width: 100%; padding: 13px 14px; border: 1px solid var(--line); border-radius: 12px; font-size: 14px; background: var(--bg); }
+    p.sub { margin: 0 0 24px; font-size: 14px; color: #667; text-align: center; }
+    label { display: block; margin: 14px 0 6px; font-size: 14px; font-weight: 700; }
+    input { width: 100%; padding: 13px 14px; border: 1px solid #64748B; border-radius: 12px; font-size: 16px; background: var(--bg); }
     input:focus { outline: 2px solid var(--navy); border-color: transparent; background: #fff; }
     button { width: 100%; margin-top: 24px; padding: 14px; border: 0; border-radius: 12px; background: var(--navy); color: #fff; font-size: 16px; font-weight: 800; cursor: pointer; font-family: inherit; }
     button:disabled { opacity: .6; cursor: default; }
-    #msg { min-height: 20px; margin-top: 12px; font-size: 13px; color: var(--red); text-align: center; }
+    #msg { min-height: 20px; margin-top: 12px; font-size: 14px; color: var(--red); text-align: center; }
   </style>
 </head>
 <body>
@@ -49,13 +49,14 @@ static/admin_login.html — 관리자 로그인 화면
     <div id="msg" role="alert"></div>
   </form>
 
-  <script src="js/api.js?v=20261105"></script>
+  <script src="js/api.js?v=20261105b"></script>
   <script>
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const button = document.getElementById('submit');
       const msg = document.getElementById('msg');
       button.disabled = true;
+      button.textContent = '로그인 중…';
       msg.textContent = '';
       try {
         await adminLogin(document.getElementById('email').value.trim(), document.getElementById('password').value);
@@ -63,6 +64,7 @@ static/admin_login.html — 관리자 로그인 화면
       } catch (err) {
         msg.textContent = err.message;
         button.disabled = false;
+        button.textContent = '로그인';
       }
     });
   </script>
