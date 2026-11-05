@@ -45,7 +45,12 @@ async function apiFetch(path, options = {}) {
   try { data = await res.json(); } catch (e) { /* 본문이 없는 응답 */ }
   if (!res.ok) {
     const detail = data && data.detail;
-    throw new Error(typeof detail === 'string' ? detail : '요청에 실패했습니다 (' + res.status + ')');
+    if (typeof detail === 'string') throw new Error(detail);
+    if (Array.isArray(detail)) {                                   // 422: 칸마다 틀린 이유 목록 → 한국어 문구만 이어서 보여 줌
+      const lines = detail.map((d) => String((d && d.msg) || '').replace('Value error, ', '')).filter(Boolean);
+      if (lines.length) throw new Error(lines.join(' '));
+    }
+    throw new Error('요청에 실패했습니다 (' + res.status + ')');
   }
   return data;
 }
@@ -69,6 +74,13 @@ function fetchAdminEvents(filters = {}) {
 function fetchAdminUsers() { return apiFetch('/admin/users'); }
 function fetchStageStats() { return apiFetch('/admin/stats/stage'); }
 function fetchHourlyStats() { return apiFetch('/admin/stats/hourly'); }
+
+// ── 내 정보 · 설정 (관리자 설정 화면) ─────────────────────────
+function fetchMe() { return apiFetch('/users/me'); }
+function updateMe(fields) { return apiFetch('/users/me', { method: 'PATCH', body: fields }); }        // {name?, phone?}
+function changeMyPassword(currentPassword, newPassword) {
+  return apiFetch('/users/me/password', { method: 'PUT', body: { current_password: currentPassword, new_password: newPassword } });
+}
 
 // ── 처리 상태 변경: 미확인 / 확인 / 조치완료 / 휴식완료. 조치완료면 서버가 3단계를 푼다 ──
 function updateEventStatus(eventId, status) {
