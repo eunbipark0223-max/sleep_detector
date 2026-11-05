@@ -8,7 +8,8 @@
 #   - FastAPI 앱을 만들고 routers/ 의 라우터를 등록한다 (user · detect · event · admin · chat · quiz)
 #   - 서버 시작 때 DB 테이블 자동 생성 (수업 코드 그대로)
 #   - 서버 시작 때 눈 판정 모델 미리 읽기 · 30일 지난 졸음 사진 정리 (그 뒤 24시간마다)
-#   - GET /health — 서버 상태 + CNN 이 실제로 쓰이는지 (mode · 모델 · 읽힘 · 판정 방식별 건수)
+#   - GET /health — 서버 상태 + CNN 이 실제로 쓰이는지 (mode · 모델 · 읽힘 · 판정 방식별 건수) · RAG 색인 준비 (rag_ready)
+#   - 서버 시작 때 RAG 색인을 백그라운드로 미리 읽기 (첫 경고가 색인 때문에 멈추지 않게, 문서 · 모델이 바뀌었으면 약 70초)
 #   - static/ (관리자 웹) 과 uploads/events/ (졸음 확정 사진) 를 정적 파일로 연결
 #   - 실행: python main.py  →  http://127.0.0.1:8000/docs
 #
@@ -23,6 +24,7 @@
 import asyncio
 import importlib
 import os
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -76,6 +78,23 @@ def _warm_up_eye_models():
         print(f"⚠️ 눈 판정 모델 미리 읽기 실패 (첫 판정 때 다시 읽음): {type(e).__name__}: {e}")
 
 
+def _warm_up_rag():
+    """서버를 켤 때 RAG 색인을 미리 읽는다 (백그라운드 — 서버 시작을 막지 않음).
+
+    처음 쓸 때 만들면 첫 졸음 경고가 멈춘다 (11/05 첫 처리 85초, 색인 추정). 실패해도 서버는 그대로이고 첫 검색 때 다시 시도.
+    """
+    import time
+    t0 = time.perf_counter()
+    try:
+        from services import rag_service
+        if not rag_service.USE_REAL_AI:
+            return
+        rag_service.build_index()
+        print(f"✅ RAG 색인 준비 완료 ({time.perf_counter() - t0:.1f}초)")
+    except Exception as e:
+        print(f"⚠️ RAG 색인 미리 읽기 실패 (첫 검색 때 다시 시도): {type(e).__name__}: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):   # ← app: FastAPI 매개변수 필수!
     try:
@@ -103,6 +122,7 @@ async def lifespan(app: FastAPI):   # ← app: FastAPI 매개변수 필수!
           f"GEMINI_MODEL={config.GEMINI_MODEL}")
 
     _warm_up_eye_models()
+    threading.Thread(target=_warm_up_rag, name="rag-warm-up", daemon=True).start()
 
     # 졸음 확정 사진 30일 자동 삭제 (D, services/photo_cleanup.py) — 시작 때 한 번 + 24시간마다
     from services import photo_cleanup
@@ -153,6 +173,7 @@ def health():
         from routers import detect
         from services import face_service
         out["eye"], out["judged"] = face_service.cnn_status(), detect.method_counts()
+        out["rag_ready"] = detect.rag_service._store is not None
     except Exception as e:
         out["eye_error"] = type(e).__name__
     return out

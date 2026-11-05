@@ -52,6 +52,7 @@ def get_state(user_id: int) -> dict:
             "quiz_fails": 0,             # 운전 중 퀴즈 연속 실패 횟수
             "last_quiz_at": None,        # 마지막 퀴즈 출제 시각 (2분 간격 제한용)
             "last_ping_at": None,        # 마지막 ping 수신 시각
+            "reset_count": 0,            # 관리자 [조치완료] 횟수 (/detect 가 AI 처리 중 해제됐는지 확인)
         }
     return _states[user_id]
 
@@ -149,7 +150,13 @@ def reset(user_id: int) -> int:
     _change_stage(state, 0)
     state["quiz_fails"] = 0
     state["rest_started_at"] = None
+    state["reset_count"] = state.get("reset_count", 0) + 1
     return 0
+
+
+def reset_count(user_id: int) -> int:
+    """관리자 [조치완료] 횟수 — /detect 가 AI 처리 전 · 후로 비교 (처리 중 해제되면 단계를 다시 올리지 않게, 11/05)"""
+    return get_state(user_id).get("reset_count", 0)
 
 
 reset_by_admin = reset

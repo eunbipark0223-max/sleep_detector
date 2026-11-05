@@ -296,6 +296,25 @@ def bonus_drive_end():
     return f"배너 {active} · {ping(h)['drive_min']}분"
 
 
+def bonus_reset_race():
+    """AI 처리 중 관리자 [조치완료] → 끝나도 단계가 다시 안 오름 · 퀴즈 없음 · 경고는 조치완료로 기록 (11/05)"""
+    h, uid = new_driver()
+    real = agent_service.generate_response
+
+    def slow(*a, **k):                  # AI 가 도는 사이에 관리자가 누른 것과 같음
+        sleep_state.reset(uid)
+        return real(*a, **k)
+
+    agent_service.generate_response = slow
+    try:
+        r = doze(h)
+    finally:
+        agent_service.generate_response = real
+    with TestSession() as s:
+        status = s.query(SleepEvent).filter(SleepEvent.user_id == uid).one().status
+    return f"단계 {r['stage']} · ping {ping(h)['stage']} · 퀴즈 {r['voice_quiz'] is not None} · {status}"
+
+
 def bonus_error():
     """서버 판정 오류면 사진이 있어도 앱 판단대로 확정 (얼굴 없음 취소와 구분, 11/04 A)"""
     h, _ = new_driver()
@@ -331,7 +350,8 @@ BONUS = [("(보너스) 3단계는 휴식으로 안 풀림 → 3단계", 3, bonus
          ("(보너스) 2단계 휴식 중 졸음 의심 → 무시", "무시 · 2단계", bonus_rest_detect),
          ("(보너스) 재시작 복원: 3단계 · 2단계 · 휴식 뒤", "3 · 2 · 0", bonus_restore),
          ("(보너스) 운행 종료 뒤 연속 운전 시간 유지", "배너 False · 100분", bonus_drive_end),
-         ("(보너스) 서버 판정 오류 → 앱 판단대로 확정", "확정", bonus_error)]
+         ("(보너스) 서버 판정 오류 → 앱 판단대로 확정", "확정", bonus_error),
+         ("(보너스) AI 처리 중 조치완료 → 단계 안 오름", "단계 0 · ping 0 · 퀴즈 False · 조치완료", bonus_reset_race)]
 
 
 def run(items):
