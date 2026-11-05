@@ -336,7 +336,7 @@ def evaluate(which="val_g1", model="", tta=False, scale=1.0, models=()):
         name = out_name.replace(".csv", f"_{use_model(fs, mdl, tta)}.csv") if mdl or tta else out_name
         if scale != 1.0:
             name = name.replace(".csv", f"_s{scale:g}.csv")
-        runs.append((name, fs._cnn))
+        runs.append((name, fs._cnn, fs.CNN_INPUT_SIZE))  # 입력 크기도 모델마다 (13번 res96 = 96)
     label = read_labels(find(label_zip), group)
     drop = val_people(find("VL.zip")) if drop_val else set()
     only = None
@@ -374,8 +374,8 @@ def evaluate(which="val_g1", model="", tta=False, scale=1.0, models=()):
     for k, f in enumerate(pick, 1):
         zp, info = items[f]
         img = cv2.imdecode(np.frombuffer(zips[zp].read(info), np.uint8), cv2.IMREAD_COLOR)
-        for (name, net), rs in zip(runs, rows):
-            fs._cnn, fs._cnn_failed = net, False
+        for (name, net, size), rs in zip(runs, rows):
+            fs._cnn, fs._cnn_failed, fs.CNN_INPUT_SIZE = net, False, size
             n, eye_w = _judge(fs, img, tmp, scale)
             rs.append(dict(file=f, person=person_of(f), dist=f.split("_")[4], view=f.split("_")[6], label=label[f],
                            **{"age": "", "gender": "", "glasses": "", **meta.get((zp, f.split("_")[3]), {})},
