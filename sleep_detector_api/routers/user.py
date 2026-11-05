@@ -5,9 +5,11 @@
 # 수업 원본: road_hazard_api/routers/user.py (🟢 그대로 복사 + 이름만 맞춤)
 #
 # [이 파일이 하는 일]
-#   - POST /users/signup · /users/login · /users/google  ·  GET /users/me
+#   - POST /users/signup {email, password, name, phone?, vehicle_no?, privacy_agreed?} · /users/login · /users/google  ·  GET /users/me
+#     (회원가입 화면이 전화번호 · 차량번호를 같이 보냄. privacy_agreed=false 면 422. 동의 여부는 DB 칸을 늘리지 않아 저장하지 않음)
 #   - 프로필 사진 POST · GET · DELETE /users/me/photo (수업 그대로, profile_screen)
-#   - PATCH /users/me  {phone, vehicle_no} — 기사 연락용 전화번호 · 차량번호 (profile_screen 에서 입력, 관리자 웹 연락 창에 보임)
+#   - PATCH /users/me  {name?, phone?, vehicle_no?} — 기사 연락용 전화번호 · 차량번호 (profile_screen 에서 입력, 관리자 웹 연락처에 보임) · 이름은 관리자 설정 화면
+#   - PUT /users/me/password {current_password, new_password} — 비밀번호 변경 (관리자 설정 화면, 가입과 같은 규칙. 구글 계정은 400)
 #
 # [수업에서 바꾼 것]
 #   - 요청 · 응답 이름: schema 의 SignupRequest · LoginRequest · GoogleLoginRequest · UserResponse · LoginResponse (D)
@@ -34,7 +36,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import config
-from schema.request  import SignupRequest, LoginRequest, GoogleLoginRequest, ProfileUpdate
+from schema.request  import SignupRequest, LoginRequest, GoogleLoginRequest, ProfileUpdate, PasswordChange
 from schema.response import UserResponse, LoginResponse
 from database.db_connection import get_session
 from models.models import User
@@ -82,6 +84,8 @@ def signup_user_handler(
         name           =body.name,
         role           ="user",
         provider       ="email",
+        phone          =body.phone or None,       # 앱 회원가입 화면에서 받은 값 (이미 형식 정리됨). 없으면 NULL
+        vehicle_no     =body.vehicle_no or None,
     )
     session.add(user)
     session.commit()
@@ -178,13 +182,30 @@ def update_me_handler(
     session: Session = Depends(get_session),
     user   : User    = Depends(get_current_user),
 ):
-    """내 전화번호 · 차량번호 저장. 안 보낸 칸은 그대로, ''(빈 글자)면 지움. 형식이 틀리면 422(문구는 화면에 그대로 보여 줘도 됨)."""
+    """내 이름 · 전화번호 · 차량번호 저장. 안 보낸 칸은 그대로, 전화 · 차량은 ''(빈 글자)면 지움. 형식이 틀리면 422(문구는 화면에 그대로 보여 줘도 됨)."""
+    if "name" in body.model_fields_set and body.name is not None:
+        user.name = body.name
     if "phone" in body.model_fields_set and body.phone is not None:
         user.phone = body.phone or None
     if "vehicle_no" in body.model_fields_set and body.vehicle_no is not None:
         user.vehicle_no = body.vehicle_no or None
     session.commit()
     return _me_dict(user)
+
+@router.put("/users/me/password", status_code=status.HTTP_200_OK)
+def change_my_password_handler(
+    body   : PasswordChange,
+    session: Session = Depends(get_session),
+    user   : User    = Depends(get_current_user),
+):
+    """내 비밀번호 변경 (관리자 설정 화면). 지금 비밀번호가 맞아야 바뀜. 구글로 가입한 계정은 비밀번호가 없어서 거절."""
+    if not user.hashed_password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="구글 계정은 비밀번호를 바꿀 수 없어요")
+    if not verify_password(body.current_password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="지금 비밀번호가 맞지 않아요")
+    user.hashed_password = hash_password(body.new_password)
+    session.commit()
+    return {"success": True}
 
 @router.post("/users/me/photo", status_code=status.HTTP_200_OK)
 async def upload_my_photo_handler(
