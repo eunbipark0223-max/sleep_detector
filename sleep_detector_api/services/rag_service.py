@@ -366,7 +366,9 @@ def search_regulations(summary="", vehicle=None, k=3):
 # 채팅 · Agent 도구: 질문으로 검색
 # ───────────────────────────────────────────────
 def _route(query):
-    law = any(w in query for w in LAW_WORDS)
+    # 11/05: '방법' 의 '법' 이 LAW_WORDS 의 "법" 에 걸려 '예방 방법' · '쉼터 이용 방법' 이 both 로 가던 것 고침
+    #        ('방법' 은 GUIDE_WORDS 에서만 셈, 다른 법령 낱말이 있으면 그대로 both)
+    law = any(w in query.replace("방법", "") for w in LAW_WORDS)
     guide = any(w in query for w in GUIDE_WORDS)
     if law and not guide:
         return "law"

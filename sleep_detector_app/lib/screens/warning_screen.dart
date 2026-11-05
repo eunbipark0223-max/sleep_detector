@@ -33,6 +33,94 @@ import 'quiz_screen.dart';
 import 'regulation_screen.dart';
 import 'rest_screen.dart';
 
+/// [정차했어요] 를 누르면 한 번 더 묻는다 — 휴식은 시작하면 15분 동안 취소할 수 없어서 (잘못 누름 방지)
+///   운행 화면의 휴게 배너 · 경고 화면이 같이 쓴다. [네, 정차했어요] 를 누르면 true
+Future<bool> confirmRest(BuildContext context) async {
+  final yes = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('정차하셨나요?'),
+      content: const Text('휴식을 시작하면 15분 동안 쉬어야 운행을 다시 시작할 수 있어요.',
+          style: TextStyle(fontSize: 15, height: 1.4)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('네, 정차했어요')),
+      ],
+    ),
+  );
+  return yes == true;
+}
+
+/// 검은 배너 "카메라를 확인하세요" — 운행 화면 · 경고 화면이 같이 쓴다
+///   단계 색이 무엇이든 눈에 띄게 검은 바탕. 얼굴이 다시 잡히면 운행 화면이 값을 내려서 사라진다
+class CameraBanner extends StatelessWidget {
+  final ValueListenable<bool> faceLost;
+
+  const CameraBanner({super.key, required this.faceLost});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: faceLost,
+      // 배너가 없어도 자리는 비워 둔다 — 배너가 떠도 아래 내용이 움직이지 않고, 기본 배치가 위로 쏠리지 않게
+      builder: (_, lost, _) => Visibility(
+        visible: lost,
+        maintainSize: true,
+        maintainAnimation: true,
+        maintainState: true,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(14)),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.videocam_off, color: Colors.white, size: 28),
+                SizedBox(width: 10),
+                Flexible(
+                  child: Text('카메라를 확인하세요',
+                      style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 흰 글자 "서버 확인: 취소" — 배너와 함께 떠서 배너가 사라진 1초 뒤 사라진다
+///   운행 · 경고 화면 맨 아래에 고정 (Scaffold.bottomNavigationBar) — 내용이 길어도 스크롤 없이 보이게, 자리는 비워 둔다
+class ServerCancelText extends StatelessWidget {
+  final ValueListenable<bool> cancelled;
+
+  const ServerCancelText({super.key, required this.cancelled});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: cancelled,
+      builder: (_, on, _) => SafeArea(
+        top: false,
+        child: Visibility(
+          visible: on,
+          maintainSize: true,
+          maintainAnimation: true,
+          maintainState: true,
+          child: const Padding(
+            padding: EdgeInsets.only(top: 4, bottom: 8),
+            child: Text('서버 확인: 취소',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class WarningScreen extends StatefulWidget {
   final SleepResponse response; // 서버가 보내 준 결과
 
@@ -46,6 +134,10 @@ class WarningScreen extends StatefulWidget {
   /// 운행 화면의 카메라 — 있으면 맨 위에 내 얼굴(카메라 화면)을 보여 준다 (사진 1장 테스트처럼 없으면 큰 아이콘)
   final ValueListenable<CameraController?>? camera;
 
+  /// 운행 화면이 알려 주는 "카메라를 확인하세요" · "서버 확인: 취소" 상태 (운행 중이 아니면 null)
+  final ValueListenable<bool>? faceLost;
+  final ValueListenable<bool>? serverCancelled;
+
   /// 앱을 껐다 켰을 때 쉬는 중이었다면 true — 경고 음성 대신 바로 휴식 화면을 이어 연다 (남은 시간은 서버가 알려 줌)
   final bool resumeRest;
 
@@ -58,6 +150,8 @@ class WarningScreen extends StatefulWidget {
       this.liveStage,
       this.pauseDetect,
       this.camera,
+      this.faceLost,
+      this.serverCancelled,
       this.silent = false,
       this.resumeRest = false});
 
@@ -336,6 +430,7 @@ class _WarningScreenState extends State<WarningScreen> {
       canPop: !_locked,
       child: Scaffold(
         backgroundColor: bg,
+        bottomNavigationBar: widget.serverCancelled == null ? null : ServerCancelText(cancelled: widget.serverCancelled!),
         appBar: AppBar(
           backgroundColor: bg,
           foregroundColor: fg,
@@ -347,6 +442,7 @@ class _WarningScreenState extends State<WarningScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
             children: [
+              if (widget.faceLost != null) CameraBanner(faceLost: widget.faceLost!),
               _topVisual(bg, fg),
               const SizedBox(height: 16),
               // 큰 글씨 한 줄
@@ -414,7 +510,9 @@ class _WarningScreenState extends State<WarningScreen> {
               if (_stage == 2) ...[
                 const SizedBox(height: 10),
                 FilledButton(
-                  onPressed: _goRest,
+                  onPressed: () async {
+                    if (await confirmRest(context) && mounted) _goRest();
+                  },
                   style: FilledButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: AppColors.textPrimary,

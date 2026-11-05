@@ -69,6 +69,7 @@ class _DriveScreenState extends State<DriveScreen> {
   double _perclos = 0; // 최근 30초 눈 감은 비율
   String _notice = ''; // 화면에 보여 줄 안내 글
   bool _sending = false; // 서버에 보내는 중인지 (같은 졸음을 두 번 보내지 않게)
+  static const int _serverWaitSec = 10; // 서버 답이 이만큼 안 오면 알람부터 울린다
   MaterialPageRoute<int>? _warningRoute; // 지금 떠 있는 경고 화면 (없으면 null). 휴식이 끝나 닫히면 새 단계를 돌려줌
 
   // 카메라 지킴이: 사진(프레임)이 마지막으로 들어온 시각을 기억했다가, 오래 안 들어오면 카메라를 다시 켠다
@@ -77,8 +78,13 @@ class _DriveScreenState extends State<DriveScreen> {
   // 얼굴(눈 뜸 확률)이 마지막으로 잡힌 시각 · "카메라를 확인하세요" 배너를 띄웠는지 · 마지막으로 말한 시각
   static const int _cameraRepeatSec = 10; // 얼굴이 안 잡히는 동안 이 간격으로 다시 말함
   DateTime _lastFaceAt = DateTime.now();
-  bool _faceWarned = false;
   DateTime? _cameraSpokeAt;
+  // 배너 "카메라를 확인하세요" · 글자 "서버 확인: 취소" — 경고 화면도 같이 보여 준다
+  final ValueNotifier<bool> _faceLostNote = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _cancelNote = ValueNotifier<bool>(false);
+  static const int _cancelKeepSec = 5; // 얼굴이 계속 보이는 중에 취소되면 이 시간 뒤 글자를 지운다
+  DateTime? _cancelledAt;
+  Timer? _cancelClear; // 얼굴이 다시 잡혀 배너가 내려간 1초 뒤 취소 글자를 지운다
   bool _restarting = false; // 다시 켜는 중인지 (두 번 겹쳐 켜지 않게)
 
   // 30초마다 서버에 "운전 중이에요" 알리기 (ping) → 지금 단계 · 휴게 알림 받기
@@ -311,6 +317,9 @@ class _DriveScreenState extends State<DriveScreen> {
     _pauseDetect.removeListener(_onPauseChanged);
     _pauseDetect.dispose();
     _cameraNote.dispose();
+    _cancelClear?.cancel();
+    _faceLostNote.dispose();
+    _cancelNote.dispose();
     _controller?.dispose(); // 카메라 끄기
     _eye.close(); // 눈 감시 도구 끄기
     super.dispose();
@@ -322,6 +331,15 @@ class _DriveScreenState extends State<DriveScreen> {
     if (!mounted || _sending || _pauseDetect.value) return;
     _sending = true;
     setState(() => _notice = '서버 확인 중…');
+    // 서버 답을 못 받아도 기사를 깨운다 — 연결 실패는 바로, 답이 늦으면 10초 뒤 (응답은 계속 기다림).
+    //   서버가 졸음을 확인한 것이 아니라 단계는 올리지 않고, 의심 1건에 한 번만 울린다 (11/04 팀장)
+    var alarmed = false;
+    void ringOnce() {
+      if (alarmed || !mounted || _pauseDetect.value) return;
+      alarmed = true;
+      VoiceService.alarm();
+    }
+    final slowAlarm = Timer(const Duration(seconds: _serverWaitSec), ringOnce);
     try {
       // frame 이 null 이어도 꼭 보낸다 (고개를 떨군 채 졸면 사진이 없음 → 서버가 앱 판단대로 처리)
       final res = await ApiService.sendDetect(
@@ -333,10 +351,14 @@ class _DriveScreenState extends State<DriveScreen> {
         lat: _lat, // 미리 받아 둔 위치 (없으면 빈칸으로 보냄)
         lng: _lng,
       );
+      slowAlarm.cancel();
       if (!mounted) return;
       // 서버가 취소하면 눈 감시 도구에 알린다 (고개 숙인 채 계속 자면 사진 없이 한 번 더 보내게, A)
       if (!res.isSleep) _eye.serverCancelled();
-      _notice = res.isSleep ? '졸음 확정 (${res.stage}단계)' : '서버 확인: 취소';
+      _notice = res.isSleep ? '졸음 확정 (${res.stage}단계)' : '';
+      _cancelClear?.cancel();
+      _cancelledAt = res.isSleep ? null : DateTime.now();
+      _cancelNote.value = !res.isSleep; // "서버 확인: 취소" — 얼굴이 다시 잡히면 지운다 (_onFrameResult)
       // 경고 화면이 떠 있고 단계가 그대로면 알람 · 음성을 다시 내지 않는다 (단계가 올라갈 때만, 기획안 6-6)
       final sameStage = _warningRoute != null && res.stage == _stage;
       _setStage(res.stage);
@@ -346,9 +368,13 @@ class _DriveScreenState extends State<DriveScreen> {
       if (res.isSleep && res.stage >= 1 && (!sameStage || res.voiceQuiz != null)) {
         _showWarning(res, silent: sameStage);
       }
+    } on UnauthorizedException {
+      // 로그인 만료 → ApiService 가 로그인 화면으로 보낸다. 졸음과 상관없으니 알람은 울리지 않음
     } catch (e) {
+      ringOnce();
       if (mounted) setState(() => _notice = '서버 연결 실패: $e');
     } finally {
+      slowAlarm.cancel();
       _sending = false;
     }
   }
@@ -370,6 +396,8 @@ class _DriveScreenState extends State<DriveScreen> {
         liveStage: _liveStage,
         pauseDetect: _pauseDetect,
         camera: _cameraNote,
+        faceLost: _faceLostNote,
+        serverCancelled: _cancelNote,
         silent: silent,
         resumeRest: resumeRest,
       ),
@@ -386,6 +414,7 @@ class _DriveScreenState extends State<DriveScreen> {
 
   // 휴게 배너의 [정차했어요] → 휴식 15분 → [운행 재개] (2시간 연속 운전 휴식 인정, 기획안 3-2)
   Future<void> _goRest() async {
+    if (!await confirmRest(context) || !mounted) return;
     await VoiceService.stop();
     if (!mounted) return;
     _pauseDetect.value = true;
@@ -426,22 +455,38 @@ class _DriveScreenState extends State<DriveScreen> {
     final spokeAt = _cameraSpokeAt;
     if (spokeAt != null && now.difference(spokeAt).inSeconds < _cameraRepeatSec) return;
     _cameraSpokeAt = now;
-    if (!_faceWarned) setState(() => _faceWarned = true);
+    _faceLostNote.value = true;
+    _cancelClear?.cancel();
+    _cancelNote.value = true; // 취소 글자도 배너와 함께 띄운다 (서버 답과 상관없이)
     VoiceService.speak('카메라를 확인하세요');
   }
 
   // 프레임마다 오는 눈 뜸 확률 · PERCLOS (0단계 화면 표시용)
   void _onFrameResult(double? eyeOpenProb, double perclos, double? ear) {
     if (!mounted) return;
-    if (eyeOpenProb != null) _lastFaceAt = DateTime.now();
+    if (eyeOpenProb != null) {
+      final now = DateTime.now();
+      final wasLost = _faceLostNote.value;
+      _lastFaceAt = now;
+      // 얼굴이 다시 잡히면 배너를 내리고, 다음에 또 안내할 수 있게 비운다
+      //   취소 글자는 배너가 내려간 1초 뒤에 지운다. 얼굴이 계속 보이는 중에 취소됐으면 5초 보여 준 뒤 지운다
+      _faceLostNote.value = false;
+      _cameraSpokeAt = null;
+      final cancelledAt = _cancelledAt;
+      if (wasLost) {
+        _cancelledAt = null;
+        _cancelClear?.cancel();
+        _cancelClear = Timer(const Duration(seconds: 1), () {
+          if (mounted) _cancelNote.value = false;
+        });
+      } else if (cancelledAt != null && now.difference(cancelledAt).inSeconds >= _cancelKeepSec) {
+        _cancelledAt = null;
+        _cancelNote.value = false;
+      }
+    }
     setState(() {
       _eyeOpenProb = eyeOpenProb;
       _perclos = perclos;
-      // 얼굴이 다시 잡히면 배너를 내리고, 다음에 또 안내할 수 있게 비운다
-      if (eyeOpenProb != null) {
-        _faceWarned = false;
-        _cameraSpokeAt = null;
-      }
     });
   }
 
@@ -452,6 +497,7 @@ class _DriveScreenState extends State<DriveScreen> {
 
     return Scaffold(
       backgroundColor: bg,
+      bottomNavigationBar: ServerCancelText(cancelled: _cancelNote),
       appBar: AppBar(
         backgroundColor: bg,
         foregroundColor: fg,
@@ -462,25 +508,8 @@ class _DriveScreenState extends State<DriveScreen> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            // 카메라 확인 배너 — 얼굴이 다시 잡힐 때까지 유지 (단계 색이 무엇이든 눈에 띄게 검은 바탕)
-            if (_faceWarned) ...[
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(14)),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.videocam_off, color: Colors.white, size: 28),
-                    SizedBox(width: 10),
-                    Flexible(
-                      child: Text('카메라를 확인하세요',
-                          style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
+            // 카메라 확인 배너 — 얼굴이 다시 잡히면 사라짐 (취소 글자는 맨 아래, 1초 뒤 사라짐)
+            CameraBanner(faceLost: _faceLostNote),
             // 휴게 배너 (연속 운전 2시간) — [닫기]로 숨김, [정차했어요]로 휴식 시작
             if (_restMessage.isNotEmpty)
               Container(
