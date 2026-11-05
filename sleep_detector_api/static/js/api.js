@@ -13,6 +13,7 @@
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
 const TOKEN_KEY = 'admin_token';
+const API_TIMEOUT_MS = 15000;
 
 function getToken() {
   try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; }
@@ -31,11 +32,22 @@ async function apiFetch(path, options = {}) {
   if (token) headers['Authorization'] = 'Bearer ' + token;
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
 
-  const res = await fetch(path, {
-    method: options.method || 'GET',
-    headers: headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-  });
+  // 서버가 꺼졌거나 응답 없이 멈추면 사람이 읽을 수 있는 말로 (fetch 는 멈춘 요청을 혼자 끝내지 않음 → 관제 화면이 끊김을 모름)
+  const timeout = new AbortController();
+  const timer = setTimeout(() => timeout.abort(), API_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(path, {
+      method: options.method || 'GET',
+      headers: headers,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      signal: timeout.signal,
+    });
+  } catch (e) {
+    throw new Error(e.name === 'AbortError' ? '서버 응답이 없어요' : '서버에 연결할 수 없어요');
+  } finally {
+    clearTimeout(timer);
+  }
   if (res.status === 401 && !path.startsWith('/users/login')) {
     clearToken();
     location.href = 'admin_login.html';
@@ -45,7 +57,12 @@ async function apiFetch(path, options = {}) {
   try { data = await res.json(); } catch (e) { /* 본문이 없는 응답 */ }
   if (!res.ok) {
     const detail = data && data.detail;
-    throw new Error(typeof detail === 'string' ? detail : '요청에 실패했습니다 (' + res.status + ')');
+    if (typeof detail === 'string') throw new Error(detail);
+    if (Array.isArray(detail)) {                                   // 422: 칸마다 틀린 이유 목록 → 한국어 문구만 이어서 보여 줌
+      const lines = detail.map((d) => String((d && d.msg) || '').replace('Value error, ', '')).filter(Boolean);
+      if (lines.length) throw new Error(lines.join(' '));
+    }
+    throw new Error('요청에 실패했습니다 (' + res.status + ')');
   }
   return data;
 }
@@ -69,6 +86,13 @@ function fetchAdminEvents(filters = {}) {
 function fetchAdminUsers() { return apiFetch('/admin/users'); }
 function fetchStageStats() { return apiFetch('/admin/stats/stage'); }
 function fetchHourlyStats() { return apiFetch('/admin/stats/hourly'); }
+
+// ── 내 정보 · 설정 (관리자 설정 화면) ─────────────────────────
+function fetchMe() { return apiFetch('/users/me'); }
+function updateMe(fields) { return apiFetch('/users/me', { method: 'PATCH', body: fields }); }        // {name?, phone?}
+function changeMyPassword(currentPassword, newPassword) {
+  return apiFetch('/users/me/password', { method: 'PUT', body: { current_password: currentPassword, new_password: newPassword } });
+}
 
 // ── 처리 상태 변경: 미확인 / 확인 / 조치완료 / 휴식완료. 조치완료면 서버가 3단계를 푼다 ──
 function updateEventStatus(eventId, status) {
