@@ -361,6 +361,7 @@ async def detect_handler(
 
     # ③ 졸음 기록 → 규칙 단계 (사진 1장 테스트에서 감음이면 미세수면으로 기록)
     reason = reason or "microsleep"
+    reset_mark = sleep_state.reset_count(user.id)   # AI 처리 중에 관리자가 해제하는지 보려고 기억 (11/05)
     rule_stage = int(sleep_state.add_sleep(user.id, reason, closed or 0.0))
     f = sleep_state.facts(user.id)
     facts = {"sleep_count_10min": int(f["sleep_count_10min"]), "last_closed_sec": float(f["last_closed_sec"] or 0),
@@ -374,9 +375,14 @@ async def detect_handler(
     location = f"{lat:.5f}, {lng:.5f}" if lat is not None and lng is not None else ""
     agent = await run_in_threadpool(agent_service.generate_response, eye_info, analysis, regulations, facts,
                                     rule_stage, location, user.id)
-    stage = int(sleep_state.set_stage(user.id, agent["stage"]))   # 올리기만 (sleep_state 가 보증)
+    # AI 처리 중에 관리자가 [조치완료] 했으면 단계를 다시 올리지 않는다 — 경고 기록은 '조치완료' 로 남김 (11/05)
+    released = sleep_state.reset_count(user.id) != reset_mark
+    if released:
+        stage = int(sleep_state.get_stage(user.id))
+    else:
+        stage = int(sleep_state.set_stage(user.id, agent["stage"]))   # 올리기만 (sleep_state 가 보증)
     print(f"[detect]   → 10분 졸음 {facts['sleep_count_10min']}번 · 규칙 {rule_stage}단계 · Agent {agent['stage']}단계 "
-          f"({'AI' if agent['is_real'] else '규칙'}) → 최종 {stage}단계")
+          f"({'AI' if agent['is_real'] else '규칙'}) → 최종 {stage}단계{' (처리 중 관리자 해제)' if released else ''}")
 
     # ⑦ 저장 — 확정 사진만 uploads/events/ 로, DB 1줄 (사진 없이 온 경고는 photo_path 없음 → 관리자 웹 '사진 없음')
     photo_path = None
@@ -395,11 +401,12 @@ async def detect_handler(
                     "agent": bool(agent["is_real"]), "driver_voice": bool(agent["voice_is_real"])},
     }
     event = SleepEvent(
-        user_id=user.id, stage=stage, ear=eye.get("ear"), eye_closed_prob=eye.get("eye_closed_prob"),
+        user_id=user.id, stage=int(agent["stage"]) if released else stage, ear=eye.get("ear"),
+        eye_closed_prob=eye.get("eye_closed_prob"),
         method=base["method"], reason=reason, perclos=pc,
         summary=(analysis.get("summary") or "")[:255], guidance=agent["guidance"][:255],
         report=json.dumps(report, ensure_ascii=False), photo_path=photo_path,
-        latitude=lat, longitude=lng, status="미확인",
+        latitude=lat, longitude=lng, status="조치완료" if released else "미확인",
     )
     session.add(event)
     session.commit()
@@ -407,7 +414,7 @@ async def detect_handler(
 
     # ⑧ 운전 중 음성 퀴즈 (경고를 저장한 뒤 → event_id 를 함께 기억, 최소 간격 VOICE_QUIZ_GAP_SEC)
     voice_quiz = None
-    if config.QUIZ_MODE == "voice":
+    if config.QUIZ_MODE == "voice" and not released:
         now = time.time()
         with _lock:
             due = now - _last_quiz_at.get(user.id, 0) >= config.VOICE_QUIZ_GAP_SEC
