@@ -756,7 +756,7 @@ def quiz_answer(body: VoiceQuizAnswer, user: dict = Depends(current_user)):
 
     if passed:
         st["quiz_fail"] = 0
-        return {**result, "message": "잘하셨습니다. 쉼터까지 조심히 가세요."}
+        return {**result, "message": {2: "잘하셨습니다. 쉼터까지 조심히 가세요.", 3: "잘하셨습니다. 안전한 곳에 정차해 주세요."}.get(stage, "잘하셨습니다. 안전 운행하세요.")}
 
     st["quiz_fail"] += 1
     if st["quiz_fail"] < VOICE_QUIZ_MAX_TRIES:  # 1번 실패 → 같은 유형 새 문제
