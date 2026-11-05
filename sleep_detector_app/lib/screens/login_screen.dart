@@ -6,6 +6,7 @@
 //
 // [이 파일이 하는 일]
 //   - 이메일 · 구글 로그인 (서버 JWT 로 통일)
+//   - [회원가입] 탭 → signup_screen.dart (전화번호 · 차량번호 · 개인정보 동의까지 받는 가입 화면)
 //   - (첫 실행 사용 동의는 splash_screen — 이미 로그인한 폰에도 한 번 나오게)
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
@@ -16,6 +17,7 @@ import '../theme.dart'; // 앱 전체에 적용할 디자인 시스템
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'main_screen.dart';
+import 'signup_screen.dart';
 
 // StatefulWidget - 클래스가 두개
 // 위젯은 화면을 다시 그릴 때마다 새로 만들어진다. 입력값이 사라진다. 값은 State에 따로 보관
@@ -30,11 +32,8 @@ class LoginScreen extends StatefulWidget{ // 위젯 클래스(껍데기)
 // 호이스팅 : Dart 컴파일러는 파일 전체를 먼저 읽고 클래스 구조를 파악하므로 선언 위치는 상관 없음
 class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹이), 이 파일 내부에서만 쓰이는 private 클래스
   // 1.상태 변수 - 화면이 기억하는 값
-  bool _isSignup = false;
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _passwordConfirmController = TextEditingController();
-  final _nameController = TextEditingController();
   bool _isLoading = false;
   String? _error;
 
@@ -43,8 +42,6 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
-    _passwordConfirmController.dispose();
-    _nameController.dispose();
     super.dispose(); // 맨 마지막에 정리
   }
 
@@ -75,36 +72,21 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
       if (mounted) setState(() => _isLoading = false);
     }
   }
-    // 회원가입
-  Future<void> _signup() async {
-    if (_nameController.text.isEmpty ||
-        _emailController.text.isEmpty ||
-        _passwordController.text.isEmpty) {
-      setState(() => _error = '모든 항목을 입력하세요');
-      return;
-    }
-    if (_passwordController.text != _passwordConfirmController.text) {
-      setState(() => _error = '비밀번호가 일치하지 않습니다');
-      return;
-    }
-    setState(() {_isLoading = true; _error = null;});
-    try {
-      await AuthService.signup(
-          email: _emailController.text.trim(),
-          password: _passwordController.text,
-          name: _nameController.text.trim()
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar( // 가장 가까운 Scaffold를 찾아 거기에 띄운다
-          const SnackBar(content: Text('회원가입 완료! 로그인해주세요')),
-        );
-        setState(() => _isSignup = false);
-      }
-    } catch (e) {
-      if (mounted) setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    // 회원가입 — 입력칸이 많아서 별도 화면(signup_screen.dart). 가입에 성공하면 이메일을 들고 돌아온다
+  Future<void> _openSignup() async {
+    final email = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const SignupScreen()),
+    );
+    if (email == null || !mounted) return; // 뒤로 가기로 닫음 = 가입 안 함
+    setState(() {
+      _emailController.text = email; // 가입한 이메일을 채워 두고 비밀번호만 치면 되게
+      _passwordController.clear();
+      _error = null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar( // 가장 가까운 Scaffold를 찾아 거기에 띄운다
+      const SnackBar(content: Text('회원가입 완료! 로그인해주세요')),
+    );
   }
 
   // 구글 로그인 (Firebase → 서버 JWT)
@@ -148,13 +130,13 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
                 children: [
                   Row(
                     children: [
-                      _tab('로그인', !_isSignup, () => setState(() => _isSignup = false)),
-                      _tab('회원가입', _isSignup, () => setState(() => _isSignup = true)),
+                      _tab('로그인', true, () {}), // 지금 화면이라 눌러도 그대로
+                      _tab('회원가입', false, _openSignup), // 새 화면으로 이동
                     ],
                   ),
                   Padding(
                     padding: const EdgeInsets.all(20),
-                    child: _isSignup ? _signupForm() : _loginForm(),
+                    child: _loginForm(),
                   ),
                 ],
               ),
@@ -226,43 +208,6 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
           const SizedBox(height: 12),
           _googleButton(), // 구글 로그인 버튼
         ],
-      ],
-    );
-  }
-  Widget _signupForm() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _label('이름'),
-        TextField(controller: _nameController,
-            decoration: const InputDecoration(hintText: '이름을 입력하세요')),
-        const SizedBox(height: 12),
-        _label('이메일'),
-        TextField(
-          controller: _emailController,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(hintText: '이메일을 입력하세요'),
-        ),
-        const SizedBox(height: 12),
-        _label('비밀번호'),
-        TextField(
-          controller: _passwordController,
-          obscureText: true, // 입력한 글자를 ●로 가린다
-          decoration: const InputDecoration(hintText: '대소문자·숫자·특수문자 포함 8자리 이상'),
-        ),
-        const SizedBox(height: 12),
-        _label('비밀번호 확인'),
-        TextField(controller: _passwordConfirmController, obscureText: true,
-            decoration: const InputDecoration(hintText: '다시 입력하세요')),
-        const SizedBox(height: 18),
-        if (_error != null) ...[ // 오류 메시지(있을 때만)
-          Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
-          const SizedBox(height: 12),
-        ],
-        if(_isLoading)
-          const Center(child: CircularProgressIndicator())
-        else
-          ElevatedButton(onPressed: _signup, child: const Text('회원가입')), // theme.dart의 elevatedButtonTheme
       ],
     );
   }

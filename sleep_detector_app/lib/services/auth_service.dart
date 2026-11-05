@@ -8,7 +8,7 @@
 //   - 수업 파일을 그대로 복사해서 쓴다 (토큰은 flutter_secure_storage)
 //
 // [서버 약속 — sleep_detector_api/routers/user.py]
-//   - POST /users/signup  {email, password, name}                → 201 사용자 · 이미 있으면 409 · 비밀번호 규칙 어기면 422(메시지 목록)
+//   - POST /users/signup  {email, password, name, phone, vehicle_no, privacy_agreed} → 201 사용자 · 이미 있으면 409 · 비밀번호 · 전화 · 차량번호 · 동의 규칙 어기면 422(메시지 목록)
 //   - POST /users/login   {email, password}                      → {success, access_token, token_type, user}
 //   - POST /users/google  {email, name, firebase_uid}            → 로그인과 같은 응답 (구글 로그인 뒤 서버 JWT 로 통일)
 //   - GET  /users/me      Authorization: Bearer 토큰              → 내 정보 (토큰이 틀리면 401)
@@ -93,8 +93,24 @@ class AuthService {
 
   // ── 회원가입 · 로그인 ────────────────────────────────────────
   /// 이메일 회원가입. 가입만 하고 로그인은 하지 않는다 (가입 뒤 login 을 부른다).
-  static Future<Map<String, dynamic>> signup({required String email, required String password, required String name}) async {
-    final res = await _send(() => http.post(_uri('/users/signup'), headers: _json, body: jsonEncode({'email': email, 'password': password, 'name': name})));
+  /// 전화번호 · 차량번호는 서버가 형식을 검사해 정리해서 users 에 저장하고, 틀리면 422 문구가 AuthException 으로 온다.
+  /// privacyAgreed 는 개인정보 수집 · 이용 동의 (false 면 서버가 거절 — 화면에서 먼저 막아 둔다).
+  static Future<Map<String, dynamic>> signup({
+    required String email,
+    required String password,
+    required String name,
+    String? phone,
+    String? vehicleNo,
+    bool privacyAgreed = false,
+  }) async {
+    final res = await _send(() => http.post(_uri('/users/signup'), headers: _json, body: jsonEncode({
+      'email': email,
+      'password': password,
+      'name': name,
+      'phone': ?phone,
+      'vehicle_no': ?vehicleNo,
+      'privacy_agreed': privacyAgreed,
+    })));
     if (res.statusCode != 201 && res.statusCode != 200) throw _error(res);
     return _decode(res);
   }

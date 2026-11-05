@@ -54,7 +54,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from schema.request import ProfileUpdate   # 전화번호 · 차량번호 형식 검사는 진짜 서버와 같은 것을 쓴다
+from schema.request import PasswordChange, ProfileUpdate, format_phone, format_vehicle_no   # 전화번호 · 차량번호 형식 검사는 진짜 서버와 같은 것을 쓴다
 
 # ── 기준 숫자 (진짜 서버는 config.py 에서 가져옴) ──────────────────
 WINDOW_SEC = int(os.getenv("MOCK_WINDOW_SEC", "60"))          # 1단계 자동 해제 · 졸음 횟수를 세는 구간 (진짜 600)
@@ -468,7 +468,14 @@ async def signup(request: Request):
         raise HTTPException(status_code=422, detail="email 이 필요합니다")
     if any(u["email"] == email for u in USERS.values()):
         raise HTTPException(status_code=400, detail="이미 가입된 이메일입니다")
-    user = add_user(email, str(body.get("name") or email.split("@")[0]))
+    try:   # 전화번호 · 차량번호 · 동의 검사는 진짜 서버(SignupRequest)와 같은 규칙
+        phone = format_phone(str(body["phone"])) if str(body.get("phone") or "").strip() else None
+        vehicle_no = format_vehicle_no(str(body["vehicle_no"])) if str(body.get("vehicle_no") or "").strip() else None
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    if body.get("privacy_agreed") is False:
+        raise HTTPException(status_code=422, detail="개인정보 수집 · 이용에 동의해야 가입할 수 있어요.")
+    user = add_user(email, str(body.get("name") or email.split("@")[0]), phone=phone, vehicle_no=vehicle_no)
     return {"success": True, "message": "가입되었습니다", "user": user}
 
 
@@ -496,11 +503,19 @@ def me(user: dict = Depends(current_user)):
 # 내 전화번호 · 차량번호 — 진짜 서버(routers/user.py)와 같은 규칙 (schema.request 의 검사를 그대로 씀): 빠진 칸은 그대로, ''면 지움
 @app.patch("/users/me")
 def update_me(body: ProfileUpdate, user: dict = Depends(current_user)):
+    if "name" in body.model_fields_set and body.name is not None:
+        user["name"] = body.name
     if "phone" in body.model_fields_set and body.phone is not None:
         user["phone"] = body.phone or None
     if "vehicle_no" in body.model_fields_set and body.vehicle_no is not None:
         user["vehicle_no"] = body.vehicle_no or None
     return me(user)
+
+
+# 비밀번호 변경 — 새 비밀번호 규칙은 진짜 서버와 같음. 모의 서버는 비밀번호를 저장하지 않아서(로그인이 비밀번호를 보지 않음) 지금 비밀번호는 검사하지 않는다
+@app.put("/users/me/password")
+def change_my_password(body: PasswordChange, user: dict = Depends(current_user)):
+    return {"success": True}
 
 
 # 프로필 사진 — 진짜 서버(routers/user.py)와 같은 규칙: 확장자 · 5MB · 사진 받기는 로그인 토큰이 있어야 함 (메모리에만 보관)
