@@ -7,6 +7,7 @@ static/admin_login.html — 관리자 로그인 화면
 [이 파일이 하는 일]
   - 이메일 · 비밀번호로 POST /users/login → 관리자(role admin)면 토큰 저장 후 admin.html 로 이동
   - 기사 계정이면 "관리자 계정이 아닙니다"
+  - 로고: img/logo.png (졸음 가드 올빼미, 팀 확정 이미지) · 탭 아이콘 img/favicon.png
 ═══════════════════════════════════════════════════════════════
 -->
 <!DOCTYPE html>
@@ -15,6 +16,7 @@ static/admin_login.html — 관리자 로그인 화면
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>졸음 가드 관리자 로그인</title>
+  <link rel="icon" type="image/png" href="img/favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&display=swap">
   <style>
@@ -23,22 +25,20 @@ static/admin_login.html — 관리자 로그인 화면
     body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--navy);
            font-family: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; color: #1E293B; }
     form { width: min(380px, 90vw); background: #fff; border-radius: 20px; padding: 36px 30px 30px; box-shadow: 0 12px 40px rgba(0, 0, 0, .28); }
-    .logo { width: 64px; height: 64px; margin: 0 auto 14px; border-radius: 50%; background: var(--navy); color: #fff; display: flex; align-items: center; justify-content: center; }
+    .logo { width: 88px; height: 88px; margin: 0 auto 14px; display: block; }
     h1 { margin: 0 0 4px; font-size: 24px; font-weight: 800; color: var(--navy); text-align: center; }
-    p.sub { margin: 0 0 24px; font-size: 13px; color: #667; text-align: center; }
-    label { display: block; margin: 14px 0 6px; font-size: 13px; font-weight: 700; }
-    input { width: 100%; padding: 13px 14px; border: 1px solid var(--line); border-radius: 12px; font-size: 14px; background: var(--bg); }
+    p.sub { margin: 0 0 24px; font-size: 14px; color: #667; text-align: center; }
+    label { display: block; margin: 14px 0 6px; font-size: 14px; font-weight: 700; }
+    input { width: 100%; padding: 13px 14px; border: 1px solid #64748B; border-radius: 12px; font-size: 16px; background: var(--bg); }
     input:focus { outline: 2px solid var(--navy); border-color: transparent; background: #fff; }
     button { width: 100%; margin-top: 24px; padding: 14px; border: 0; border-radius: 12px; background: var(--navy); color: #fff; font-size: 16px; font-weight: 800; cursor: pointer; font-family: inherit; }
     button:disabled { opacity: .6; cursor: default; }
-    #msg { min-height: 20px; margin-top: 12px; font-size: 13px; color: var(--red); text-align: center; }
+    #msg { min-height: 20px; margin-top: 12px; font-size: 14px; color: var(--red); text-align: center; }
   </style>
 </head>
 <body>
   <form id="loginForm">
-    <div class="logo" aria-hidden="true">
-      <svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
-    </div>
+    <img class="logo" src="img/logo.png" alt="졸음 가드 로고 (올빼미)" width="88" height="88">
     <h1>졸음 가드 관리자</h1>
     <p class="sub">졸음 경고 확인 · 조치완료</p>
     <label for="email">이메일</label>
@@ -49,13 +49,14 @@ static/admin_login.html — 관리자 로그인 화면
     <div id="msg" role="alert"></div>
   </form>
 
-  <script src="js/api.js"></script>
+  <script src="js/api.js?v=20261105b"></script>
   <script>
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const button = document.getElementById('submit');
       const msg = document.getElementById('msg');
       button.disabled = true;
+      button.textContent = '로그인 중…';
       msg.textContent = '';
       try {
         await adminLogin(document.getElementById('email').value.trim(), document.getElementById('password').value);
@@ -63,6 +64,7 @@ static/admin_login.html — 관리자 로그인 화면
       } catch (err) {
         msg.textContent = err.message;
         button.disabled = false;
+        button.textContent = '로그인';
       }
     });
   </script>
