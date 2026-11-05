@@ -103,6 +103,8 @@ class Regulation {
 
   Regulation({required this.title, required this.source, required this.content});
 
+  Map<String, dynamic> toJson() => {'title': title, 'source': source, 'content': content};
+
   factory Regulation.fromJson(Map<String, dynamic> json) {
     return Regulation(
       title: json['title'] as String? ?? '관련 규정',

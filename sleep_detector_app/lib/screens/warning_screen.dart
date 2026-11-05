@@ -21,6 +21,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import 'dart:async';
+import 'dart:math';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -51,10 +52,64 @@ Future<bool> confirmRest(BuildContext context) async {
   return yes == true;
 }
 
+/// 얼굴을 따라가는 카메라 칸 — 칸 가운데에 얼굴이 오도록 움직이고, 얼굴 크기에 맞춰 확대한다 (화면 표시만, 판정은 카메라 전체로)
+///   face : 세워서 거울처럼 본 화면 기준 얼굴 위치 (0~1 비율). 얼굴을 놓치면 마지막 위치 그대로 (운행 화면이 넘겨 줌)
+class FollowFacePreview extends StatelessWidget {
+  final CameraController controller;
+  final ValueListenable<Rect?>? face;
+
+  const FollowFacePreview({super.key, required this.controller, this.face});
+
+  static const Rect _center = Rect.fromLTRB(0.25, 0.3, 0.75, 0.7); // 얼굴을 찾기 전 기본 위치
+  static const double _faceFill = 0.5; // 얼굴 높이가 칸 높이의 이 비율이 되게 (주변을 넉넉히 보여 얼굴이 덜 잘리게)
+  static const double _maxZoom = 2.2; // 너무 커져 흐려지지 않게
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (_, box) {
+        final bw = box.maxWidth, bh = box.maxHeight;
+        final pw = bw, ph = bw * controller.value.aspectRatio; // 세로 화면이라 높이 = 너비 × 가로세로비
+        final minScale = max(1.0, bh / ph); // 칸을 빈틈없이 채우는 최소 배율
+        return ValueListenableBuilder<Rect?>(
+          valueListenable: face ?? _noFace,
+          builder: (_, target, child) => TweenAnimationBuilder<Rect?>(
+            tween: RectTween(end: target ?? _center),
+            duration: const Duration(milliseconds: 400), // 흔들리지 않게 부드럽게
+            curve: Curves.easeOut,
+            child: child,
+            builder: (_, r, child) {
+              final f = r ?? _center;
+              final scale = (bh * _faceFill / (max(f.height, 0.01) * ph)).clamp(minScale, minScale * _maxZoom);
+              final sw = pw * scale, sh = ph * scale;
+              return ClipRect(
+                child: Stack(
+                  children: [
+                    Positioned(
+                      left: (bw / 2 - f.center.dx * sw).clamp(bw - sw, 0.0),
+                      top: (bh / 2 - f.center.dy * sh).clamp(bh - sh, 0.0),
+                      width: sw,
+                      height: sh,
+                      child: child!,
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          child: CameraPreview(controller),
+        );
+      },
+    );
+  }
+
+  static final ValueNotifier<Rect?> _noFace = ValueNotifier<Rect?>(null);
+}
+
 /// 스크롤 없이 한 화면에 담는 배치 — 운행 화면 · 경고 화면이 같이 쓴다 (폰 크기 · 글자 크기 설정이 달라도 그대로)
 ///   카메라 칸이 남는 자리를 전부 쓰고, 위 · 아래 내용은 자리가 모자라면 같이 줄어든다
 class OnePageLayout extends StatelessWidget {
-  final Widget? banner; // 맨 위 (항상 같은 자리)
+  final Widget? banner; // 카메라 칸 위에 겹쳐 띄움
   final List<Widget> above; // 카메라 위 내용
   final Widget camera;
   final List<Widget> below; // 카메라 아래 내용
@@ -70,9 +125,6 @@ class OnePageLayout extends StatelessWidget {
     this.aboveMax = 0.25,
     this.belowMax = 0.55,
   });
-
-  static const double _bannerMax = 0.13; // 배너 자리 비율 — 위 · 아래 비율과 합쳐서 카메라 칸이 30% 이상 남게
-
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -81,9 +133,16 @@ class OnePageLayout extends StatelessWidget {
         builder: (_, box) => Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (banner != null) _fit([banner!], box.maxWidth, box.maxHeight * _bannerMax),
             if (above.isNotEmpty) _fit(above, box.maxWidth, box.maxHeight * aboveMax),
-            Expanded(child: camera),
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  camera,
+                  if (banner != null) Positioned(top: 8, left: 8, right: 8, child: banner!),
+                ],
+              ),
+            ),
             _fit(below, box.maxWidth, box.maxHeight * belowMax),
           ],
         ),
@@ -117,31 +176,24 @@ class CameraBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
       valueListenable: faceLost,
-      // 배너가 없어도 자리는 비워 둔다 — 배너가 떠도 아래 내용이 움직이지 않고, 기본 배치가 위로 쏠리지 않게
-      builder: (_, lost, _) => Visibility(
-        visible: lost,
-        maintainSize: true,
-        maintainAnimation: true,
-        maintainState: true,
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(14)),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.videocam_off, color: Colors.white, size: 28),
-                SizedBox(width: 10),
-                Flexible(
-                  child: Text('카메라를 확인하세요',
-                      style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
-                ),
-              ],
+      // 카메라 칸 위에 겹쳐 뜬다 (OnePageLayout) — 평소에 빈자리를 차지하지 않고, 떠도 다른 내용이 움직이지 않게
+      builder: (_, lost, _) => !lost
+          ? const SizedBox.shrink()
+          : Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(14)),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.videocam_off, color: Colors.white, size: 26),
+                  SizedBox(width: 10),
+                  Flexible(
+                    child: Text('카메라를 확인하세요',
+                        style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -193,6 +245,9 @@ class WarningScreen extends StatefulWidget {
   final ValueListenable<bool>? faceLost;
   final ValueListenable<bool>? serverCancelled;
 
+  /// 운행 화면이 알려 주는 얼굴 위치 — 카메라 칸이 얼굴을 따라가게
+  final ValueListenable<Rect?>? faceBox;
+
   /// 앱을 껐다 켰을 때 쉬는 중이었다면 true — 경고 음성 대신 바로 휴식 화면을 이어 연다 (남은 시간은 서버가 알려 줌)
   final bool resumeRest;
 
@@ -207,6 +262,7 @@ class WarningScreen extends StatefulWidget {
       this.camera,
       this.faceLost,
       this.serverCancelled,
+      this.faceBox,
       this.silent = false,
       this.resumeRest = false});
 
@@ -365,43 +421,30 @@ class _WarningScreenState extends State<WarningScreen> {
       valueListenable: cam,
       builder: (_, c, _) {
         if (c == null || !c.value.isInitialized) return bigIcon;
-        // 카메라 칸 크기는 남는 자리에 맞춘다 (OnePageLayout) — 세로로 긴 카메라 화면의 가운데(얼굴)만 잘라서
-        return LayoutBuilder(
-          builder: (_, box) {
-            final w = box.maxWidth;
-            return Stack(
-              fit: StackFit.expand,
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white, width: 3),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(17),
-                    child: FittedBox(
-                      fit: BoxFit.cover,
-                      clipBehavior: Clip.hardEdge,
-                      child: SizedBox(
-                        width: w,
-                        height: w * c.value.aspectRatio, // 세로 화면이라 높이 = 너비 × 가로세로비
-                        child: CameraPreview(c),
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  right: 8,
-                  bottom: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                    child: Icon(_icon, size: 24, color: bg),
-                  ),
-                ),
-              ],
-            );
-          },
+        // 카메라 칸 크기는 남는 자리에 맞추고 (OnePageLayout), 칸 안에서는 얼굴을 따라간다
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white, width: 3),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(17),
+                child: FollowFacePreview(controller: c, face: widget.faceBox),
+              ),
+            ),
+            Positioned(
+              right: 8,
+              bottom: 8,
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                child: Icon(_icon, size: 24, color: bg),
+              ),
+            ),
+          ],
         );
       },
     );
@@ -449,26 +492,25 @@ class _WarningScreenState extends State<WarningScreen> {
     VoiceService.stop(); // 창을 닫으면 읽기도 멈춘다
   }
 
-  // 규정을 소리로 읽기 — 원문이 길 수 있어서 규정마다 앞부분만 짧게
+  // 규정 소리는 지금 단계의 한 문장만 — 조문을 그대로 읽으면 운전 중에 듣기 어려워서 (화면 카드는 원문 그대로, 11/05 팀장 · B 확인)
   Future<void> _speakRegulations(List<Regulation> regs) async {
     if (regs.isEmpty) {
       await VoiceService.speak('관련 규정이 없어요.');
       return;
     }
-    final text = StringBuffer('관련 규정을 읽어 드릴게요. ');
-    for (final r in regs) {
-      text.write('${r.title}. ${_shorten(r.content)} ');
-    }
-    await VoiceService.speak(text.toString());
+    await VoiceService.speak(_regulationVoice);
   }
 
-  // 120글자까지만, 가능하면 문장이 끝나는 곳(마침표)에서 자른다
-  String _shorten(String s) {
-    const max = 120;
-    if (s.length <= max) return s;
-    final cut = s.substring(0, max);
-    final dot = cut.lastIndexOf('.');
-    return dot > 30 ? cut.substring(0, dot + 1) : '$cut…';
+  String get _regulationVoice {
+    const more = '자세한 내용은 정차한 뒤 화면에서 확인하세요.';
+    switch (_stage) {
+      case 2:
+        return '화물차와 시외·전세버스 기사는 2시간 연속 운전 후 15분 이상 쉬어야 합니다. $more';
+      case 3:
+        return '안전한 곳에 바로 정차해 주세요. $more';
+      default:
+        return '과로로 정상적인 운전이 어려운 상태의 운전은 법으로 금지되어 있습니다. $more';
+    }
   }
 
   @override

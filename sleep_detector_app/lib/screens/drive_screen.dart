@@ -22,10 +22,12 @@
 // ═══════════════════════════════════════════════════════════════
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -69,6 +71,10 @@ class _DriveScreenState extends State<DriveScreen> {
   double? _eyeOpenProb; // 지금 눈 뜸 확률 (모르면 null)
   double _perclos = 0; // 최근 30초 눈 감은 비율
   String _notice = ''; // 화면에 보여 줄 안내 글
+  // 마지막 경고의 규정 — 앱을 껐다 켜서 이어진 경고에도 보여 주려고 폰에 저장 (서버 /drive/state 에는 규정이 없음)
+  static const FlutterSecureStorage _storage = FlutterSecureStorage();
+  static const String _regsKey = 'last_regulations';
+  List<Regulation> _lastRegs = const [];
   bool _sending = false; // 서버에 보내는 중인지 (같은 졸음을 두 번 보내지 않게)
   static const int _serverWaitSec = 10; // 서버 답이 이만큼 안 오면 알람부터 울린다
   MaterialPageRoute<int>? _warningRoute; // 지금 떠 있는 경고 화면 (없으면 null). 휴식이 끝나 닫히면 새 단계를 돌려줌
@@ -83,7 +89,8 @@ class _DriveScreenState extends State<DriveScreen> {
   // 배너 "카메라를 확인하세요" · 글자 "서버 확인: 취소" — 경고 화면도 같이 보여 준다
   final ValueNotifier<bool> _faceLostNote = ValueNotifier<bool>(false);
   final ValueNotifier<bool> _cancelNote = ValueNotifier<bool>(false);
-  static const int _cancelKeepSec = 5; // 얼굴이 계속 보이는 중에 취소되면 이 시간 뒤 글자를 지운다
+  // 얼굴 위치 (카메라 칸이 따라감) — 세워서 거울처럼 본 화면 기준 0~1 비율
+  final ValueNotifier<Rect?> _faceBoxNote = ValueNotifier<Rect?>(null);  static const int _cancelKeepSec = 5; // 얼굴이 계속 보이는 중에 취소되면 이 시간 뒤 글자를 지운다
   DateTime? _cancelledAt;
   Timer? _cancelClear; // 얼굴이 다시 잡혀 배너가 내려간 1초 뒤 취소 글자를 지운다
   bool _restarting = false; // 다시 켜는 중인지 (두 번 겹쳐 켜지 않게)
@@ -134,6 +141,8 @@ class _DriveScreenState extends State<DriveScreen> {
   // 운행 화면을 열자마자 — 서버가 기억하는 상태(단계 · 휴식 중)를 받아 화면에 이어 준다.
   //   앱을 껐다 켜도 3단계가 끊기지 않게: 30초 뒤 첫 ping 까지 "정상"으로 보이던 문제 + 경고 화면 · 휴식 화면이 사라지던 문제
   Future<void> _begin() async {
+    await _loadRegs();
+    if (!mounted) return;
     var state = widget.resume;
     if (state == null) {
       try {
@@ -151,6 +160,25 @@ class _DriveScreenState extends State<DriveScreen> {
     _ping();
   }
 
+  // 저장해 둔 마지막 규정 읽기 / 저장 — 실패해도 경고는 그대로 (규정 창만 비어 있음)
+  Future<void> _loadRegs() async {
+    try {
+      final saved = await _storage.read(key: _regsKey);
+      if (saved == null) return;
+      _lastRegs = (jsonDecode(saved) as List<dynamic>)
+          .map((r) => Regulation.fromJson(r as Map<String, dynamic>))
+          .toList();
+    } catch (_) {}
+  }
+
+  void _saveRegs(List<Regulation> regs) {
+    if (regs.isEmpty) return;
+    _lastRegs = regs;
+    _storage
+        .write(key: _regsKey, value: jsonEncode(regs.map((r) => r.toJson()).toList()))
+        .catchError((_) {});
+  }
+
   // 서버가 기억하는 상태로 경고 화면에 넣을 응답을 만든다 (졸음을 새로 감지한 것이 아니라서 퀴즈 · 음성 보고는 없음)
   SleepResponse _restoredResponse(DriveState s) => SleepResponse(
         isSleep: true,
@@ -162,7 +190,7 @@ class _DriveScreenState extends State<DriveScreen> {
         guidance: s.guidance,
         driverVoice: '',
         sleepCount10min: 0,
-        regulations: const [],
+        regulations: _lastRegs,
       );
 
   // 단계를 바꾸고 경고 화면에도 알린다
@@ -227,7 +255,7 @@ class _DriveScreenState extends State<DriveScreen> {
           guidance: '',
           driverVoice: '',
           sleepCount10min: 0,
-          regulations: const [],
+          regulations: _lastRegs,
         ));
       }
     } catch (_) {
@@ -324,6 +352,7 @@ class _DriveScreenState extends State<DriveScreen> {
     _cancelClear?.cancel();
     _faceLostNote.dispose();
     _cancelNote.dispose();
+    _faceBoxNote.dispose();
     _controller?.dispose(); // 카메라 끄기
     _eye.close(); // 눈 감시 도구 끄기
     super.dispose();
@@ -359,6 +388,7 @@ class _DriveScreenState extends State<DriveScreen> {
       if (!mounted) return;
       // 서버가 취소하면 눈 감시 도구에 알린다 (고개 숙인 채 계속 자면 사진 없이 한 번 더 보내게, A)
       if (!res.isSleep) _eye.serverCancelled();
+      _saveRegs(res.regulations);
       _notice = res.isSleep ? '졸음 확정 (${res.stage}단계)' : '';
       _cancelClear?.cancel();
       _cancelledAt = res.isSleep ? null : DateTime.now();
@@ -402,6 +432,7 @@ class _DriveScreenState extends State<DriveScreen> {
         camera: _cameraNote,
         faceLost: _faceLostNote,
         serverCancelled: _cancelNote,
+        faceBox: _faceBoxNote,
         silent: silent,
         resumeRest: resumeRest,
       ),
@@ -463,9 +494,26 @@ class _DriveScreenState extends State<DriveScreen> {
     VoiceService.speak('카메라를 확인하세요');
   }
 
+  // ML Kit 얼굴 위치 → 세워서 거울처럼 본 화면 기준 0~1 비율. 얼굴을 놓치면 마지막 위치 그대로, 조금 움직인 건 무시 (화면이 안 떨리게)
+  void _updateFaceBox() {
+    final box = _eye.lastFaceBox;
+    final size = _eye.lastImageSize;
+    if (box == null || size == null) return;
+    final w = size.shortestSide, h = size.longestSide; // 전면 카메라 사진은 누워 있어서 세우면 짧은 쪽이 가로
+    final next = Rect.fromLTRB(1 - box.right / w, box.top / h, 1 - box.left / w, box.bottom / h);
+    final old = _faceBoxNote.value;
+    if (old != null &&
+        (next.center - old.center).distance < 0.03 &&
+        (next.height - old.height).abs() < 0.04) {
+      return;
+    }
+    _faceBoxNote.value = next;
+  }
+
   // 프레임마다 오는 눈 뜸 확률 · PERCLOS (0단계 화면 표시용)
   void _onFrameResult(double? eyeOpenProb, double perclos, double? ear) {
     if (!mounted) return;
+    _updateFaceBox();
     if (eyeOpenProb != null) {
       final now = DateTime.now();
       final wasLost = _faceLostNote.value;
@@ -562,29 +610,15 @@ class _DriveScreenState extends State<DriveScreen> {
             ),
             const SizedBox(height: 10),
           ],
-          // 카메라 미리보기 — 내 얼굴이 화면 안에 잘 보이는지 기사가 확인할 수 있게
-          //   칸 크기는 남는 자리에 맞추고 (OnePageLayout), 세로로 긴 카메라 화면의 가운데(얼굴)만 잘라서 보여 준다
-          camera: LayoutBuilder(
-            builder: (context, box) {
-              final w = box.maxWidth;
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: (_controller != null && _controller!.value.isInitialized)
-                    ? FittedBox(
-                        fit: BoxFit.cover,
-                        clipBehavior: Clip.hardEdge,
-                        child: SizedBox(
-                          width: w,
-                          height: w * _controller!.value.aspectRatio, // 세로 화면이라 높이 = 너비 × 가로세로비
-                          child: CameraPreview(_controller!),
-                        ),
-                      )
-                    : Container(
-                        color: Colors.black26,
-                        child: Icon(Icons.videocam_off_outlined, color: fg, size: 40),
-                      ),
-              );
-            },
+          // 카메라 미리보기 — 칸 크기는 남는 자리에 맞추고 (OnePageLayout), 칸 안에서는 얼굴을 따라간다
+          camera: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: (_controller != null && _controller!.value.isInitialized)
+                ? FollowFacePreview(controller: _controller!, face: _faceBoxNote)
+                : Container(
+                    color: Colors.black26,
+                    child: Icon(Icons.videocam_off_outlined, color: fg, size: 40),
+                  ),
           ),
           below: [
             const SizedBox(height: 12),
