@@ -35,6 +35,7 @@
 //   - onFrameResult(eyeOpenProb, perclos, ear)  ← (선택) 0단계 화면 표시용, 모름이면 eyeOpenProb · ear = null
 //   - analyzeFile(String path) → 눈 뜸 확률
 //   - analyzeFileDetail(String path) → EyeReading(눈 뜸 확률 · 폰 EAR · 처리 ms) — 사진 비교 · KPI ① 측정용
+//   - lastFaceBox · lastImageSize — 카메라 칸 표시용 (11/05 C 요청, 판정에는 안 씀)
 //   - lastProcessMs · avgProcessMs · processedFps — 성능 시험용 (ML Kit 이 실제로 도는지 숫자로 확인)
 //   - calibrate(List<String> paths) → 개인 기준 (얼굴이 잡힌 사진이 3장 미만이면 StateError, 기준은 기본값으로)
 //   - currentPerclos (ping 에 실어 보낼 값) · close()
@@ -48,6 +49,7 @@
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
 import 'dart:math';
+import 'dart:ui' show Rect, Size;
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
@@ -117,6 +119,11 @@ class EyeMonitor {
   double? lastHeadX;  // 마지막 프레임 고개 위아래 각도 (얼굴 없음이면 그대로)
   double? headBase;   // 지금 평소 각도 (아직 못 냈으면 null)
   double? lastSmileProb; // 마지막 프레임 웃음 확률 (시험 기록용)
+
+  // 화면 표시용 (drive_screen · warning_screen 카메라 칸이 얼굴을 따라갈 때) — 판정에는 안 씀
+  //   ML Kit 이 준 좌표 그대로. 전면 카메라 회전 (센서 270°) · 좌우 반전은 쓰는 쪽에서 맞춘다
+  Rect? lastFaceBox;   // 마지막 프레임 얼굴 위치 (얼굴을 놓치면 null)
+  Size? lastImageSize; // 마지막 프레임 사진 크기 (회전 전 카메라 프레임 크기)
   bool get isHeadDown => _headDown;
 
   // 감긴 순간의 프레임 임시 보관
@@ -226,6 +233,7 @@ class EyeMonitor {
 
       final inputImage = CameraImageUtils.toInputImage(image, cam);
       if (inputImage == null) return;
+      lastImageSize = Size(image.width.toDouble(), image.height.toDouble());
 
       final watch = Stopwatch()..start();
       final faces = await _detector.processImage(inputImage);
@@ -235,6 +243,7 @@ class EyeMonitor {
       // 1. 얼굴 없음 또는 눈 확률 null -> "모름" 처리
       //    (고개 규칙) 바로 전 프레임에서 고개를 숙이고 있었으면 → 숙여서 얼굴을 놓친 것 → 숙임으로 계속 셈
       //    (눈 상태는 모르니 PERCLOS 에는 넣지 않음)
+      lastFaceBox = faces.isEmpty ? null : faces.first.boundingBox;
       if (faces.isEmpty) {
         _checkAfterCancel(now, false, null);
         if (AppConfig.headRuleOn && _headDown) {
