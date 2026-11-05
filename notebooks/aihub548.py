@@ -768,6 +768,105 @@ def final(csv_name, t):
         print(f"{what} | {k} | {n} | {tot - n} | {tot} | {k / n:.1%} | {lo:.1%} ~ {hi:.1%}")
 
 
+def _person_of_row(r):
+    """결과 CSV 한 줄 → 사람. eval CSV 는 person 칸, extra CSV 는 파일 이름에서 (71421 NIA22EYE_S1_149_… → 71421_149 · 173 통제 001_G1_… → 173_G1_001)"""
+    if r.get("person"):
+        return r["person"]
+    f = os.path.basename(r["file"])
+    m = re.search(r"NIA\d*EYE_S\d+_(\d+)_", f)
+    if m:
+        return f"71421_{m[1]}"
+    m = re.match(r"(\d+)_(G\d)_", f)
+    if m:
+        return f"173_{m[2]}_{m[1]}"
+    return re.split(r"[_.]", f)[0]
+
+
+def compare(base, cand, rule="n3", root=None, boot=2000, drop_people=()):
+    """최종 시험 (notebooks/new_test_rules.md 5번, 11/05 팀장) — 지금 서버 vs 최종 후보 1개, 같은 사진끼리
+    base · cand = "결과 CSV:t" (같은 사진을 두 모델로 돌린 CSV). 사람 단위로 묶어 복원 추출 boot 번 (시드 0) → 차이(후보 − 서버)의 95% 범위
+    rule n3 (548 처음 쓰는 사람): 반쯤 취소 2%p 넘게 낮고 그 차이의 95% 범위가 0 을 넘지 않음 + 감은 눈 취소 안 늘어남 + 오경보 증가 1%p 이하
+    rule n2 (71421): 감은 눈 취소 안 늘어남 + 오경보 증가 1%p 이하 (반쯤 라벨 없음) — 사람별 수치도 출력
+    rule ref (173 적외선): 숫자만 (참고)"""
+    sys.path.insert(0, API_DIR)
+    import config
+    ear_thr, ear_margin = config.EAR_THRESHOLD, config.CONFIRM_OPEN_MARGIN
+    open_margin = getattr(config, "CNN_OPEN_MARGIN", 0.1)
+    root = root or ROOT
+    (bn, bt), (cn, ct) = [(s.rsplit(":", 1)[0], float(s.rsplit(":", 1)[1])) for s in (base, cand)]
+    assert not any(os.path.basename(n).startswith(("result_val", "result_trainval")) for n in (bn, cn)), "151명 · 고르기용 115명 CSV 는 최종 시험이 아님"
+    read = lambda n: {r["file"]: r for r in csv.DictReader(open(os.path.join(root, n), encoding="utf-8-sig"))}
+    B, C = read(bn), read(cn)
+    assert set(B) == set(C), f"두 CSV 의 사진이 다름 ({len(B)} vs {len(C)}) — 같은 사진을 두 모델로 돌린 CSV 여야 함"
+    drop = set(drop_people)
+    # 사진마다 (사람, 라벨, 서버 판정됨?, 서버 '해당'?, 후보 판정됨?, 후보 '해당'?) — 해당 = 뜸: 취소 못 함 · 반쯤 · 감음: 취소함
+    per = collections.defaultdict(lambda: collections.defaultdict(lambda: [0, 0, 0, 0]))  # 사람 → 라벨 → [서버 해당, 서버 판정됨, 후보 해당, 후보 판정됨]
+    noface = collections.Counter()
+    for f, rb in B.items():
+        p, lab = _person_of_row(rb), rb["label"]
+        if p in drop:
+            continue
+        rc = C[f]
+        for k, (r, t) in enumerate(((rb, bt), (rc, ct))):
+            if str(r["face"]) != "True" or r["prob"] in ("", None):
+                noface[(k, lab)] += 1
+                continue
+            hit = _judge_at(r, t, ear_thr, ear_margin, open_margin)[1] == (lab != "open")
+            per[p][lab][2 * k] += hit
+            per[p][lab][2 * k + 1] += 1
+    people = sorted(per)
+    labs = [lab for lab in ("open", "closed", "half") if any(per[p][lab][1] for p in people)]
+    names = {"open": "뜬 눈 오경보 (취소 못 함)", "closed": "감은 눈 취소", "half": "반쯤 감은 사진 취소 (목표: 취소하지 않기)"}
+
+    def rate(ps, lab, k):
+        a = sum(per[p][lab][2 * k] for p in ps)
+        n = sum(per[p][lab][2 * k + 1] for p in ps)
+        return a / n if n else float("nan"), a, n
+
+    rng = random.Random(0)
+    boots = {lab: [] for lab in labs}
+    for _ in range(boot):
+        ps = [people[rng.randrange(len(people))] for _ in people]
+        for lab in labs:
+            boots[lab].append(rate(ps, lab, 1)[0] - rate(ps, lab, 0)[0])
+    print(f"== 최종 시험 ({rule}) — 서버 {os.path.basename(bn)} · t {bt:.2f} vs 후보 {os.path.basename(cn)} · t {ct:.2f} ==")
+    print(f"사람 {len(people)}명" + (f" (뺀 사람 {sorted(drop)})" if drop else "") + " · 기준값은 사진 1장 평가로 정한 값 (서버는 3장 다수결 예정)")
+    print("지표 | 서버 (해당/판정됨) | 후보 (해당/판정됨) | 차이 (후보 − 서버) | 사람 단위 95% 범위 | 판정 불가 서버 · 후보")
+    res = {}
+    for lab in labs:
+        rb_, ab, nb = rate(people, lab, 0)
+        rc_, ac, nc = rate(people, lab, 1)
+        s = sorted(x for x in boots[lab] if x == x)
+        lo, hi = s[int(0.025 * len(s))], s[int(0.975 * len(s)) - 1]
+        res[lab] = dict(base=rb_, cand=rc_, diff=rc_ - rb_, lo=lo, hi=hi, base_k=ab, cand_k=ac)
+        print(f"{names[lab]} | {rb_:.1%} ({ab}/{nb}) | {rc_:.1%} ({ac}/{nc}) | {100 * (rc_ - rb_):+.1f}%p | {100 * lo:+.1f} ~ {100 * hi:+.1f}%p"
+              f" | {noface[(0, lab)]} · {noface[(1, lab)]}")
+    if rule == "n2":
+        print("\n사람별 (뜬 눈 오경보 · 감은 눈 취소, 서버 → 후보)")
+        for p in people:
+            cells = []
+            for lab in ("open", "closed"):
+                b, nb_, c, nc_ = per[p][lab]
+                cells.append(f"{names[lab].split(' (')[0]} {b}/{nb_} → {c}/{nc_}")
+            print(f"  {p}: " + " · ".join(cells))
+    checks = []
+    if rule in ("n2", "n3"):
+        if "closed" in res:
+            checks.append(("감은 눈 취소 안 늘어남", res["closed"]["cand_k"] <= res["closed"]["base_k"] if res["closed"]["base"] == res["closed"]["base"] else True))
+        if "open" in res:
+            checks.append(("오경보 증가 1%p 이하", res["open"]["diff"] <= 0.01 + 1e-12))
+    if rule == "n3":
+        h = res.get("half")
+        checks.append(("반쯤 취소 2%p 넘게 낮음", h is not None and h["diff"] < -0.02))
+        checks.append(("반쯤 차이 95% 범위가 0 을 넘지 않음", h is not None and h["hi"] < 0))
+    if checks:
+        print("\n조건: " + " · ".join(f"{n} {'O' if ok else 'X'}" for n, ok in checks))
+        print("→", "이 시험지 조건 통과" if all(ok for _, ok in checks) else "이 시험지 조건 못 넘음 → eye_cnn_548 + 0.4 유지 (규칙 5번)")
+    else:
+        print("\n(173 적외선 — 참고용, 채택 판단에 안 씀)")
+    return res
+
+
 COND_NAME = {"": None, "turn": "고개 돌림", "down": "고개 숙임", "mask": "마스크", "sun": "선글라스"}
 
 
@@ -1053,7 +1152,7 @@ def to_wandb():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("step", choices=["download", "eval", "wandb", "crop", "team", "wrong", "extra", "curve", "cond", "pick", "final", "safety"])
+    ap.add_argument("step", choices=["download", "eval", "wandb", "crop", "team", "wrong", "extra", "curve", "cond", "pick", "final", "safety", "compare"])
     ap.add_argument("--dir", default=r"D:\aihub71421\sel", help="extra: 외부 사진 폴더 (하위 폴더 이름에 closed / open)")
     ap.add_argument("--pad", type=float, default=0.0, help="extra: 얼굴이 꽉 찬 사진이면 사방을 이 비율만큼 늘림 (CEW 0.4, 얼굴 전체 사진은 0)")
     ap.add_argument("--root", default=ROOT, help="받기 · 결과 폴더 (저장소 밖)")
@@ -1070,6 +1169,10 @@ if __name__ == "__main__":
     ap.add_argument("--fa", type=float, default=0.03, help="pick: 뜬 눈 오경보 목표 (이하가 되는 가장 낮은 t)")
     ap.add_argument("--margin", type=float, default=0.02, help="pick: 기준보다 반쯤 취소가 이만큼 넘게 낮을 때만 보정 채택 (팀 확정 2%p)")
     ap.add_argument("--exp", type=int, default=12, choices=[12, 13], help="pick: 12 = vscale (eye_cnn12_*) · 13 = 13번 설정 + 12번 기준 k100_100")
+    ap.add_argument("--base", default="", help="compare: 지금 서버 결과 CSV:t (예: extra_sel_tr_eye_cnn_548.csv:0.4)")
+    ap.add_argument("--cand", default="", help="compare: 최종 후보 결과 CSV:t (같은 사진)")
+    ap.add_argument("--rule", default="n3", choices=["n3", "n2", "ref"], help="compare: n3 = 548 처음 쓰는 사람 · n2 = 71421 · ref = 173 (참고)")
+    ap.add_argument("--drop", nargs="*", default=[], help="compare: 뺄 사람 (예: G1_324 — TS_G1_1 에도 있음)")
     ap.add_argument("--tmin", type=float, default=None, help="pick: t 하한 (기본 12번 0.11 · 13번 0.20 — 13-0 규칙 1, 11/05 팀장)")
     ap.add_argument("--model", default="", help="eval · team: 다른 CNN 파일 (예: eye_cnn_548.pt, ml_models/ 안). 쉼표로 여러 개면 앙상블 (감음 확률 평균)")
     a = ap.parse_args()
@@ -1078,6 +1181,7 @@ if __name__ == "__main__":
      "team": lambda: [team(m, a.tta) for m in (a.models or [a.model])], "curve": lambda: curve(a.csvs.split(",")),
      "pick": lambda: pick(a.csvs.split(",") if a.csvs != ap.get_default("csvs") else [], a.fa, a.margin, exp=a.exp, t_min=a.tmin),
      "final": lambda: final(a.csv, a.t),
+     "compare": lambda: compare(a.base, a.cand, a.rule, a.root, drop_people=a.drop),
      "safety": lambda: safety(a.csvs.split(",")),
      "cond": lambda: cond_table(a.csvs.split(",") if a.csvs != ap.get_default("csvs") else ["team_eye_cnn_aihub.csv", "team_eye_cnn_548.csv"]),
      "extra": lambda: [extra(a.dir, m, a.tta, a.pad, a.scale) for m in (a.models or [a.model])]}[a.step]()
