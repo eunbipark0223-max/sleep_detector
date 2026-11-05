@@ -666,7 +666,7 @@ def _dist(cfg):
     return round((1 - lo) + (1 - hi), 2)
 
 
-def pick(csv_names, fa=0.03, margin=0.02, base="k100_100", exp=12):
+def pick(csv_names, fa=0.03, margin=0.02, base="k100_100", exp=12, t_min=None):
     """12번 실험 — 548 학습용 val 115명 (eval --set trainval) 으로 **고르기** — 팀 확정 규칙 (11/04, 노트북 12번 맨 앞)
     2. 후보 = 오경보 ≤ fa 인 t 가 있고 (0.11 ~ 0.95, 0.01 간격, 가장 낮은 t), 그 t 에서 감은 눈 취소 0건
     3. 후보 중 반쯤 취소율 가장 낮은 설정, 기준보다 margin 넘게 낮을 때만 보정 채택   4. 아니면 새 기준 모델 + 그 t
@@ -676,6 +676,9 @@ def pick(csv_names, fa=0.03, margin=0.02, base="k100_100", exp=12):
     8. 서버에 넣는 건 시드 0 모델 + 그 t   9. 동점이면 기준에 가까운 설정
     ⚠️ 151명(Validation) CSV 는 넣지 않음 — 여기서 고른 t 로 final 에서 한 번만 잼"""
     adopt = "13번 설정" if exp == 13 else "vscale 보정"
+    if t_min is None:  # 13-0 규칙 1 (11/05 팀장 수정): 13번은 t 0.20 부터 — 12번은 그때 규칙 그대로 0.11 (재현용)
+        t_min = 0.20 if exp == 13 else 0.11
+    grid = [t for t in T_GRID if t >= t_min - 1e-9]
     if not csv_names and exp == 13:  # 13번: 13번 모델 + 12번 기준 (k100_100 시드 0 · 1) — 13-0 규칙
         csv_names = sorted(os.path.basename(f) for f in glob.glob(os.path.join(ROOT, "result_trainval_eye_cnn13_*.csv")))
         csv_names += sorted(os.path.basename(f) for f in glob.glob(os.path.join(ROOT, f"result_trainval_eye_cnn12_{base}_s*.csv")))
@@ -689,12 +692,12 @@ def pick(csv_names, fa=0.03, margin=0.02, base="k100_100", exp=12):
     for name in csv_names:
         rows = list(csv.DictReader(open(os.path.join(ROOT, name), encoding="utf-8-sig")))
         cfg, seed = _cfg_of(name)
-        hit = next(((t, r) for t in T_GRID for r in [_rates_at(rows, t)] if r["open"][0] / r["open"][1] <= fa), None)
-        t, r = hit if hit else (None, _rates_at(rows, T_GRID[-1]))
+        hit = next(((t, r) for t in grid for r in [_rates_at(rows, t)] if r["open"][0] / r["open"][1] <= fa), None)
+        t, r = hit if hit else (None, _rates_at(rows, grid[-1]))
         runs[cfg][seed] = dict(t=t, fa=r["open"], closed=r["closed"], half=r["half"], file=name,
                                ok=t is not None and r["closed"][0] == 0)
     f = lambda v: f"{v[0] / v[1]:.1%} ({v[0]}/{v[1]}, 판정 불가 {v[2] - v[1]})"
-    print(f"== 모델마다: 뜬 눈 오경보 ≤ {fa:.0%} 가 되는 가장 낮은 t (548 학습용 val 115명, 분모 = 얼굴 찾은 사진) ==")
+    print(f"== 모델마다: 뜬 눈 오경보 ≤ {fa:.0%} 가 되는 가장 낮은 t ({grid[0]:.2f} ~ {grid[-1]:.2f}, 548 학습용 val 115명, 분모 = 얼굴 찾은 사진) ==")
     print("설정 | 시드 | t | 오경보 | 감은 눈 취소 | 반쯤 감은 눈 취소 | 후보")
     for cfg in sorted(runs, key=_dist):
         for seed, x in sorted(runs[cfg].items()):
@@ -1067,12 +1070,13 @@ if __name__ == "__main__":
     ap.add_argument("--fa", type=float, default=0.03, help="pick: 뜬 눈 오경보 목표 (이하가 되는 가장 낮은 t)")
     ap.add_argument("--margin", type=float, default=0.02, help="pick: 기준보다 반쯤 취소가 이만큼 넘게 낮을 때만 보정 채택 (팀 확정 2%p)")
     ap.add_argument("--exp", type=int, default=12, choices=[12, 13], help="pick: 12 = vscale (eye_cnn12_*) · 13 = 13번 설정 + 12번 기준 k100_100")
+    ap.add_argument("--tmin", type=float, default=None, help="pick: t 하한 (기본 12번 0.11 · 13번 0.20 — 13-0 규칙 1, 11/05 팀장)")
     ap.add_argument("--model", default="", help="eval · team: 다른 CNN 파일 (예: eye_cnn_548.pt, ml_models/ 안). 쉼표로 여러 개면 앙상블 (감음 확률 평균)")
     a = ap.parse_args()
     ROOT = a.root
     {"download": lambda: download(a.keys), "eval": lambda: evaluate(a.set, a.model, a.tta, a.scale, a.models), "wrong": lambda: wrong(a.csv), "wandb": to_wandb, "crop": lambda: crop(a.limit, a.color),
      "team": lambda: [team(m, a.tta) for m in (a.models or [a.model])], "curve": lambda: curve(a.csvs.split(",")),
-     "pick": lambda: pick(a.csvs.split(",") if a.csvs != ap.get_default("csvs") else [], a.fa, a.margin, exp=a.exp),
+     "pick": lambda: pick(a.csvs.split(",") if a.csvs != ap.get_default("csvs") else [], a.fa, a.margin, exp=a.exp, t_min=a.tmin),
      "final": lambda: final(a.csv, a.t),
      "safety": lambda: safety(a.csvs.split(",")),
      "cond": lambda: cond_table(a.csvs.split(",") if a.csvs != ap.get_default("csvs") else ["team_eye_cnn_aihub.csv", "team_eye_cnn_548.csv"]),
