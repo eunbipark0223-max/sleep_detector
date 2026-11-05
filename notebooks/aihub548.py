@@ -208,8 +208,11 @@ EVAL_SETS = {
     "train": ("TL.zip", None, ["TS_G1_1.[zZ]ip"], True, "result_train.csv"),  # 학습용 묶음 — 지금 모델은 548 을 안 봤으니 시험지로도 됨 (Validation 사람 뺌)
     # 학습용 묶음 3개 중 crop 의 val 사람 (people_split.json 'val', 115명) — 12번 실험의 '고르기' 시험지 (기준값 t · 설정 고르기)
     "trainval": ("TL.zip", None, ["TS_G1_1.[zZ]ip", "TS_G2_1.[zZ]ip", "TS_U_1.[zZ]ip"], True, "result_trainval.csv"),
+    # 최종 시험 N3 (11/05, new_test_rules.md 5번) — TS_G1_2 (7z → RGB · meta 만 zip 으로) 의 처음 쓰는 G1 255명, 한 번만
+    "n3": ("TL.zip", "G1", ["TS_G1_2.zip"], True, "result_n3.csv"),
 }
 ONLY_SPLIT = {"trainval": "val"}  # 이 묶음은 people_split.json 에서 이 split 인 사람만
+ONLY_FILE = {"n3": "n3_people.json"}  # 최종 시험 N3 (new_test_rules.md): TS_G1_2 사람 중 학습 · 고르기 · Validation · TS_G1_1 어디에도 없는 255명
 
 
 def make_net(arch):
@@ -343,6 +346,10 @@ def evaluate(which="val_g1", model="", tta=False, scale=1.0, models=()):
     if which in ONLY_SPLIT:
         split = json.load(open(os.path.join(ROOT, "people_split.json"), encoding="utf-8"))
         only = {p for p, sp in split.items() if sp == ONLY_SPLIT[which]}
+    if which in ONLY_FILE:  # 최종 시험지: 사람 목록 파일에 있는 사람만 (겹침 0 을 미리 세어 둔 목록)
+        only = set(json.load(open(os.path.join(ROOT, ONLY_FILE[which]), encoding="utf-8"))["people"])
+        assert not only & set(json.load(open(os.path.join(ROOT, "people_split.json"), encoding="utf-8"))), "학습 · 고르기 사람이 섞임"
+        assert not only & drop, "Validation 사람이 섞임"
     zips, items, meta = {}, {}, {}  # 사진 이름 → (zip, 안 이름) / (zip, 번호) → 사람 정보
     for pattern in img_zips:
         zp = find(pattern)
