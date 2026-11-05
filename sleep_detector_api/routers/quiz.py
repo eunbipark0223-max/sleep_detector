@@ -38,7 +38,13 @@ from services import sleep_state, voice_quiz_service
 
 router = APIRouter(tags=["운전 중 음성 퀴즈"])
 
-MSG_PASS = "잘하셨습니다. 쉼터까지 조심히 가세요."
+# 통과 음성은 지금 단계의 안내와 같은 방향으로 (1단계는 쉼터로 안 가도 됨, 3단계는 정차 안내 뒤에 '운행하세요' 가 나오면 안 됨)
+MSG_PASS = {
+    1: "잘하셨습니다. 안전 운행하세요.",
+    2: "잘하셨습니다. 쉼터까지 조심히 가세요.",
+    3: "잘하셨습니다. 안전한 곳에 정차해 주세요.",
+}
+MSG_PASS_DEFAULT = MSG_PASS[1]  # 퀴즈 중에 해제되어 0단계인 경우
 MSG_RETRY = "한 번 더 물어볼게요."
 MSG_NO_RESPONSE = "응답이 없어 관리자에게 알렸습니다. 안전한 곳에 정차해 주세요."
 
@@ -79,7 +85,7 @@ def quiz_answer_handler(
     })
 
     stage = int(sleep_state.get_stage(user.id))
-    next_quiz, stage_up, message = None, False, MSG_PASS
+    next_quiz, stage_up, message = None, False, MSG_PASS.get(stage, MSG_PASS_DEFAULT)
 
     if not passed and attempt < config.VOICE_QUIZ_MAX_TRIES:     # 1번 실패 → 같은 유형 새 문제
         next_quiz = voice_quiz_service.make_quiz(user.id, qtype=quiz.get("type"), event_id=event_id)

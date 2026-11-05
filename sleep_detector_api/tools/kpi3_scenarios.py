@@ -344,6 +344,29 @@ SCENARIOS = [
     ("⑪ 운전 중 퀴즈 통과 → 단계 그대로",          "통과 · 1단계", s11),
     ("⑫ 운전 중 퀴즈 2번 실패 → 단계 +1",          "2단계 · no_response 1건", s12),
 ]
+def bonus_quiz_message():
+    """통과 음성은 단계마다 다르게 (1단계에 '쉼터' · 3단계에 '운행' 이 나오면 안 됨)"""
+    got = []
+    for st in (1, 2, 3):
+        h, uid = new_driver()
+        q = doze(h)["voice_quiz"]
+        sleep_state.set_stage(uid, st)
+        r = client.post("/quiz/answer", json={"quiz_id": q["quiz_id"], "answer_text": answer_of(q), "answer_sec": 2.0},
+                        headers=h).json()
+        got.append(r["message"].split(". ", 1)[1])
+    return " / ".join(got)
+
+
+def bonus_detect_timing():
+    """[detect] 단계별 시간: 확정은 단계별 줄, 취소는 눈판정 시간"""
+    h, _ = new_driver()
+    out = io.StringIO()
+    with redirect_stdout(out):
+        doze(h)
+    text = out.getvalue()
+    return " · ".join(k for k in ("눈판정", "LLM", "RAG", "Agent", "합계") if "걸린 시간" in text and k in text)
+
+
 BONUS = [("(보너스) 3단계는 휴식으로 안 풀림 → 3단계", 3, bonus),
          ("(보너스) 사진 없는 졸음 → 앱 판단대로 확정", "확정 · mlkit · 1단계 · 사진 없음 · 사진 테스트 400", bonus_no_photo),
          ("(보너스) 1 · 2 · 3단계에서 운행 다시 시작", "0 · 2 · 3", bonus_restart),
@@ -351,7 +374,9 @@ BONUS = [("(보너스) 3단계는 휴식으로 안 풀림 → 3단계", 3, bonus
          ("(보너스) 재시작 복원: 3단계 · 2단계 · 휴식 뒤", "3 · 2 · 0", bonus_restore),
          ("(보너스) 운행 종료 뒤 연속 운전 시간 유지", "배너 False · 100분", bonus_drive_end),
          ("(보너스) 서버 판정 오류 → 앱 판단대로 확정", "확정", bonus_error),
-         ("(보너스) AI 처리 중 조치완료 → 단계 안 오름", "단계 0 · ping 0 · 퀴즈 False · 조치완료", bonus_reset_race)]
+         ("(보너스) AI 처리 중 조치완료 → 단계 안 오름", "단계 0 · ping 0 · 퀴즈 False · 조치완료", bonus_reset_race),
+         ("(보너스) 퀴즈 통과 음성: 1 · 2 · 3단계", "안전 운행하세요. / 쉼터까지 조심히 가세요. / 안전한 곳에 정차해 주세요.", bonus_quiz_message),
+         ("(보너스) [detect] 단계별 시간 기록", "눈판정 · LLM · RAG · Agent · 합계", bonus_detect_timing)]
 
 
 def run(items):

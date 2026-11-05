@@ -328,6 +328,7 @@ async def detect_handler(
                 "stage": stage, "status": _label(stage), "summary": "휴식 중", "guidance": "", "driver_voice": "",
                 "sleep_count_10min": int(sleep_state.facts(user.id)["sleep_count_10min"]),
                 "voice_quiz": None, "regulations": [], "event_id": None}
+    t_start = time.perf_counter()   # 단계별 걸린 시간 (응답이 느릴 때 어디서 걸렸는지 터미널로 보기, 11/05)
     tmp_path = await _save_upload(file, config.UPLOAD_TMP_DIR, f"u{user.id}") if file is not None else None
     closed, pc, open_prob = _num(closed_sec), _num(perclos), _num(eye_open_prob)
     lat, lng = _num(latitude), _num(longitude)
@@ -339,6 +340,7 @@ async def detect_handler(
                "ear_threshold": None, "is_sleep": True}
     else:
         eye = await run_in_threadpool(face_service.check_eyes, tmp_path, user.id, reason or None)
+    t_eye = time.perf_counter()
     base = {
         "success": True, "face_found": bool(eye.get("face_found")), "ear": _r(eye.get("ear")),
         "eye_closed_prob": _r(eye.get("eye_closed_prob")), "eye_open_prob": _r(open_prob),
@@ -350,7 +352,7 @@ async def detect_handler(
     print(f"[detect] {datetime.now():%H:%M:%S} u{user.id} {reason or '사진테스트'} closed={closed} perclos={pc} "
           f"app_open={open_prob} photo={'Y' if tmp_path else 'N'} → face={base['face_found']} ear={base['ear']}"
           f"(기준 {base['ear_threshold']}) cnn={base['eye_closed_prob']} method={base['method']} "
-          f"{'확정' if eye.get('is_sleep') else '취소'} 단계 {sleep_state.get_stage(user.id)}")
+          f"{'확정' if eye.get('is_sleep') else '취소'} 단계 {sleep_state.get_stage(user.id)} 눈판정 {t_eye - t_start:.1f}초")
     if not eye.get("is_sleep"):             # 취소 → AI 를 부르지 않고 바로 응답, 사진은 지움 (개인정보)
         _remove(tmp_path)
         stage = int(sleep_state.get_stage(user.id))
@@ -370,11 +372,15 @@ async def detect_handler(
                 "ear": eye.get("ear"), "method": base["method"], "sleep_count_10min": facts["sleep_count_10min"]}
 
     # ④ LLM 요약  ⑤ RAG 규정  ⑥ Agent (모두 실패하면 가짜로 — 각 서비스가 is_real 로 알려 줌)
+    t_ai = time.perf_counter()
     analysis = await run_in_threadpool(llm_service.interpret_situation, tmp_path, eye_info)
+    t_llm = time.perf_counter()
     regulations = await run_in_threadpool(rag_service.search_regulations, analysis.get("summary", ""))
+    t_rag = time.perf_counter()
     location = f"{lat:.5f}, {lng:.5f}" if lat is not None and lng is not None else ""
     agent = await run_in_threadpool(agent_service.generate_response, eye_info, analysis, regulations, facts,
                                     rule_stage, location, user.id)
+    t_agent = time.perf_counter()
     # AI 처리 중에 관리자가 [조치완료] 했으면 단계를 다시 올리지 않는다 — 경고 기록은 '조치완료' 로 남김 (11/05)
     released = sleep_state.reset_count(user.id) != reset_mark
     if released:
@@ -422,6 +428,10 @@ async def detect_handler(
                 _last_quiz_at[user.id] = now
         if due:
             voice_quiz = voice_quiz_service.make_quiz(user.id, event_id=event.id)
+
+    t_end = time.perf_counter()
+    print(f"[detect]   → 걸린 시간: 눈판정 {t_eye - t_start:.1f}초 · LLM {t_llm - t_ai:.1f}초 · RAG {t_rag - t_llm:.1f}초 · "
+          f"Agent {t_agent - t_rag:.1f}초 · 저장 · 퀴즈 {t_end - t_agent:.1f}초 · 합계 {t_end - t_start:.1f}초")
 
     return {
         **base, "is_sleep": True, "reason": reason, "stage": stage, "status": _label(stage),
