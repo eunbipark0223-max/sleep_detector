@@ -308,7 +308,7 @@ class _DriveScreenState extends State<DriveScreen> {
     );
     final controller = CameraController(
       front,
-      ResolutionPreset.medium,
+      ResolutionPreset.max, // 넓게 찍어야 카메라 칸에 얼굴이 잘리지 않음 (폰 측정: 1440x1080, 약 7프레임/초)
       enableAudio: false,
       imageFormatGroup: ImageFormatGroup.nv21, // ⭐ 꼭 (A님 camera_image_utils 약속)
     );
