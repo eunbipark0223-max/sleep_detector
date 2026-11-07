@@ -373,7 +373,7 @@ def evaluate(which="val_g1", model="", tta=False, scale=1.0, models=()):
     for k in sorted(groups):
         pick += rng.sample(groups[k], min(OPEN_PER, len(groups[k])))
     print(f"[{which}] 라벨 {len(label)} / RGB {len(items)} / 뺀 Validation 사람 {len(drop)}"
-          + (f" / {ONLY_SPLIT[which]} 사람만 {len({person_of(f) for f in pick})}명" if only is not None else "")
+          + (f" / {ONLY_SPLIT.get(which, ONLY_FILE.get(which))} 사람만 {len({person_of(f) for f in pick})}명" if only is not None else "")
           + f" / 고른 사진 {len(pick)}", dict(collections.Counter(label[f] for f in pick)), flush=True)
 
     rows, tmp = [[] for _ in runs], os.path.join(tempfile.gettempdir(), "aihub548_eval.png")  # 사진은 한 장씩 임시 파일에만 (저장소 · 드라이브에 안 남김)
