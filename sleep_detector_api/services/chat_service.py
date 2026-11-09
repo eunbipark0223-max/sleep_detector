@@ -104,8 +104,23 @@ def _check(text, question, sources):
     return s
 
 
+FOLLOW_UP_MAX_CHARS = 8   # 공백 · 문장부호 빼고 이 글자 수 이하면 이어지는 질문으로 봄 ('버스는요' 4 · '그럼택시는' 5)
+FOLLOW_UP_STARTS = ("그럼", "그러면", "그건", "그거", "그것", "그리고", "그때", "그 경우", "거기", "이때", "이 경우")
+
+
+def _is_follow_up(message):
+    """'버스는요?' · '그럼 택시는?' 처럼 앞 질문 없이는 뜻이 안 되는 질문인지.
+    11/09: 모든 질문에 직전 질문을 붙였더니 '졸음운전으로 사고 나면 처벌은?' 이 앞의 '화물차 휴게' 질문에 끌려가
+    휴게 조문만 찾고 '확인되지 않습니다' 로 답함 → 짧거나 '그럼 · 그건' 으로 시작할 때만 붙임"""
+    text = str(message or "").strip()
+    return len(re.sub(r"[^0-9A-Za-z가-힣]", "", text)) <= FOLLOW_UP_MAX_CHARS or text.startswith(FOLLOW_UP_STARTS)
+
+
 def _search_query(message, history):
-    """'버스는요?' 같은 이어지는 질문은 그것만으로 검색이 안 됨 → 직전 사용자 질문을 붙여서 검색."""
+    """'버스는요?' 같은 이어지는 질문은 그것만으로 검색이 안 됨 → 직전 사용자 질문을 붙여서 검색.
+    혼자서도 뜻이 되는 질문은 그대로 검색 (_is_follow_up)."""
+    if not _is_follow_up(message):
+        return message
     last = next((str(h.get("text") or "").strip() for h in reversed(history or []) if h.get("role") == "user"), "")
     return f"{last} {message}" if last else message
 

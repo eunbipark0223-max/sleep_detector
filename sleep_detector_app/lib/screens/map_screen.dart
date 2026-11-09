@@ -356,6 +356,11 @@ else kakao.maps.load(function () {
     markers.push(m); infos.push(info); bounds.extend(pos);
   });
   map.setBounds(bounds);
+  // WebView 크기가 정해지기 전에 범위를 맞추면 지도가 크게 축소됨 (11/09 에뮬레이터에서 일본까지 보임) → 크기가 정해진 뒤 다시 맞춤
+  function fit() { map.relayout(); map.setBounds(bounds); }
+  setTimeout(fit, 300);
+  setTimeout(fit, 1200);
+  window.addEventListener('resize', fit);
   window.focusArea = function (i) {
     infos.forEach(function (w) { w.close(); });
     map.panTo(markers[i].getPosition());
