@@ -112,7 +112,8 @@ class OnePageLayout extends StatelessWidget {
   final Widget? banner; // 카메라 칸 위에 겹쳐 띄움
   final List<Widget> above; // 카메라 위 내용
   final Widget camera;
-  final List<Widget> below; // 카메라 아래 내용
+  final List<Widget> below; // 카메라 아래 내용 (자리가 모자라면 같이 줄어듦)
+  final List<Widget> fixedBottom; // 맨 아래 버튼 — 줄어들지 않고 원래 크기 그대로 (11/09 팀장)
   final double aboveMax; // 위 내용이 쓸 수 있는 높이 비율
   final double belowMax; // 아래 내용이 쓸 수 있는 높이 비율
 
@@ -122,6 +123,7 @@ class OnePageLayout extends StatelessWidget {
     this.above = const [],
     required this.camera,
     required this.below,
+    this.fixedBottom = const [],
     this.aboveMax = 0.25,
     this.belowMax = 0.55,
   });
@@ -144,6 +146,7 @@ class OnePageLayout extends StatelessWidget {
               ),
             ),
             _fit(below, box.maxWidth, box.maxHeight * belowMax),
+            ...fixedBottom, // 버튼은 줄이지 않는다 (누르기 쉬운 크기 유지) — 대신 카메라 칸이 그만큼 작아짐
           ],
         ),
       ),
@@ -198,6 +201,7 @@ class CameraBanner extends StatelessWidget {
   }
 }
 
+/// (11/09 팀장 지시로 지금은 화면에 쓰지 않음 — 시험 때 다시 켜 볼 수 있게 남겨 둠)
 /// 흰 글자 "서버 확인: 취소" — 서버가 실제로 취소했을 때만 뜬다. 얼굴을 놓쳤다가 다시 잡히면 1초 뒤, 얼굴이 계속 보이면 5초 뒤 사라진다
 ///   운행 · 경고 화면 맨 아래에 고정 (Scaffold.bottomNavigationBar) — 내용이 길어도 스크롤 없이 보이게, 자리는 비워 둔다
 class ServerCancelText extends StatelessWidget {
@@ -524,7 +528,7 @@ class _WarningScreenState extends State<WarningScreen> {
       canPop: !_locked,
       child: Scaffold(
         backgroundColor: bg,
-        bottomNavigationBar: widget.serverCancelled == null ? null : ServerCancelText(cancelled: widget.serverCancelled!),
+        // "서버 확인: 취소" 글은 기사님 화면에 보여 주지 않는다 (서버 판단 설명, 11/09 팀장)
         appBar: AppBar(
           backgroundColor: bg,
           foregroundColor: fg,
@@ -539,9 +543,12 @@ class _WarningScreenState extends State<WarningScreen> {
             below: [
               const SizedBox(height: 12),
               // 큰 글씨 한 줄
+              // 글은 줄 수를 정해 둔다 (maxLines) — AI 문장이 길어도 화면이 넘치거나 글자가 너무 작아지지 않게
               Text(
                 _headline,
                 textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: fg, height: 1.25),
               ),
               const SizedBox(height: 10),
@@ -549,10 +556,15 @@ class _WarningScreenState extends State<WarningScreen> {
               if (stageChanged && _restMessage.isNotEmpty)
                 Text(_restMessage,
                     textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: fg))
               else if (!stageChanged && r.summary.isNotEmpty)
                 Text(r.summary,
-                    textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: fg)),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 15, color: fg)),
               const SizedBox(height: 12),
               // 안내
               if (!stageChanged && r.guidance.isNotEmpty)
@@ -563,6 +575,8 @@ class _WarningScreenState extends State<WarningScreen> {
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Text(r.guidance,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 15, color: AppColors.textPrimary, height: 1.4)),
                 ),
               const SizedBox(height: 8),
@@ -582,12 +596,17 @@ class _WarningScreenState extends State<WarningScreen> {
                               fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70)),
                       const SizedBox(height: 4),
                       Text(r.driverVoice,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 14, color: Colors.white, height: 1.35)),
                     ],
                   ),
                 ),
-              const SizedBox(height: 14),
-              // 버튼들
+              const SizedBox(height: 4),
+            ],
+            // 버튼들 — 맨 아래 고정, 줄어들지 않음
+            fixedBottom: [
+              const SizedBox(height: 10),
               OutlinedButton.icon(
                 onPressed: _voiceDone ? _showRegulations : null, // 알람 · 음성 · 퀴즈가 끝난 뒤에 누를 수 있음
                 style: OutlinedButton.styleFrom(

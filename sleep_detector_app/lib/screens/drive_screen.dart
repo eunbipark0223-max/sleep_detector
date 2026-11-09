@@ -11,7 +11,8 @@
 //   -   → 서버 답을 못 받으면 알람 (연결 실패는 바로, 답이 없으면 10초 뒤, 단계는 안 올림, 401 제외)
 //   - 30초마다 sendPing → stage 로 화면 색 (1단계 자동 해제 · 조치완료 반영), restDue 면 휴게 배너 + 🔊 1번
 //   - onCheckCamera → '카메라를 확인하세요' 배너 (얼굴이 다시 잡힐 때까지) + 🔊 10초마다
-//   - 화면 꺼짐 방지 (wakelock_plus), 0단계 화면에 눈 뜸 확률 · 내 기준 표시
+//   - 화면 꺼짐 방지 (wakelock_plus)
+//   - 기사님 화면에는 숫자(눈 기준 · 눈 뜸 확률 · 감은 비율) · 서버 판단 글을 보여 주지 않음 (11/09 팀장 — 관리자 웹에서 확인)
 //   - 나갈 때 스트림 정지 · eye_monitor.close()
 //
 // [주의]
@@ -68,8 +69,6 @@ class _DriveScreenState extends State<DriveScreen> {
   final ValueNotifier<bool> _pauseDetect = ValueNotifier<bool>(false);
   // 지금 카메라 — 경고 화면도 같은 카메라 화면(내 얼굴)을 보여 줄 수 있게 (카메라를 다시 켜면 바뀜)
   final ValueNotifier<CameraController?> _cameraNote = ValueNotifier<CameraController?>(null);
-  double? _eyeOpenProb; // 지금 눈 뜸 확률 (모르면 null)
-  double _perclos = 0; // 최근 30초 눈 감은 비율
   String _notice = ''; // 화면에 보여 줄 안내 글
   // 마지막 경고의 규정 — 앱을 껐다 켜서 이어진 경고에도 보여 주려고 폰에 저장 (서버 /drive/state 에는 규정이 없음)
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
@@ -196,7 +195,6 @@ class _DriveScreenState extends State<DriveScreen> {
   // 단계를 바꾸고 경고 화면에도 알린다
   void _setStage(int stage) {
     setState(() {
-      if (stage < _stage && _notice.startsWith('졸음 확정')) _notice = ''; // 단계가 내려가면 지난 경고 글자를 지운다
       _stage = stage;
     });
     _liveStage.value = stage;
@@ -291,7 +289,7 @@ class _DriveScreenState extends State<DriveScreen> {
         return; // 켜졌으면 끝
       } catch (e) {
         if (attempt == 3) {
-          if (mounted) setState(() => _notice = '카메라를 켤 수 없어요: $e');
+          if (mounted) setState(() => _notice = '카메라를 켤 수 없어요. 앱을 다시 켜 주세요.');
           return;
         }
         await Future.delayed(const Duration(seconds: 1));
@@ -308,7 +306,7 @@ class _DriveScreenState extends State<DriveScreen> {
     );
     final controller = CameraController(
       front,
-      ResolutionPreset.max, // 넓게 찍어야 카메라 칸에 얼굴이 잘리지 않음 (폰 측정: 1440x1080, 약 7프레임/초)
+      ResolutionPreset.medium, // 11/09 팀장: max → medium 으로 되돌림 (max 는 1440x1080 · 약 7프레임/초로 무거움)
       enableAudio: false,
       imageFormatGroup: ImageFormatGroup.nv21, // ⭐ 꼭 (A님 camera_image_utils 약속)
     );
@@ -363,7 +361,9 @@ class _DriveScreenState extends State<DriveScreen> {
       double eyeOpenProb, Uint8List? frame) async {
     if (!mounted || _sending || _pauseDetect.value) return;
     _sending = true;
-    setState(() => _notice = '서버 확인 중…');
+    // 보내기 전 단계 — 서버 답을 기다리는 몇 초 사이에 ping 이 새 단계를 먼저 받아 와 _stage 가 바뀌면,
+    //   "단계 그대로"로 잘못 보고 알람 · 경고를 건너뛸 수 있어서 보내기 전 값과 비교한다 (11/09 팀장)
+    final stageBefore = _stage;
     // 서버 답을 못 받아도 기사를 깨운다 — 연결 실패는 바로, 답이 늦으면 10초 뒤 (응답은 계속 기다림).
     //   서버가 졸음을 확인한 것이 아니라 단계는 올리지 않고, 의심 1건에 한 번만 울린다 (11/04 팀장)
     var alarmed = false;
@@ -389,12 +389,11 @@ class _DriveScreenState extends State<DriveScreen> {
       // 서버가 취소하면 눈 감시 도구에 알린다 (고개 숙인 채 계속 자면 사진 없이 한 번 더 보내게, A)
       if (!res.isSleep) _eye.serverCancelled();
       _saveRegs(res.regulations);
-      _notice = res.isSleep ? '졸음 확정 (${res.stage}단계)' : '';
       _cancelClear?.cancel();
       _cancelledAt = res.isSleep ? null : DateTime.now();
       _cancelNote.value = !res.isSleep; // "서버 확인: 취소" — 얼굴이 다시 잡히면 지운다 (_onFrameResult)
       // 경고 화면이 떠 있고 단계가 그대로면 알람 · 음성을 다시 내지 않는다 (단계가 올라갈 때만, 기획안 6-6)
-      final sameStage = _warningRoute != null && res.stage == _stage;
+      final sameStage = _warningRoute != null && res.stage == stageBefore;
       _setStage(res.stage);
       // 경고 화면이 떠 있는 동안에도 다음 졸음을 받을 수 있게 여기서 '보내는 중'을 푼다
       _sending = false;
@@ -405,8 +404,7 @@ class _DriveScreenState extends State<DriveScreen> {
     } on UnauthorizedException {
       // 로그인 만료 → ApiService 가 로그인 화면으로 보낸다. 졸음과 상관없으니 알람은 울리지 않음
     } catch (e) {
-      ringOnce();
-      if (mounted) setState(() => _notice = '서버 연결 실패: $e');
+      ringOnce(); // 서버 답이 없어도 알람으로 깨운다 (화면에 서버 오류 글은 띄우지 않음)
     } finally {
       slowAlarm.cancel();
       _sending = false;
@@ -534,10 +532,6 @@ class _DriveScreenState extends State<DriveScreen> {
         _cancelNote.value = false;
       }
     }
-    setState(() {
-      _eyeOpenProb = eyeOpenProb;
-      _perclos = perclos;
-    });
   }
 
   @override
@@ -547,7 +541,7 @@ class _DriveScreenState extends State<DriveScreen> {
 
     return Scaffold(
       backgroundColor: bg,
-      bottomNavigationBar: ServerCancelText(cancelled: _cancelNote),
+      // "서버 확인: 취소" 같은 서버 판단 설명은 기사님 화면에 보여 주지 않는다 (11/09 팀장)
       appBar: AppBar(
         backgroundColor: bg,
         foregroundColor: fg,
@@ -620,20 +614,8 @@ class _DriveScreenState extends State<DriveScreen> {
                     child: Icon(Icons.videocam_off_outlined, color: fg, size: 40),
                   ),
           ),
+          // 눈 기준 · 눈 뜸 확률 · 감은 비율 같은 숫자는 기사님 화면에 보여 주지 않는다 (서버 기록 → 관리자 웹에서 확인, 11/09 팀장)
           below: [
-            const SizedBox(height: 12),
-            // 내 기준 · 눈 뜸 확률 · PERCLOS
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
-              child: Column(
-                children: [
-                  _row('내 눈 기준', _eye.threshold.toStringAsFixed(2)),
-                  _row('눈 뜸 확률', _eyeOpenProb == null ? '-' : _eyeOpenProb!.toStringAsFixed(2)),
-                  _row('최근 30초 감은 비율', '${(_perclos * 100).toStringAsFixed(0)}%'),
-                ],
-              ),
-            ),
             if (_notice.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text(_notice, textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: fg)),
@@ -683,19 +665,5 @@ class _DriveScreenState extends State<DriveScreen> {
       default:
         return Icons.remove_red_eye_outlined;
     }
-  }
-
-  // 표의 한 줄 (왼쪽 이름 · 오른쪽 값)
-  Widget _row(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
-          Text(value, style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w700)),
-        ],
-      ),
-    );
   }
 }
