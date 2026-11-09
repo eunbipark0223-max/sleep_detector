@@ -6,20 +6,25 @@
 //
 // [실행]  (sleep_detector_app 폴더, 시연 폰 USB 연결)
 //   flutter run -t lib/tools/eye_live_main.dart
+//   카메라 크기 바꾸기: --dart-define=CAM_PRESET=max  (기본 medium = 지금 drive_screen, 11/09 C 브랜치는 max)
 //
 // [하는 일]
-//   - 전면 카메라 영상 (drive_screen 과 같은 조건: ResolutionPreset.medium · nv21) → eye_monitor.processFrame
+//   - 전면 카메라 영상 (drive_screen 과 같은 조건: ResolutionPreset.medium · nv21, CAM_PRESET 로 바꿈) → eye_monitor.processFrame
 //   - 화면: 눈 뜸 확률 · PERCLOS · 고개 각도 / 평소 각도 / 숙임 · 처리 ms · fps
 //   - 신호 기록: 미세수면 · PERCLOS 의심 (감김 초 · 확률 · 사진 크기) · 카메라 확인
 //   - 마지막 의심 사진 (서버로 갈 jpg) → 얼굴이 바로 서 있는지 (회전) 확인
-//   - [다음 단계] 버튼 → 로그에 '== N. 동작 시작 ==' + 0.5초마다 상태 한 줄 (PC: adb logcat -s flutter -v raw)
+//   - 0.5초마다 상태 한 줄 (PC: adb logcat -s flutter -v raw)
 //   - 프레임마다 [eye_frame] 한 줄 · 동작 버튼 [eye_mark] → tools/eye_replay.py 로 1.5초 · 15% 를 바꿔 경고 횟수 계산
+//   - 🆕 (11/09 팀장 측정 요청) 사람 버튼 (a · b · c · d · t) · 상태 버튼 (① 정면 뜸 ② 실눈 ③ 감음 ④ 시선만 아래 ⑤ 숙이고 뜸 · 0 쉼)
+//       → [eye_frame] 에 고개 각도 · 평소 각도 · 사람 · 상태가 같이 남음 → python tools/eye_replay.py states <기록>
+//       경고는 [eye_alarm] 한 줄 (원인 eye · head · head_resend · perclos · 사진 장수 · JPG 변환 ms)
 //
-// [시험 순서]
-//   1. 정면 10초 (평소 각도 · 처리 속도 확인)   2. 눈 2초 감기 → 미세수면
-//   3. 고개 4초 숙이기 (눈 뜬 채) → 3초에 미세수면    4. 고개를 화면 밖으로 4초 떨구기 → 미세수면 (사진 없음 가능)
-//   5. 얼굴을 가리고 4초 → 카메라 확인          6. 계기판 · 내비 보듯 1~2초씩 내려보기 → 신호 없어야 함
-//   7. 30초 동안 자주 깜빡이기 / 반쯤 감기 → PERCLOS
+// [측정 순서 (11/09 팀장 요청 1번)]  사람마다 기록 파일 하나 — adb logcat -s flutter -v raw > D:\kpi_raw\phone_log\states_<사람>_<날짜>.txt
+//   0. 사람 버튼 고르기 → '0 쉼' 으로 정면 60초 이상 (평소 고개 각도 모으기, 표에서 뺌)
+//   1. ① 정면 보고 눈 뜸 10초 → ② 실눈 10초 → ③ 완전히 감음 10초 → ④ 고개 그대로 시선만 아래 10초 → ⑤ 고개 숙이고 눈 뜸 10초
+//      상태 사이에는 '0 쉼' 을 눌러 자세를 바꾸고 (바꾸는 동안 프레임은 표에서 빠짐), 자세가 잡히면 다음 상태 버튼
+//   2. (측정 2) '0 쉼' 그대로 운전 자세 5분 — 아래 보기 · 고개 돌리기는 동작 버튼 (계기판 · 고개 돌림) 으로 표시
+//   PC: python tools/eye_replay.py states <기록 파일>  → 상태별 확률 중간값 · 0.4 / 0.5 미만 비율 · 경고 원인 · fps
 //
 // [주의]
 //   - 얼굴 영상 · 사진은 저장하지 않는다 (화면에만)
@@ -53,6 +58,13 @@ class _EyeLiveScreenState extends State<EyeLiveScreen> {
   Uint8List? _lastJpg;
   DateTime _start = DateTime.now();
 
+  // 측정 표시 (11/09) — 사람 · 상태 (0 = 쉼 · 준비, 표에서 뺌)
+  static const _people = ['a', 'b', 'c', 'd', 't'];
+  static const _states = ['0 쉼', '① 뜸', '② 실눈', '③ 감음', '④ 시선↓', '⑤ 숙임'];
+  String _person = 'a';
+  int _state = 0;
+  static const _preset = String.fromEnvironment('CAM_PRESET', defaultValue: 'medium');
+
   @override
   void initState() {
     super.initState();
@@ -64,7 +76,7 @@ class _EyeLiveScreenState extends State<EyeLiveScreen> {
     try {
       final cams = await availableCameras();
       final front = cams.firstWhere((c) => c.lensDirection == CameraLensDirection.front, orElse: () => cams.first);
-      final c = CameraController(front, ResolutionPreset.medium,
+      final c = CameraController(front, ResolutionPreset.values.byName(_preset),
           enableAudio: false, imageFormatGroup: ImageFormatGroup.nv21);
       await c.initialize();
       await c.startImageStream((img) => _eye.processFrame(img, front));
@@ -73,7 +85,7 @@ class _EyeLiveScreenState extends State<EyeLiveScreen> {
         _cam = c;
         _start = DateTime.now();
       });
-      _add('시작 · 카메라 ${c.value.previewSize?.width.toInt()}×${c.value.previewSize?.height.toInt()} · 센서 ${front.sensorOrientation}°');
+      _add('시작 · 카메라 $_preset ${c.value.previewSize?.width.toInt()}×${c.value.previewSize?.height.toInt()} · 센서 ${front.sensorOrientation}°');
     } catch (e) {
       setState(() => _error = '카메라 열기 실패: $e');
     }
@@ -100,8 +112,14 @@ class _EyeLiveScreenState extends State<EyeLiveScreen> {
   void _onSuspect(String reason, double closedSec, double perclos, double prob, Uint8List? jpg) {
     if (!mounted) return;
     _lastJpg = jpg ?? _lastJpg;
-    _add('🚨 $reason · 감김 ${closedSec.toStringAsFixed(1)}초 · PERCLOS ${(perclos * 100).toStringAsFixed(0)}% · '
-        '확률 ${prob.toStringAsFixed(2)} · 숙임 ${_eye.isHeadDown ? "예" : "아니오"} · 사진 ${jpg == null ? "없음" : "${jpg.length ~/ 1024}KB"}');
+    final jpgs = _eye.lastSuspectJpgs, cause = _eye.lastSuspectCause;
+    final sizes = jpgs.map((j) => '${j.length ~/ 1024}KB').join('·');
+    final gaps = [for (final t in _eye.lastSuspectTimes) (_eye.lastSuspectTimes.last.difference(t).inMilliseconds / 1000).toStringAsFixed(2)].join('·');
+    // 원인별 집계용 한 줄: 시각 ms, reason, 원인, 사진 장수, JPG 변환 ms, 사람, 상태
+    debugPrint('[eye_alarm] ${DateTime.now().difference(_start).inMilliseconds},$reason,$cause,${jpgs.length},${_eye.lastJpgMs},$_person,$_state');
+    _add('🚨 $reason ($cause) · 감김 ${closedSec.toStringAsFixed(1)}초 · PERCLOS ${(perclos * 100).toStringAsFixed(0)}% · '
+        '확률 ${prob.toStringAsFixed(2)} · 숙임 ${_eye.isHeadDown ? "예" : "아니오"} · '
+        '사진 ${jpgs.isEmpty ? "없음" : "${jpgs.length}장 $sizes (마지막 장보다 $gaps초 전) · 변환 ${_eye.lastJpgMs}ms"}');
   }
 
   void _onCheckCamera() {
@@ -114,8 +132,11 @@ class _EyeLiveScreenState extends State<EyeLiveScreen> {
       _prob = prob;
       _perclos = perclos;
     });
-    // 프레임마다 한 줄 (tools/eye_replay.py 가 기준값을 바꿔 다시 계산): 시각 ms, 눈 뜸 확률 (모름은 빈칸), 숙임 0/1, 웃음 확률
-    debugPrint('[eye_frame] ${DateTime.now().difference(_start).inMilliseconds},${prob?.toStringAsFixed(3) ?? ""},${_eye.isHeadDown ? 1 : 0},${_eye.lastSmileProb?.toStringAsFixed(3) ?? ""}');
+    // 프레임마다 한 줄 (tools/eye_replay.py 가 기준값을 바꿔 다시 계산): 시각 ms, 눈 뜸 확률 (모름은 빈칸), 숙임 0/1, 웃음 확률,
+    //   (11/09) 고개 각도 · 평소 각도 (없으면 빈칸) · 사람 · 상태 — 얼굴을 놓친 프레임은 고개 각도가 이전 값이라 빈칸
+    final hx = prob == null ? null : _eye.lastHeadX, hb = _eye.headBase;
+    debugPrint('[eye_frame] ${DateTime.now().difference(_start).inMilliseconds},${prob?.toStringAsFixed(3) ?? ""},${_eye.isHeadDown ? 1 : 0},'
+        '${_eye.lastSmileProb?.toStringAsFixed(3) ?? ""},${hx?.toStringAsFixed(1) ?? ""},${hb?.toStringAsFixed(1) ?? ""},$_person,$_state');
     // 0.5초마다 상태 한 줄 (로그에만) → 단계 표시와 맞춰 어떤 동작에서 무엇이 나왔는지 봄
     final now = DateTime.now();
     if (now.difference(_lastStateLog).inMilliseconds >= 500) {
@@ -129,8 +150,6 @@ class _EyeLiveScreenState extends State<EyeLiveScreen> {
   }
 
   DateTime _lastStateLog = DateTime.now();
-  int _step = 0;
-  static const _steps = ['정면 10초', '눈 2초 감기', '눈 뜬 채 고개 4초 숙이기', '화면 밖으로 4초 떨구기', '얼굴 가리기 4초', '계기판 잠깐 보기', '30초 자주 깜빡이기'];
 
   // 거치 시험 중 지금 하는 동작 표시 → 경고가 어떤 동작에서 났는지 맞춰 봄
   static const _marks = ['계기판', '고개 돌림', '하품', '기타'];
@@ -140,11 +159,38 @@ class _EyeLiveScreenState extends State<EyeLiveScreen> {
     _add('✏️ $label');
   }
 
-  void _nextStep() {
-    if (_step >= _steps.length) return;
-    _step++;
-    _add('== $_step. ${_steps[_step - 1]} 시작 ==');
+  // 사람 · 상태 바꾸기 → [eye_state] 한 줄 + 다음 프레임부터 [eye_frame] 에 실림
+  void _setMeasure(String person, int state) {
+    setState(() {
+      _person = person;
+      _state = state;
+    });
+    debugPrint('[eye_state] ${DateTime.now().difference(_start).inMilliseconds},$person,$state');
+    _add('== 사람 $person · ${_states[state]} ==');
   }
+
+  Widget _chips(List<String> labels, int selected, void Function(int) onTap) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: Row(
+          children: [
+            for (int i = 0; i < labels.length; i++)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: i == selected
+                      ? FilledButton(
+                          style: FilledButton.styleFrom(padding: EdgeInsets.zero),
+                          onPressed: () => onTap(i),
+                          child: Text(labels[i], style: const TextStyle(fontSize: 12)))
+                      : OutlinedButton(
+                          style: OutlinedButton.styleFrom(padding: EdgeInsets.zero),
+                          onPressed: () => onTap(i),
+                          child: Text(labels[i], style: const TextStyle(fontSize: 12))),
+                ),
+              ),
+          ],
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -185,15 +231,8 @@ class _EyeLiveScreenState extends State<EyeLiveScreen> {
                     style: const TextStyle(fontSize: 13),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: FilledButton(
-                    onPressed: _step >= _steps.length ? null : _nextStep,
-                    child: Text(_step >= _steps.length
-                        ? '시험 끝'
-                        : '다음: ${_step + 1}. ${_steps[_step]} (누르고 시작)'),
-                  ),
-                ),
+                _chips([for (final p in _people) p], _people.indexOf(_person), (i) => _setMeasure(_people[i], _state)),
+                _chips(_states, _state, (i) => _setMeasure(_person, i)),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: Row(

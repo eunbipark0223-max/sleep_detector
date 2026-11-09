@@ -20,6 +20,9 @@
 //       10/29 시연 폰 시험: 계기판 보기 1.0~2.3초 · 졸아서 숙이기 3.8~7.4초 → 1.5초였을 때 계기판에서 경고 3번 → 3초
 //   - 🆕 (AppConfig.smileOpenProb) 웃음 확률이 기준 이상이면 감김으로 세지 않음 ('뜸' 으로 셈, '모름' 아님 → PERCLOS 에도 뜸)
 //       크게 웃으면 볼이 올라가 눈이 가늘어져 감김으로 오판 (11/03 웹캠 확인). 졸면서 크게 웃는 경우는 거의 없음
+//       (11/09) 웃는 프레임은 고개 숙임 · 평소 각도에도 넣지 않음 — 정면에서 웃을 때 숙임 3초로 잡힘 (11/05 시연 폰, 팀장 요청)
+//   - 🆕 (11/09, AppConfig.microsleepPhotos) 눈 감김 미세수면은 감는 동안의 처음 · 가운데 · 마지막 3장을 넘김 (lastSuspectJpgs)
+//       고개 숙임 · PERCLOS 는 1장 그대로, 재전송은 사진 없음
 //   - 사진 파일 1장 분석 (사진 1장 테스트 · KPI ① 측정) · 개인 기준 측정 (평소 확률 중간값 × 0.5, 0.2~0.4, 실패 시 기본값 + 예외)
 //   - 🆕 (AppConfig.contourEarOn) 눈 윤곽 점 16개로 폰 EAR 계산 — 반쯤 감은 눈은 뜸 확률이 높게 나와서 보완용
 //       AppConfig.useContourEar 를 켜면 "뜸 확률 < 기준 또는 EAR < earClosed" 를 감김으로 봄 (시연 폰 확인 뒤에만)
@@ -29,6 +32,10 @@
 //   - onSuspect(reason, closedSec, perclos, eyeOpenProb, Uint8List? jpg)  ← drive_screen 이 받는 콜백
 //       jpg = 눈 감긴 순간의 프레임을 eye_monitor 가 이미 jpg 로 바꾼 것 → drive_screen 은 그대로 sendDetect
 //       (null 이면 변환 실패 — 사진 없이 보내거나 다음 의심을 기다림)
+//   - 🆕 lastSuspectJpgs (List<Uint8List>, 찍은 순서, 없으면 빈 목록) · lastSuspectTimes — onSuspect 를 부르기 직전에 채움
+//       onSuspect 의 jpg = 이 목록의 마지막 장 (지금까지와 같은 사진) → 여러 장을 보낼 쪽은 onSuspect 안에서 _eye.lastSuspectJpgs 를 읽음
+//       lastSuspectCause = eye(눈 감김) · head(고개 숙임) · head_resend(취소 뒤 재전송) · perclos — reason 은 지금처럼 microsleep · perclos 두 가지
+//       lastJpgMs = 그 사진들 JPG 변환에 걸린 시간 합 (화면 쪽에서 돌아서 경고가 그만큼 늦어짐 — 시험 앱이 기록)
 //   - onCheckCamera()  ← drive_screen 이 받는 콜백
 //   - reset()  ← drive_screen 이 경고 화면이 닫힐 때 부름 (판정 기록 비우기, 개인 기준은 그대로, 11/03 팀장)
 //   - serverCancelled()  ← drive_screen 이 서버 취소 응답을 받으면 부름 (안 부르면 한 번 더 보내기가 동작하지 않음)
@@ -60,6 +67,12 @@ class _FrameRecord {
   final DateTime time;
   final bool isClosed;
   _FrameRecord(this.time, this.isClosed);
+}
+
+class _Shot {
+  final DateTime time;
+  final CameraImage image;
+  _Shot(this.time, this.image);
 }
 
 class _HeadRecord {
@@ -113,6 +126,7 @@ class EyeMonitor {
   DateTime? _cancelledAt;      // 고개 숙임 의심을 서버가 취소한 시각 (얼굴이 정상으로 돌아오면 null)
   DateTime? _normalSince;      // 취소 뒤 얼굴이 정상으로 보이기 시작한 시각
   CameraImage? _headFrame;    // 이번 숙임 동안 찍은 마지막 얼굴 프레임 (서버로 갈 사진)
+  DateTime? _headFrameAt;
   CameraDescription? _headCamera;
 
   // 시험 화면용 (tools/eye_live_main.dart) — 판정에는 안 씀
@@ -127,10 +141,17 @@ class EyeMonitor {
   bool get isHeadDown => _headDown;
 
   // 감긴 순간의 프레임 임시 보관
-  CameraImage? _lastClosedFrame;
-  CameraDescription? _lastCamera;
-  bool _frameInStreak = false; // _lastClosedFrame 이 지금 이어지는 감김 동안 찍은 것인지 (미세수면 사진용)
+  CameraImage? _lastClosedFrame; // PERCLOS 사진용 (최근 감긴 프레임 1장)
+  DateTime? _lastClosedAt;
+  // 지금 이어지는 감김 동안 찍은 프레임 (photoGapSec 간격, 미세수면 사진용) — 눈을 뜨거나 의심을 내면 비움
+  final List<_Shot> _streakShots = [];
   double _lastEyeOpenProb = 1.0;
+
+  // 🆕 (11/09) 마지막 의심 때 넘긴 사진 (머리말 참고) — drive_screen 은 onSuspect 안에서 읽음
+  List<Uint8List> lastSuspectJpgs = const [];
+  List<DateTime> lastSuspectTimes = const [];
+  String lastSuspectCause = '';
+  int lastJpgMs = 0;
 
   // C의 drive_screen.dart와 약속된 콜백 인터페이스
   final void Function(
@@ -267,7 +288,7 @@ class EyeMonitor {
         //   숙임으로 잡히고 이어서 얼굴을 놓쳐 미세수면이 됐음 (10/29 시연 폰 시험) → 그때는 '모름' (카메라 확인)
         //   눈 상태를 모르니 평소 각도 기록에는 넣지 않음 (eyesClosed: true)
         final headX = face.headEulerAngleX;
-        _headDown = AppConfig.headRuleOn && _headDown && (headX == null || _isHeadDown(headX, now, true));
+        _headDown = AppConfig.headRuleOn && _headDown && (headX == null || _isHeadDown(headX, now, true, false));
         if (_headDown) {
           _keepNotUnknown();
           _checkHeadDown(now, image, cam, null);
@@ -287,7 +308,7 @@ class EyeMonitor {
       // 완전히 감음 = 뜸 확률, (useContourEar 켜면) 반쯤 감음 = 폰 EAR
       final bool eyesClosed = !smiling &&
           (avgProb < threshold || (AppConfig.useContourEar && ear != null && ear < AppConfig.earClosed));
-      _headDown = AppConfig.headRuleOn && _isHeadDown(face.headEulerAngleX, now, eyesClosed);
+      _headDown = AppConfig.headRuleOn && _isHeadDown(face.headEulerAngleX, now, eyesClosed, smiling);
       _checkAfterCancel(now, !_headDown && !eyesClosed, avgProb);
 
       // 눈 감김 · PERCLOS 는 눈만으로 (고개만 숙이고 눈 뜬 프레임은 '뜸')
@@ -317,6 +338,7 @@ class EyeMonitor {
     }
     if (frame != null) {
       _headFrame = frame;
+      _headFrameAt = now;
       _headCamera = cam;
     }
     final sec = now.difference(_headStartTime!).inMilliseconds / 1000.0;
@@ -327,10 +349,48 @@ class EyeMonitor {
     _microsleepTriggered = true; // 고개를 든 채 눈을 감고 있어도 같은 졸음 → 미세수면 다시 안 냄 (눈을 떠야 다음)
     _perclosTriggered = true;
     final target = _headFrame;
-    final jpg = target == null
-        ? null
-        : CameraImageUtils.toJpg(target, rotation: _headCamera?.sensorOrientation ?? 270);
-    onSuspect?.call('microsleep', sec, _calculatePerclos(), avgProb ?? _lastEyeOpenProb, jpg);
+    _send('microsleep', 'head', sec, _calculatePerclos(), avgProb ?? _lastEyeOpenProb,
+        [if (target != null) _Shot(_headFrameAt ?? now, target)], _headCamera?.sensorOrientation ?? 270);
+  }
+
+  /// 의심 사진들을 JPG 로 바꿔 lastSuspect* 에 넣고 onSuspect 호출 (jpg 인자 = 마지막 장, 변환 실패한 장은 뺌)
+  void _send(String reason, String cause, double sec, double perclos, double prob, List<_Shot> shots, int rotation) {
+    final watch = Stopwatch()..start();
+    final jpgs = <Uint8List>[];
+    final times = <DateTime>[];
+    for (final s in shots) {
+      final j = CameraImageUtils.toJpg(s.image, rotation: rotation);
+      if (j == null) continue;
+      jpgs.add(j);
+      times.add(s.time);
+    }
+    lastJpgMs = watch.elapsedMilliseconds;
+    lastSuspectJpgs = jpgs;
+    lastSuspectTimes = times;
+    lastSuspectCause = cause;
+    onSuspect?.call(reason, sec, perclos, prob, jpgs.isEmpty ? null : jpgs.last);
+  }
+
+  /// 감김 동안 보관한 프레임 중 시간이 고르게 퍼진 microsleepPhotos 장 (처음 · 마지막 포함, 찍은 순서)
+  static List<_Shot> _spread(List<_Shot> shots) {
+    final n = AppConfig.microsleepPhotos;
+    if (shots.length <= n) return List.of(shots);
+    if (n <= 1) return [shots.last];
+    final t0 = shots.first.time.millisecondsSinceEpoch;
+    final span = shots.last.time.millisecondsSinceEpoch - t0;
+    final picked = <int>{};
+    for (int i = 0; i < n; i++) {
+      final target = t0 + span * i / (n - 1);
+      int best = 0;
+      for (int k = 1; k < shots.length; k++) {
+        if ((shots[k].time.millisecondsSinceEpoch - target).abs() <
+            (shots[best].time.millisecondsSinceEpoch - target).abs()) {
+          best = k;
+        }
+      }
+      picked.add(best);
+    }
+    return [for (final k in picked.toList()..sort()) shots[k]];
   }
 
   /// 서버가 의심을 취소했을 때 drive_screen 이 부름 — 이번 숙임에서 난 의심이면 headResendSec 에 한 번 더 보낼 수 있게
@@ -358,7 +418,8 @@ class EyeMonitor {
     if (waited < AppConfig.headResendSec - AppConfig.headDownSec) return;
     _cancelledAt = null;
     _lastSuspectAt = now;
-    onSuspect?.call('microsleep', AppConfig.headDownSec + waited, _calculatePerclos(), avgProb ?? _lastEyeOpenProb, null);
+    _send('microsleep', 'head_resend', AppConfig.headDownSec + waited, _calculatePerclos(),
+        avgProb ?? _lastEyeOpenProb, const [], 270);
   }
 
   /// 판정 기록을 처음 상태로 (경고 · 퀴즈 · 휴식 화면이 닫히고 운행 화면으로 돌아올 때, drive_screen 이 부름)
@@ -382,8 +443,10 @@ class EyeMonitor {
     _cancelledAt = null;
     _normalSince = null;
     _headFrame = null;
+    _headFrameAt = null;
     _lastClosedFrame = null;
-    _frameInStreak = false;
+    _lastClosedAt = null;
+    _streakShots.clear();
     _lastEyeOpenProb = 1.0;
   }
 
@@ -408,7 +471,9 @@ class EyeMonitor {
 
   /// 고개 숙임인지 — 평소 각도(최근 headBaseSec 동안 눈 뜨고 숙이지 않은 프레임의 중간값)보다 headDownDeg 이상 숙임
   ///   ML Kit headEulerAngleX 는 숙이면 내려감. 평소 각도를 아직 못 냈으면 (출발 직후) 숙임으로 보지 않음
-  bool _isHeadDown(double? headX, DateTime now, bool eyesClosed) {
+  ///   웃는 프레임 (smileOpenProb 이상) 은 숙임으로 보지 않고 평소 각도에도 넣지 않음 (11/09 팀장 요청)
+  ///     11/05 시연 폰: 정면에서 웃는데 숙임 3초로 잡힘 → 서버 CNN 확정. 기록 다시 계산: 눈 감고 떨구기 경고 그대로 · 웃음 많은 기록 15 → 13번
+  bool _isHeadDown(double? headX, DateTime now, bool eyesClosed, bool smiling) {
     if (headX == null) return false;
     final cutoff = now.subtract(const Duration(seconds: AppConfig.headBaseSec));
     _headHistory.removeWhere((r) => r.time.isBefore(cutoff));
@@ -420,10 +485,10 @@ class EyeMonitor {
     }
     lastHeadX = headX;
     headBase = base;
-    final down = base != null && base - headX >= AppConfig.headDownDeg;
-    // 숙인 프레임 · 감은 프레임은 평소 각도에 넣지 않음 (졸면서 숙인 각도가 평소가 되지 않게)
+    final down = !smiling && base != null && base - headX >= AppConfig.headDownDeg;
+    // 숙인 프레임 · 감은 프레임 · 웃는 프레임은 평소 각도에 넣지 않음 (졸면서 숙인 각도가 평소가 되지 않게)
     //   자세를 아예 바꾸면 headBaseSec 뒤 기록이 비고 → 새 자세로 평소 각도를 다시 냄
-    if (!down && !eyesClosed) _headHistory.add(_HeadRecord(now, headX));
+    if (!down && !eyesClosed && !smiling) _headHistory.add(_HeadRecord(now, headX));
     return down;
   }
 
@@ -455,8 +520,18 @@ class EyeMonitor {
       // 감긴 순간의 프레임 보관 (얼굴을 놓친 프레임은 보관하지 않음 — 서버가 볼 얼굴이 없음)
       if (frame != null) {
         _lastClosedFrame = frame;
-        _lastCamera = cam;
-        _frameInStreak = true;
+        _lastClosedAt = now;
+        // 미세수면 사진 후보: photoGapSec 간격으로만 쌓음 (첫 장은 고정, 간격 안에 들어온 프레임은 마지막 장을 새것으로 바꿈)
+        //   의심을 이미 냈으면 더 쌓지 않음 → 1.5초 감김 동안 최대 약 8장 (medium 1장 약 0.5MB)
+        if (!_microsleepTriggered) {
+          final gapMs = (AppConfig.photoGapSec * 1000).round();
+          final n = _streakShots.length;
+          if (n >= 2 && now.difference(_streakShots[n - 2].time).inMilliseconds < gapMs) {
+            _streakShots[n - 1] = _Shot(now, frame);
+          } else {
+            _streakShots.add(_Shot(now, frame));
+          }
+        }
       }
       if (avgProb != null) _lastEyeOpenProb = avgProb;
 
@@ -467,21 +542,17 @@ class EyeMonitor {
         _perclosTriggered = true;
         _lastSuspectAt = now;
         // 이번 감김 동안 찍은 프레임만 보냄 — 얼굴을 놓친 채 시작된 감김이면 몇 분 전 사진이 갈 수 있어서 (10/28 팀장 확인)
-        final target = _frameInStreak ? _lastClosedFrame : null;
-        final jpg = target == null
-            ? null
-            : CameraImageUtils.toJpg(
-                target,
-                rotation: _lastCamera?.sensorOrientation ?? 270,
-              );
-        onSuspect?.call(
-            'microsleep', currentClosedSec, perclos, avgProb ?? _lastEyeOpenProb, jpg);
+        //   (11/09) 처음 · 가운데 · 마지막 3장 → 보낸 뒤 바로 비움
+        final shots = _spread(_streakShots);
+        _streakShots.clear();
+        _send('microsleep', 'eye', currentClosedSec, perclos, avgProb ?? _lastEyeOpenProb, shots,
+            cam.sensorOrientation);
       }
     } else {
       // 눈을 다시 뜨면 미세수면 플래그 및 타이머 리셋
       //   (_lastClosedFrame 은 PERCLOS 사진용으로 남김 — PERCLOS 15% 면 최근 30초 안의 감긴 프레임이라 오래된 사진이 아님)
       _closedStartTime = null;
-      _frameInStreak = false;
+      _streakShots.clear();
       _microsleepTriggered = false;
     }
 
@@ -499,15 +570,12 @@ class EyeMonitor {
       if (!_perclosTriggered && !_microsleepTriggered && !inCooldown) {
         _perclosTriggered = true; // 기준 아래로 내려갔다 다시 넘어야 셈
         _lastSuspectAt = now;
-        final targetFrame = _lastClosedFrame ?? frame;
-        final jpg = targetFrame == null
-            ? null
-            : CameraImageUtils.toJpg(
-                targetFrame,
-                rotation: cam.sensorOrientation,
-              );
-        onSuspect?.call('perclos', currentClosedSec, perclos,
-            _lastEyeOpenProb, jpg);
+        final closedFrame = _lastClosedFrame;
+        final shot = closedFrame != null
+            ? _Shot(_lastClosedAt ?? now, closedFrame)
+            : (frame != null ? _Shot(now, frame) : null);
+        _send('perclos', 'perclos', currentClosedSec, perclos, _lastEyeOpenProb,
+            [?shot], cam.sensorOrientation);
       }
     } else if (perclos < AppConfig.perclosThreshold) {
       _perclosTriggered = false;

@@ -9,6 +9,7 @@
 //   - eyeClosedProb = 0.4      두 눈 평균 눈 뜸 확률이 이보다 작으면 '감김' (개인 기준이 없을 때, 10/27 0.3 → 0.2, 10/28 0.25, 11/02 0.4 확정)
 //   - smileOpenProb = 0.8      (🆕 11/04) 웃음 확률이 이 이상이면 감김으로 세지 않음
 //   - closedSec = 1.5          감김이 이만큼 이어지면 미세수면 의심
+//   - microsleepPhotos = 3 · photoGapSec   (🆕 11/09) 눈 감김 미세수면 때 넘기는 사진 수 · 보관 간격
 //   - perclosWindowSec = 30    PERCLOS 계산 구간
 //   - perclosThreshold = 0.15  감김 비율이 이 이상이면 피로 누적 의심
 //   - unknownSec = 3           얼굴 없음 · 모름이 이만큼 이어지면 '카메라를 확인하세요'
@@ -39,6 +40,12 @@ class AppConfig {
 
   // 미세수면: 연속 감김 시간 기준 (초)
   static const double closedSec = 1.5;
+
+  // 🆕 (11/09) 미세수면(눈 감김) 의심 때 넘기는 사진 수 — 감김 처음 · 가운데 · 마지막 (팀장 3장 검토, 11/07 1장 vs 3장 시험)
+  //   감는 동안 프레임을 photoGapSec 간격으로만 들고 있음 (1.5초 → 최대 약 8장, 의심 뒤 · 눈 뜨면 바로 비움)
+  //   고개 숙임 · PERCLOS 는 아직 1장 (팀장 답 대기)
+  static const int microsleepPhotos = 3;
+  static const double photoGapSec = 0.2;
 
   // 피로 누적(PERCLOS): 최근 30초 창 및 15% 임계값
   static const int perclosWindowSec = 30;
@@ -79,6 +86,7 @@ class AppConfig {
   //                   10/28 KPI ① 측정: 평소 눈 뜬 프레임 최대 3.4° · 고개 돌림 최대 4.1° / 고개 숙임 8.0~20.5° → 가운데 6°
   //   headBaseSec   : 평소 각도 = 최근 이 시간 동안 '눈 뜨고 숙이지 않은' 프레임 각도의 중간값 (폰 위치 · 사람마다 달라서 고정값 못 씀)
   //   headBaseMinFrames : 평소 각도를 낼 최소 프레임 수 (출발 직후 · 자세를 바꾼 직후에는 규칙을 쉼)
+  //   웃음 확률 smileOpenProb 이상인 프레임은 숙임 · 평소 각도에 넣지 않음 (11/09 팀장 요청 — 정면에서 웃을 때 숙임 3초로 잡힘, 11/05)
   //   한계 (발표): 내비 등을 3초 넘게 내려다봐도 경고 · 고개는 그대로 두고 눈만 내리깔면 각도로는 못 잡음 (ML Kit 이 '감음' 으로 봄)
   static const bool headRuleOn = true;
   static const double headDownDeg = 6.0;
