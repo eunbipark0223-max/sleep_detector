@@ -7,6 +7,7 @@
 # [이 파일이 하는 일]
 #   - GET /events/my — 내 경고 목록 (앱 운행 기록 화면)
 #   - PATCH /events/{id}/status — 관리자가 상태 변경. '조치완료'면 sleep_state reset → 3단계 해제 (앱은 다음 ping 에서 0단계)
+#     '확인'은 미확인일 때만 바뀐다 (관리자 웹이 상세를 열 때 자동으로 보냄, 11/09)
 #
 # [주의]
 #   - 수업의 POST /hazards (직접 신고) · POST /reports 는 만들지 않는다
@@ -52,6 +53,10 @@ def update_status(
     event = db.get(SleepEvent, event_id)
     if event is None:
         raise HTTPException(status_code=404, detail="없는 경고입니다")
+    # '확인' = 관리자 웹이 경고 상세를 열면 자동으로 보내는 '열어 봄' 표시 (11/09).
+    # 미확인일 때만 바꾼다 — 이미 조치완료 · 휴식완료인 경고를 늦게 도착한 '확인'이 되돌리지 않게
+    if body.status == "확인" and event.status != "미확인":
+        return {"success": True, "id": event.id, "status": event.status, "stage_reset": False}
     event.status = body.status
     db.commit()
 

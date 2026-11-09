@@ -84,6 +84,8 @@ function fetchAdminEvents(filters = {}) {
   return apiFetch('/admin/events' + (query ? '?' + query : ''));
 }
 function fetchAdminUsers() { return apiFetch('/admin/users'); }
+// 기사 계정 추가 {name, email, phone, vehicle_no?, privacy_agreed} → 새 기사 + temp_password (한 번만 옴, 11/09)
+function createDriver(fields) { return apiFetch('/admin/users', { method: 'POST', body: fields }); }
 function fetchStageStats() { return apiFetch('/admin/stats/stage'); }
 function fetchHourlyStats() { return apiFetch('/admin/stats/hourly'); }
 
