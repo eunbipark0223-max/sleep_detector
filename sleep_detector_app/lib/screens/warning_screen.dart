@@ -201,7 +201,6 @@ class CameraBanner extends StatelessWidget {
   }
 }
 
-/// (11/09 팀장 지시로 지금은 화면에 쓰지 않음 — 시험 때 다시 켜 볼 수 있게 남겨 둠)
 /// 흰 글자 "서버 확인: 취소" — 서버가 실제로 취소했을 때만 뜬다. 얼굴을 놓쳤다가 다시 잡히면 1초 뒤, 얼굴이 계속 보이면 5초 뒤 사라진다
 ///   운행 · 경고 화면 맨 아래에 고정 (Scaffold.bottomNavigationBar) — 내용이 길어도 스크롤 없이 보이게, 자리는 비워 둔다
 class ServerCancelText extends StatelessWidget {
@@ -528,7 +527,7 @@ class _WarningScreenState extends State<WarningScreen> {
       canPop: !_locked,
       child: Scaffold(
         backgroundColor: bg,
-        // "서버 확인: 취소" 글은 기사님 화면에 보여 주지 않는다 (서버 판단 설명, 11/09 팀장)
+        bottomNavigationBar: widget.serverCancelled == null ? null : ServerCancelText(cancelled: widget.serverCancelled!),
         appBar: AppBar(
           backgroundColor: bg,
           foregroundColor: fg,

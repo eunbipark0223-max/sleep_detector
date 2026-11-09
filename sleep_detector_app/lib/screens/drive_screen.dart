@@ -12,7 +12,7 @@
 //   - 30초마다 sendPing → stage 로 화면 색 (1단계 자동 해제 · 조치완료 반영), restDue 면 휴게 배너 + 🔊 1번
 //   - onCheckCamera → '카메라를 확인하세요' 배너 (얼굴이 다시 잡힐 때까지) + 🔊 10초마다
 //   - 화면 꺼짐 방지 (wakelock_plus)
-//   - 기사님 화면에는 숫자(눈 기준 · 눈 뜸 확률 · 감은 비율) · 서버 판단 글을 보여 주지 않음 (11/09 팀장 — 관리자 웹에서 확인)
+//   - 기사님 화면에는 숫자(눈 기준 · 눈 뜸 확률 · 감은 비율)를 보여 주지 않음 (11/09 팀장 — 관리자 웹에서 확인). "서버 확인: 취소"는 유지
 //   - 나갈 때 스트림 정지 · eye_monitor.close()
 //
 // [주의]
@@ -541,7 +541,7 @@ class _DriveScreenState extends State<DriveScreen> {
 
     return Scaffold(
       backgroundColor: bg,
-      // "서버 확인: 취소" 같은 서버 판단 설명은 기사님 화면에 보여 주지 않는다 (11/09 팀장)
+      bottomNavigationBar: ServerCancelText(cancelled: _cancelNote),
       appBar: AppBar(
         backgroundColor: bg,
         foregroundColor: fg,
