@@ -211,6 +211,15 @@ class ApiService {
 
   // sendChat (AI 규정 도우미에게 질문 보내고 답 받기)
   static Future<Map<String, dynamic>> sendChat(String message) => _postJson('/chat', {'message': message});
+
+  // fetchRoadDistances (B, 11/09 — 졸음쉼터까지 도로 거리 · 시간, 카카오 길찾기는 서버가 대신 물음)
+  //   destinations: [{'key', 'lat', 'lng'}] → {key: {'distance_m', 'duration_s'}} (못 구한 쉼터는 없음)
+  //   부르는 곳: rest_area_service.withRoadDistance — 실패하면 거기서 직선 거리로 넘어감
+  static Future<Map<String, dynamic>> fetchRoadDistances(
+      double lat, double lng, List<Map<String, dynamic>> destinations) async {
+    final data = await _postJson('/rest-areas/road-distance', {'lat': lat, 'lng': lng, 'destinations': destinations});
+    return Map<String, dynamic>.from(data['results'] as Map? ?? {});
+  }
 }
 
 // submitAnswer 의 답장 (통과 여부 · 다음 문제 · 단계 · 안내 글)
