@@ -7,7 +7,8 @@
 // [이 파일이 하는 일]
 //   - 공공데이터 '전국 졸음쉼터 표준데이터' (assets/rest_areas.json) 에서 내 위치와 가까운 5곳
 //   - 위: 카카오맵 WebView — 내 위치(파란 점) + 쉼터 마커 (누르면 이름)
-//   - 아래: 가까운 순 목록 (직선 거리) — 누르면 지도가 그 쉼터로 이동
+//   - 아래: 가까운 순 목록 — 직선 거리로 먼저 보이고, 서버가 도로 거리(카카오모빌리티)를 주면 빨리 도착하는 순(도로 시간)으로 바뀜 (11/09)
+//            누르면 지도가 그 쉼터로 이동
 //            '경부선 · 부산방향' 을 크게 (고속도로 쉼터는 방향이 있어 가장 가까운 곳이 반대편 차로일 수 있음)
 //   - [길찾기] → ① 카카오맵 앱 자동차 길안내 (출발 = 내 위치) ② 앱이 없으면 폰 브라우저로 카카오맵 웹 길찾기
 //              ③ 둘 다 안 되면 앱 안 WebView (url_launcher, AndroidManifest <queries> 에 kakaomap · https)
@@ -15,7 +16,8 @@
 // [데이터]
 //   - notebooks/rest_areas_json.py 로 포털 CSV → assets/rest_areas.json (인터넷 · API 키 없이 읽음)
 //   - 읽기 · 거리 계산은 services/rest_area_service.dart (경고 음성 안내와 같은 코드)
-//   - 거리는 직선 거리 (도로 거리는 [길찾기] 에서)
+//   - 거리: 도로 거리 (서버 /rest-areas/road-distance → 카카오모빌리티 자동차 길찾기, 키는 서버 .env 에만)
+//           서버 · 카카오가 안 되면 직선 거리 (목록 아래 글자로 어느 쪽인지 표시)
 //
 // [카카오 키]
 //   - 지도는 카카오 JavaScript 키가 있어야 그려진다 → flutter run --dart-define=KAKAO_JS_KEY=본인키
@@ -65,7 +67,11 @@ class MapScreen extends StatefulWidget {
   /// 주소를 폰의 다른 앱(카카오맵 · 브라우저)으로 열기. 열었으면 true. 비워 두면 url_launcher.
   final Future<bool> Function(Uri url)? openUrl;
 
-  const MapScreen({super.key, this.loadAreas, this.getPosition, this.kakaoJsKey = _kakaoKeyFromEnv, this.openUrl});
+  /// 도로 거리 묻기. 비워 두면 서버 (/rest-areas/road-distance). 실패하면 직선 거리 그대로.
+  final RoadDistanceFetcher? fetchRoad;
+
+  const MapScreen(
+      {super.key, this.loadAreas, this.getPosition, this.kakaoJsKey = _kakaoKeyFromEnv, this.openUrl, this.fetchRoad});
 
   static const String _kakaoKeyFromEnv = String.fromEnvironment('KAKAO_JS_KEY');
 
@@ -77,6 +83,7 @@ class _MapScreenState extends State<MapScreen> {
   static const int _count = 5; // 목록 · 마커 개수
 
   bool _loading = true;
+  bool _roadLoading = false; // 도로 거리를 묻는 중 (목록은 직선 거리로 먼저 보임)
   String? _error; // 화면에 보여 줄 오류 글
   List<NearRestArea> _near = [];
   LatLng? _me;
@@ -116,13 +123,26 @@ class _MapScreenState extends State<MapScreen> {
       final me = await (widget.getPosition ?? _defaultPosition)();
       if (!mounted) return;
       if (me == null) throw Exception('내 위치를 알 수 없어요. 위치 권한 · GPS 를 켜 주세요');
-      final near = nearestFrom(areas, me, n: _count);
+      // 1) 직선 거리 목록을 바로 보여 주고  2) 도로 거리가 오면 빨리 도착하는 순으로 바꿈 (안 오면 그대로)
+      final candidates = nearestFrom(areas, me, n: roadCandidates);
+      final near = candidates.take(_count).toList();
       setState(() {
         _near = near;
         _me = me;
         _selected = null;
+        _roadLoading = true;
         _web = widget.kakaoJsKey.isEmpty ? null : _buildMap(me, near);
         _loading = false;
+      });
+      final byRoad = await withRoadDistance(me, candidates, n: _count, fetch: widget.fetchRoad);
+      if (!mounted || _me != me) return; // 그사이 [다시 시도] 로 새로 불렀으면 버림
+      final changed = byRoad.any((x) => x.hasRoad);
+      setState(() {
+        _roadLoading = false;
+        if (!changed) return;
+        _near = byRoad;
+        _selected = null;
+        _web = widget.kakaoJsKey.isEmpty ? null : _buildMap(me, byRoad); // 마커 번호를 새 순서에 맞춤
       });
     } catch (e) {
       if (!mounted) return;
@@ -194,7 +214,8 @@ class _MapScreenState extends State<MapScreen> {
             itemCount: _near.length,
             separatorBuilder: (_, _) => const Divider(height: 1, color: AppColors.cardBorder),
             itemBuilder: (context, i) {
-              final NearRestArea(area: a, :km) = _near[i];
+              final near = _near[i];
+              final a = near.area;
               return ListTile(
                 selected: _selected == i,
                 selectedTileColor: AppColors.rest.withValues(alpha: 0.08),
@@ -207,7 +228,7 @@ class _MapScreenState extends State<MapScreen> {
                 title: Text(a.roadText.isEmpty ? a.name : a.roadText,
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
                 subtitle: Text(
-                  [if (a.roadText.isNotEmpty) a.name, '직선 ${km.toStringAsFixed(1)}km', if (a.toilet == 'Y') '화장실'].join(' · '),
+                  [if (a.roadText.isNotEmpty) a.name, near.distanceText, if (a.toilet == 'Y') '화장실'].join(' · '),
                   style: const TextStyle(color: AppColors.textSecondary),
                 ),
                 trailing: TextButton(onPressed: () => _openRoute(a), child: const Text('길찾기')),
@@ -216,10 +237,12 @@ class _MapScreenState extends State<MapScreen> {
             },
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: Text('거리는 직선 거리 · 출처: 공공데이터포털 전국졸음쉼터표준데이터',
-              style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: Text(
+              '${_roadLoading ? '도로 거리 확인 중 · ' : _near.any((x) => x.hasRoad) ? '도로 거리: 카카오모빌리티 · ' : '거리는 직선 거리 · '}'
+              '출처: 공공데이터포털 전국졸음쉼터표준데이터',
+              style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
         ),
       ],
     );

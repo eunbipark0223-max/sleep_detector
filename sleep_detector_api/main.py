@@ -45,6 +45,7 @@ ROUTERS = [
     ("event", "D"),      # /events/*
     ("admin", "D"),      # /admin/*
     ("chat", "B"),       # /chat
+    ("rest_area", "B"),  # /rest-areas/road-distance  졸음쉼터 도로 거리 (카카오 길찾기)
 ]
 
 

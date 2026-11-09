@@ -6,14 +6,18 @@
 //
 // [이 파일이 하는 일]
 //   - 공공데이터 '전국 졸음쉼터 표준데이터' (assets/rest_areas.json) 읽기 — 한 번 읽으면 앱이 꺼질 때까지 기억
-//   - 내 위치에서 직선 거리로 가까운 n곳 (도로 거리는 지도 화면 [길찾기] 에서)
-//   - 경고 음성 안내 문장: "가까운 태인 졸음쉼터, 천안방향, 약 12킬로미터"
+//   - 내 위치에서 직선 거리로 가까운 n곳
+//   - 🆕 (11/09) 도로 거리: 직선 거리로 8곳을 고른 뒤 서버(/rest-areas/road-distance → 카카오모빌리티 자동차 길찾기)에
+//     도로 거리 · 시간을 물어 빨리 도착하는 순(시간 순)으로 다시 줄 세움. 서버 · 카카오가 안 되면 직선 거리 그대로
+//     (반대편 차로 쉼터가 직선으로는 가깝게 보이던 문제를 줄임)
+//   - 경고 음성 안내 문장: "가까운 태인 졸음쉼터, 천안방향, 약 14킬로미터, 약 12분" (도로 거리 없으면 분은 빠짐)
 //
 // [만들 것 (이름 약속 — 다른 파일이 이 이름으로 부름)]
-//   - nearestRestAreas(lat, lng, {n = 5}) → List<NearRestArea> (가까운 순, 데이터를 못 읽으면 빈 목록)
-//   - NearRestArea: area(RestArea) · km(직선 거리) · voice(음성 안내 문장)
+//   - nearestRestAreas(lat, lng, {n = 5}) → List<NearRestArea> (직선 거리 가까운 순, 데이터를 못 읽으면 빈 목록)
+//   - nearestRestAreasByRoad(lat, lng, {n = 5}) → 빨리 도착하는 순 (도로 시간, 못 구하면 직선 거리 순)
+//   - NearRestArea: area(RestArea) · km(직선) · roadKm · roadMin(도로, 없으면 null) · distanceText · voice
 //   - 2단계 경고 음성 안내 (C 의 warning_screen):
-//       final near = await nearestRestAreas(lat, lng, n: 1);
+//       final near = await nearestRestAreasByRoad(lat, lng, n: 1);
 //       if (near.isNotEmpty) await VoiceService.speak(near.first.voice);
 //
 // [주의]
@@ -26,7 +30,10 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/services.dart' show rootBundle;
+
+import 'api_service.dart';
 
 /// 졸음쉼터 한 곳 (assets/rest_areas.json 한 줄)
 class RestArea {
@@ -66,14 +73,28 @@ class RestArea {
 class NearRestArea {
   final RestArea area;
   final double km; // 직선 거리
+  final double? roadKm; // 도로 거리 (카카오 길찾기, 못 구하면 null)
+  final int? roadMin; // 자동차로 걸리는 분 (못 구하면 null)
 
-  const NearRestArea(this.area, this.km);
+  const NearRestArea(this.area, this.km, {this.roadKm, this.roadMin});
 
-  /// 경고 음성 안내 문장 — "가까운 태인 졸음쉼터, 천안방향, 약 12킬로미터"
+  /// 도로 거리를 구했는지
+  bool get hasRoad => roadKm != null;
+
+  /// 정렬 · 안내에 쓰는 거리 — 도로 거리가 있으면 도로, 없으면 직선
+  double get bestKm => roadKm ?? km;
+
+  /// 목록 글자 — '도로 13.9km · 12분' 또는 '직선 9.3km'
+  String get distanceText =>
+      hasRoad ? '도로 ${roadKm!.toStringAsFixed(1)}km${roadMin == null ? '' : ' · $roadMin분'}' : '직선 ${km.toStringAsFixed(1)}km';
+
+  /// 경고 음성 안내 문장 — "가까운 태인 졸음쉼터, 천안방향, 약 14킬로미터, 약 12분"
+  /// (도로 거리를 못 구하면 직선 거리로 "약 12킬로미터"만)
   String get voice => [
         '가까운 ${area.name}',
         if (area.direction.isNotEmpty) area.direction,
-        km < 1 ? '1킬로미터 안' : '약 ${km.round()}킬로미터',
+        bestKm < 1 ? '1킬로미터 안' : '약 ${bestKm.round()}킬로미터',
+        if (roadMin != null) '약 $roadMin분',
       ].join(', ');
 }
 
@@ -112,4 +133,67 @@ Future<List<NearRestArea>> nearestRestAreas(double lat, double lng, {int n = 5})
   } catch (_) {
     return [];
   }
+}
+
+/// 도로 거리를 물어볼 때 직선 거리로 먼저 고르는 후보 수 (서버 MAX_DESTINATIONS 와 같게)
+const int roadCandidates = 8;
+
+/// 서버에 도로 거리를 묻는 함수 모양 — 기본은 ApiService.fetchRoadDistances (시험 · 미리보기에서 바꿔 끼움)
+typedef RoadDistanceFetcher = Future<Map<String, dynamic>> Function(
+    double lat, double lng, List<Map<String, dynamic>> destinations);
+
+/// 쉼터를 서버 요청에서 구분하는 이름 (이름만으로는 같은 이름 · 양방향 쉼터가 겹침)
+String restAreaKey(RestArea a) => '${a.name}|${a.lat}|${a.lng}';
+
+/// 줄 세우기 (11/09): 도로 시간을 구한 쉼터가 먼저, 빨리 도착하는 순 (같은 분이면 도로 거리 짧은 순)
+/// → 시간을 못 구한 쉼터는 그 뒤에 직선 거리 순.
+/// 거리 순이 아닌 이유: 거리는 가까워도 더 오래 걸리는 곳이 있음 (실제 키 시험 11/09 — 천안 부근 19.1km · 31분 vs 22.1km · 18분)
+int byArrival(NearRestArea x, NearRestArea y) {
+  if (x.roadMin != null && y.roadMin != null) {
+    final t = x.roadMin!.compareTo(y.roadMin!);
+    return t != 0 ? t : x.roadKm!.compareTo(y.roadKm!);
+  }
+  if (x.roadMin != null) return -1;
+  if (y.roadMin != null) return 1;
+  return x.km.compareTo(y.km);
+}
+
+/// 직선 거리로 고른 후보에 도로 거리 · 시간을 붙여서 빨리 도착하는 순 n곳 (byArrival).
+/// 서버 · 카카오가 안 되거나 [timeout] 안에 답이 없으면 직선 거리 순 그대로 (경고 음성 안내가 늦어지지 않게).
+/// 도로 거리를 못 구한 쉼터는 직선 거리로 같이 줄 세움.
+Future<List<NearRestArea>> withRoadDistance(
+  LatLng me,
+  List<NearRestArea> candidates, {
+  int n = 5,
+  RoadDistanceFetcher? fetch,
+  Duration timeout = const Duration(seconds: 5),
+}) async {
+  if (candidates.isEmpty) return candidates;
+  try {
+    final dests = [
+      for (final c in candidates.take(roadCandidates))
+        {'key': restAreaKey(c.area), 'lat': c.area.lat, 'lng': c.area.lng}
+    ];
+    final results = await (fetch ?? ApiService.fetchRoadDistances)(me.lat, me.lng, dests).timeout(timeout);
+    if (results.isEmpty) return candidates.take(n).toList();
+    final out = [
+      for (final c in candidates.take(roadCandidates))
+        switch (results[restAreaKey(c.area)]) {
+          {'distance_m': final num m, 'duration_s': final num s} =>
+            NearRestArea(c.area, c.km, roadKm: m / 1000, roadMin: math.max(1, (s / 60).round())),
+          _ => c,
+        }
+    ]..sort(byArrival);
+    return out.take(n).toList();
+  } catch (e) {
+    debugPrint('[rest_area] 도로 거리 실패 → 직선 거리: $e');
+    return candidates.take(n).toList();
+  }
+}
+
+/// 내 위치에서 빨리 도착하는 n곳 (도로 시간 순) (2단계 경고 음성 안내 · 지도 화면). 도로 거리를 못 구하면 직선 거리.
+Future<List<NearRestArea>> nearestRestAreasByRoad(double lat, double lng, {int n = 5, RoadDistanceFetcher? fetch}) async {
+  final me = (lat: lat, lng: lng);
+  final straight = await nearestRestAreas(lat, lng, n: roadCandidates);
+  return withRoadDistance(me, straight, n: n, fetch: fetch);
 }
