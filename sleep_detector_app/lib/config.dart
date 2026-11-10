@@ -10,6 +10,8 @@
 //   - smileOpenProb = 0.8      (🆕 11/04) 웃음 확률이 이 이상이면 감김으로 세지 않음
 //   - closedSec = 1.5          감김이 이만큼 이어지면 미세수면 의심
 //   - microsleepPhotos = 3 · photoGapSec   (🆕 11/09) 눈 감김 미세수면 때 넘기는 사진 수 · 보관 간격
+//   - suspectGapSec = 20       (🆕 11/10) 의심 뒤 · 경고 화면에서 돌아온 뒤 새 의심을 안 내는 시간 (서버 취소면 풀림)
+//   - halfCheckOn · halfCheckSec = 10   (🆕 11/10) 반쯤 감은 눈 확인 사진 → onHalfCheck → 서버 EAR (평소 뜬 눈 × 0.85)
 //   - perclosWindowSec = 30    PERCLOS 계산 구간
 //   - perclosThreshold = 0.15  감김 비율이 이 이상이면 피로 누적 의심
 //   - unknownSec = 3           얼굴 없음 · 모름이 이만큼 이어지면 '카메라를 확인하세요'
@@ -50,6 +52,20 @@ class AppConfig {
   // 피로 누적(PERCLOS): 최근 30초 창 및 15% 임계값
   static const int perclosWindowSec = 30;
   static const double perclosThreshold = 0.15;
+
+  // 🆕 (11/10 팀장 요청) 의심 뒤 · 경고 화면에서 돌아온 뒤 이만큼은 새 의심 (눈 감김 · 고개 숙임 · PERCLOS · 반쯤 확인) 을 내지 않음
+  //   전에는 미세수면 0초 (눈 한 번 뜨면 바로 다음) · 경고 화면 닫으면 0초 → 몇 초 만에 1 → 2 → 3단계
+  //   서버가 취소한 의심은 간격을 풀어 줌 (진짜 졸음을 놓치지 않게) · 숙임 재전송 (headResendSec) 은 간격과 상관없음
+  //   주의: 서버 시연 모드 단계 창 (1분) 보다 간격 × 2 + 경고 화면 시간이 길면 3단계까지 못 감 → 팀장 config 와 같이 정함
+  static const double suspectGapSec = 20;
+
+  // 🆕 (11/10 팀장 요청) 반쯤 감은 눈 확인 — ML Kit 은 반쯤 감은 눈을 0.73 ~ 0.99 (뜸) 로 봐서 의심 자체가 안 감
+  //   눈을 뜬 상태 (감김 · 숙임 · 웃음 아님) 면 halfCheckSec 마다 사진 1장 → onHalfCheck → 서버 EAR 을 그 사람의 평소 뜬 눈 EAR 과 비교
+  //   서버가 최근 4번 중 3번 반쯤이면 피로 확정 (sleep_state.add_half_check). 사진은 판정 뒤 바로 지움 (확정 때만 기록)
+  //   팀 영상 프레임 (눈 폭 약 19px, 5명, 시연 확인용): 평소 × 0.85 미만 → 반쯤 50/59 · 뜬 눈 오탐 0/60. 폰 EAR 은 0 ~ 1/8 이라 못 씀
+  //   1시간에 약 360장 (1장 약 40KB)
+  static const bool halfCheckOn = true;
+  static const double halfCheckSec = 10;
 
   // 얼굴 없음 / 모름(null) 연속 허용 시간 (초)
   static const double unknownSec = 3.0;

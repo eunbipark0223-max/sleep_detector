@@ -19,7 +19,9 @@
 #
 # [만들 것 (이름 약속 — 다른 파일이 이 이름으로 부름)]
 #   - check_eyes(image_path, user_id) → 판정 결과 dict
-#   - calibrate(image_paths) → 개인 기준 EAR
+#   - calibrate(image_paths) → 개인 기준 EAR (🆕 11/10 뜬 눈 EAR 중간값은 sleep_state.set_open_ear 에도 저장)
+#   - 🆕 (11/10) check_half(image_path, user_id) → 반쯤 감은 눈 확인 (EAR 만, 평소 뜬 눈 대비) · fatigue 면 피로 확정
+#       detect.py 에서 reason == 'half' 일 때 부름 (팀장 연결) — 사진은 판정 뒤 바로 지우고 fatigue 일 때만 기록
 #
 # [주의]
 #   - mediapipe 1.1.0 에는 예전 mp.solutions.face_mesh 가 없음 → ml_models/face_landmarker.task 로 Face Landmarker 사용
@@ -362,6 +364,32 @@ def check_eyes(image_path: str, user_id=None, reason: str | None = None, **kwarg
     return _normalize(raw, threshold, reason=reason)
 
 
+def check_half(image_path: str, user_id=None) -> dict:
+    """🆕 (11/10) 반쯤 감은 눈 확인 사진 1장 → 서버 EAR → sleep_state.add_half_check (평소 뜬 눈 × 0.85, 최근 4번 중 3번)
+
+    CNN 결과는 판정에 안 씀 — 반쯤 감은 눈을 CNN 548 은 뜸으로 봄 (팀 영상 t 감음 확률 중간 0.04)
+    반환: face_found · ear · half · fatigue (True 면 detect.py 가 피로 확정) · base · count
+    가짜 모드 · 판정 오류 · 얼굴 없음 → fatigue False (반쯤 확인은 앱 판단이 없어서 오류 때 확정하지 않음)
+    """
+    ear = None
+    face_found = False
+    if USE_REAL_AI:
+        try:
+            raw = _real(image_path, EAR_THRESHOLD)
+            face_found = bool(raw.get("face_found"))
+            ear = raw.get("ear") if face_found else None
+        except Exception as e:
+            print(f"[face_service] 반쯤 확인 판정 실패: {type(e).__name__} {e}")
+    out = {"face_found": face_found, "ear": ear, "half": None, "fatigue": False, "base": None, "count": ""}
+    if user_id is not None:
+        try:
+            from services import sleep_state
+            out.update(sleep_state.add_half_check(user_id, ear))
+        except Exception as e:
+            print(f"[face_service] 반쯤 확인 기록 실패: {type(e).__name__} {e}")
+    return out
+
+
 def calibrate(image_paths: list[str], user_id=None, **kwargs) -> float:
     ears = []
     for path in image_paths:
@@ -378,6 +406,13 @@ def calibrate(image_paths: list[str], user_id=None, **kwargs) -> float:
 
     median_ear = statistics.median(ears)
     personal_threshold = median_ear * CALIB_RATIO
+    # 🆕 (11/10) 뜬 눈 EAR 중간값은 반쯤 확인의 첫 평소 값으로 (기준은 0.15 ~ 0.25 로 잘려서 거꾸로 못 구함)
+    if user_id is not None:
+        try:
+            from services import sleep_state
+            sleep_state.set_open_ear(user_id, median_ear)
+        except Exception as e:
+            print(f"[face_service] 평소 뜬 눈 EAR 저장 실패: {type(e).__name__} {e}")
 
     clamped = max(CALIB_MIN, min(CALIB_MAX, personal_threshold))
     return round(float(clamped), 3)
