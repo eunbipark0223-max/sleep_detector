@@ -9,6 +9,7 @@
 //   - onSuspect → camera_image_utils.toJpg → api_service.sendDetect (위도 · 경도 포함)
 //   -   → 응답 isSleep 이면 warning_screen 을 이 화면 위에 띄움 (이 화면은 살아 있어 카메라 · 판정은 계속)
 //   -   → 서버 답을 못 받으면 알람 (연결 실패는 바로, 답이 없으면 10초 뒤, 단계는 안 올림, 401 제외)
+//   - 인터넷 연결 끊김 (ping · 졸음 전송 실패) → "인터넷 연결이 끊겼어요" [다시 시도] 창 + 음성 한 번 (반복 안 함), 따로 다시 확인하지 않고 평소 30초 ping 이 성공하면 창 닫힘 (11/10 팀장)
 //   - 30초마다 sendPing → stage 로 화면 색 (1단계 자동 해제 · 조치완료 반영), restDue 면 휴게 배너 + 🔊 1번
 //   - onCheckCamera → '카메라를 확인하세요' 배너 (얼굴이 다시 잡힐 때까지) + 🔊 10초마다
 //   - 화면 꺼짐 방지 (wakelock_plus)
@@ -97,6 +98,12 @@ class _DriveScreenState extends State<DriveScreen> {
   // 30초마다 서버에 "운전 중이에요" 알리기 (ping) → 지금 단계 · 휴게 알림 받기
   Timer? _pingTimer;
   String _restMessage = ''; // 휴게 배너 글 (비어 있으면 배너 없음)
+
+  // 인터넷 연결 끊김 (와이파이 · 데이터 꺼짐, 터널 등) — ping · 졸음 전송이 실패하면 true, 다시 성공하면 false
+  //   끊기면 [다시 시도] 창 + 음성 한 번 (반복 안 함). 따로 자주 확인하지 않음 — 평소 30초 ping 이 성공하면 창이 저절로 닫힘
+  bool _offline = false;
+  final ValueNotifier<bool> _retryingNote = ValueNotifier<bool>(false); // [다시 시도]를 누르고 답을 기다리는 중
+  BuildContext? _offlineDialogCtx; // 떠 있는 연결 끊김 창 (없으면 null)
 
   // 위치 (경고 기록용만 — 속도 · 정차 판단에는 안 씀). ping 때마다 미리 받아 두고, 졸음 전송 때 바로 붙인다
   double? _lat;
@@ -236,6 +243,7 @@ class _DriveScreenState extends State<DriveScreen> {
     try {
       final status = await ApiService.sendPing(_eye.currentPerclos);
       if (!mounted) return;
+      _markOnline();
       if (status.restDue) _restMessage = status.restMessage; // 연속 운전 2시간 → 휴게 배너
       _setStage(status.stage);
       // 휴게 알림은 서버가 한 번만 true 로 보내 줌 → 한 번만 읽기
@@ -256,9 +264,75 @@ class _DriveScreenState extends State<DriveScreen> {
           regulations: _lastRegs,
         ));
       }
+    } on UnauthorizedException {
+      // 로그인 만료 → ApiService 가 로그인 화면으로 보낸다 (연결 끊김이 아님)
     } catch (_) {
-      // ping 실패는 조용히 넘어간다 (30초 뒤 다시 보냄)
+      _markOffline(speak: true); // [다시 시도] 창 + 음성 한 번
     }
+  }
+
+  // 연결이 끊겼을 때 — 끊긴 순간 한 번만 창을 띄우고 말한다 (경고 음성 · 퀴즈 · 휴식 중이면 창 · 음성 없이 넘어감)
+  void _markOffline({required bool speak}) {
+    if (!mounted || _offline) return;
+    _offline = true;
+    if (_pauseDetect.value) return;
+    if (speak) VoiceService.speak('인터넷 연결이 끊겼어요. 와이파이나 데이터를 확인해 주세요.');
+    _showOfflineDialog();
+  }
+
+  // [다시 시도] 창 — "정차하셨나요?" 창과 같은 모양. [닫기]로 닫으면 다시 띄우지 않는다 (연결되면 저절로도 닫힘)
+  Future<void> _showOfflineDialog() async {
+    if (_offlineDialogCtx != null) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        _offlineDialogCtx = ctx;
+        return AlertDialog(
+          title: const Text('인터넷 연결이 끊겼어요'),
+          content: const Text('와이파이나 데이터를 확인해 주세요.', style: TextStyle(fontSize: 15, height: 1.4)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('닫기')),
+            ValueListenableBuilder<bool>(
+              valueListenable: _retryingNote,
+              builder: (_, busy, _) => TextButton(
+                onPressed: busy ? null : _retryNow,
+                child: Text(busy ? '확인 중…' : '다시 시도'),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    _offlineDialogCtx = null;
+  }
+
+  // 연결 끊김 창이 떠 있으면 닫는다 — 위에 경고 화면이 떠 있어도 이 창만 빼낸다
+  void _closeOfflineDialog() {
+    final ctx = _offlineDialogCtx;
+    _offlineDialogCtx = null;
+    if (ctx == null || !ctx.mounted) return;
+    final route = ModalRoute.of(ctx);
+    if (route == null) return;
+    if (route.isCurrent) {
+      Navigator.of(ctx).pop();
+    } else {
+      Navigator.of(ctx).removeRoute(route);
+    }
+  }
+
+  // 다시 연결됐을 때 — 창을 닫는다
+  void _markOnline() {
+    if (!_offline) return;
+    _offline = false;
+    _closeOfflineDialog();
+  }
+
+  // 창의 [다시 시도] — 기다리지 않고 바로 ping (연결되면 _markOnline 이 창을 닫음)
+  Future<void> _retryNow() async {
+    if (_retryingNote.value) return;
+    _retryingNote.value = true;
+    await _ping();
+    if (mounted) _retryingNote.value = false;
   }
 
   // 측정 화면(D)이 카메라를 늦게 정리하면, 막 켠 운행 화면 카메라까지 같이 꺼질 때가 있다.
@@ -342,6 +416,7 @@ class _DriveScreenState extends State<DriveScreen> {
     VoiceService.stop(); // 말하기 멈춤
     WakelockPlus.disable(); // 운행이 끝나면 화면 꺼짐을 원래대로
     _pingTimer?.cancel(); // ping 끄기
+    _retryingNote.dispose();
     _watchdog?.cancel(); // 카메라 지킴이 끄기
     _liveStage.dispose();
     _pauseDetect.removeListener(_onPauseChanged);
@@ -390,6 +465,7 @@ class _DriveScreenState extends State<DriveScreen> {
       );
       slowAlarm.cancel();
       if (!mounted) return;
+      _markOnline();
       // 서버가 취소하면 눈 감시 도구에 알린다 (고개 숙인 채 계속 자면 사진 없이 한 번 더 보내게, A)
       if (!res.isSleep) _eye.serverCancelled();
       _saveRegs(res.regulations);
@@ -409,6 +485,7 @@ class _DriveScreenState extends State<DriveScreen> {
       // 로그인 만료 → ApiService 가 로그인 화면으로 보낸다. 졸음과 상관없으니 알람은 울리지 않음
     } catch (e) {
       ringOnce(); // 서버 답이 없어도 알람으로 깨운다 (화면에 서버 오류 글은 띄우지 않음)
+      _markOffline(speak: false); // 알람이 이미 울려서 음성은 생략, [다시 시도] 창만
     } finally {
       slowAlarm.cancel();
       _sending = false;
@@ -437,6 +514,8 @@ class _DriveScreenState extends State<DriveScreen> {
         faceBox: _faceBoxNote,
         silent: silent,
         resumeRest: resumeRest,
+        lat: _lat, // 2단계 가까운 졸음쉼터 음성 안내용
+        lng: _lng,
       ),
     );
     _warningRoute = route;

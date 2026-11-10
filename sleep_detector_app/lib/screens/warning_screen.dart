@@ -10,7 +10,8 @@
 //   - 운전 중 음성 퀴즈 (부품 A): D 의 quiz_screen 을 띄우고, 돌려받은 단계로 색 갱신 (2번 실패면 한 단계 위 + 알람)
 //   - 같은 단계에서 또 졸면 알람 · 음성 보고 없이 낼 퀴즈만 (silent, 기획안 6-6)
 //   - 3단계: 관리자 조치완료 전까지 30초마다 알람 + '관리자에게 알렸습니다. 정차해 주세요.'
-//   - 2단계 [정차했어요] → 확인 창 → rest_screen → [운행 재개] 뒤 운행 화면으로 복귀
+//   - 2단계: 고정 문구 뒤 "가까운 ○○ 졸음쉼터, ○○방향, 약 ○킬로미터" 음성 (B 의 rest_area_service) + [가까운 졸음쉼터] → 지도 · 길찾기 (11/10)
+//   - 2단계 [정차했어요] → 확인 창 (음성 · 1분 뒤 저절로 취소) → rest_screen → [운행 재개] 뒤 운행 화면으로 복귀
 //
 // [주의]
 //   - 화면 터치로 답하지 않는다 (답은 말로만)
@@ -28,27 +29,44 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/sleep_response.dart';
+import '../services/rest_area_service.dart';
 import '../services/voice_service.dart';
 import '../theme.dart';
+import 'map_screen.dart';
 import 'quiz_screen.dart';
 import 'regulation_screen.dart';
 import 'rest_screen.dart';
 
+/// "정차하셨나요?" 창을 아무것도 안 누르고 띄워 둘 수 있는 시간 — 지나면 [취소]처럼 닫힌다 (11/10 팀장 · C: 1분)
+const int confirmRestSec = 60;
+
 /// [정차했어요] 를 누르면 한 번 더 묻는다 — 휴식은 시작하면 15분 동안 취소할 수 없어서 (잘못 누름 방지)
 ///   운행 화면의 휴게 배너 · 경고 화면이 같이 쓴다. [네, 정차했어요] 를 누르면 true
+///   창이 뜰 때 같은 내용을 음성으로 한 번 읽어 준다 (운전 중이라 화면을 못 볼 수 있어서)
+///   confirmRestSec 초 동안 아무것도 안 누르면 저절로 닫힘 (= 취소) — 창을 띄워 둔 채 경고를 피하는 꼼수 막기
 Future<bool> confirmRest(BuildContext context) async {
+  var open = true;
+  Timer? autoClose;
+  VoiceService.speak('정차하셨나요? 휴식을 시작하면 15분 동안 쉬어야 운행을 다시 시작할 수 있어요.');
   final yes = await showDialog<bool>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('정차하셨나요?'),
-      content: const Text('휴식을 시작하면 15분 동안 쉬어야 운행을 다시 시작할 수 있어요.',
-          style: TextStyle(fontSize: 15, height: 1.4)),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
-        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('네, 정차했어요')),
-      ],
-    ),
+    builder: (ctx) {
+      autoClose ??= Timer(const Duration(seconds: confirmRestSec), () {
+        if (open && ctx.mounted) Navigator.pop(ctx, false);
+      });
+      return AlertDialog(
+        title: const Text('정차하셨나요?'),
+        content: const Text('휴식을 시작하면 15분 동안 쉬어야 운행을 다시 시작할 수 있어요.',
+            style: TextStyle(fontSize: 15, height: 1.4)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('네, 정차했어요')),
+        ],
+      );
+    },
   );
+  open = false;
+  autoClose?.cancel();
   return yes == true;
 }
 
@@ -257,6 +275,10 @@ class WarningScreen extends StatefulWidget {
   /// 같은 단계에서 또 졸았을 때 true — 알람 · 고정 문구 · 음성 보고를 다시 내지 않고 퀴즈만 (기획안 6-6)
   final bool silent;
 
+  /// 운행 화면이 미리 받아 둔 위치 — 2단계 때 가까운 졸음쉼터를 음성으로 알려 주는 데 씀 (없으면 안내 생략)
+  final double? lat;
+  final double? lng;
+
   const WarningScreen(
       {super.key,
       required this.response,
@@ -267,7 +289,9 @@ class WarningScreen extends StatefulWidget {
       this.serverCancelled,
       this.faceBox,
       this.silent = false,
-      this.resumeRest = false});
+      this.resumeRest = false,
+      this.lat,
+      this.lng});
 
   @override
   State<WarningScreen> createState() => _WarningScreenState();
@@ -281,6 +305,7 @@ class _WarningScreenState extends State<WarningScreen> {
   bool _flowStopped = false; // [정차했어요] 를 눌러 음성 · 퀴즈 순서를 그만둠 (휴식 화면 위로 퀴즈가 뜨지 않게)
   bool _readingRegs = false; // 규정을 읽는 중 (30초 반복이 끊지 않게)
   bool _keepSpeaking = false; // 닫혀도 말을 끊지 않음 (운행 재개 안내를 끝까지 듣게)
+  Future<List<NearRestArea>>? _nearRest; // 2단계 — 가까운 졸음쉼터 찾기 (알람이 울리는 동안 미리 찾아 둠)
 
   // 운행 중 2 · 3단계 경고는 뒤로 가기로 끌 수 없다 (2단계는 쉬어야, 3단계는 관리자만 해제). 사진 1장 테스트는 나갈 수 있음
   bool get _locked => widget.liveStage != null && _stage >= 2;
@@ -289,6 +314,7 @@ class _WarningScreenState extends State<WarningScreen> {
   void initState() {
     super.initState();
     _stage = widget.response.stage;
+    if (_stage == 2 && !widget.silent) _findNearRest(); // 알람 · 고정 문구가 나오는 동안 미리 찾기
     widget.liveStage?.addListener(_onLiveStage);
     widget.pauseDetect?.value = true; // 알람 · 음성 · 퀴즈가 끝날 때까지 졸음 판정 쉬기
     if (widget.resumeRest) {
@@ -349,7 +375,11 @@ class _WarningScreenState extends State<WarningScreen> {
       if (!mounted || _flowStopped) return;
       // 1·2단계 고정 문구 (3단계는 고정 문구 없이 음성 보고만 — 기획안 8-7)
       if (_stage == 1) await VoiceService.speak('일어나세요');
-      if (_stage == 2) await VoiceService.speak('계속 졸고 있습니다. 가까운 졸음쉼터로 이동하세요');
+      if (_stage == 2) {
+        await VoiceService.speak('계속 졸고 있습니다. 가까운 졸음쉼터로 이동하세요');
+        if (!mounted || _flowStopped) return;
+        await _speakNearRest(); // "가까운 ○○ 졸음쉼터, ○○방향, 약 ○킬로미터" (B 의 rest_area_service, 11/10)
+      }
       if (!mounted || _flowStopped) return;
       final voice = widget.response.driverVoice; // 기사 음성 보고 ("최근 10분 동안 2번 졸았습니다…")
       if (voice.isNotEmpty) await VoiceService.speak(voice);
@@ -385,6 +415,32 @@ class _WarningScreenState extends State<WarningScreen> {
     setState(() => _voiceDone = true);
     // 3단계 30초 반복은 퀴즈가 끝난 뒤에 시작
     if (_stage == 3) _startRepeat();
+  }
+
+  // 2단계 — 가장 빨리 갈 수 있는 졸음쉼터 1곳 찾기 (도로 거리, 안 되면 직선 거리). 위치를 모르면 찾지 않음
+  void _findNearRest() {
+    final lat = widget.lat, lng = widget.lng;
+    if (lat == null || lng == null) return;
+    _nearRest = nearestRestAreasByRoad(lat, lng, n: 1);
+  }
+
+  // 찾은 졸음쉼터를 음성으로 한 번 알려 준다 — 5초 안에 못 찾으면 넘어감 (경고 순서가 멈추지 않게)
+  Future<void> _speakNearRest() async {
+    if (_nearRest == null) _findNearRest();
+    final f = _nearRest;
+    if (f == null) return;
+    try {
+      final near = await f.timeout(const Duration(seconds: 5));
+      if (near.isEmpty || !mounted || _flowStopped) return;
+      await VoiceService.speak(near.first.voice);
+    } catch (_) {
+      // 못 찾으면 안내 없이 다음 순서로
+    }
+  }
+
+  // [가까운 졸음쉼터] — 지도 · 목록 · [길찾기] (B 의 MapScreen). 어디에 세울지 보고 → 도착하면 [정차했어요]
+  void _openRestMap() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MapScreen()));
   }
 
   // 단계별 큰 글씨 한 줄
@@ -610,6 +666,20 @@ class _WarningScreenState extends State<WarningScreen> {
                 label: const Text('규정 듣기'),
               ),
               if (_stage == 2) ...[
+                const SizedBox(height: 10),
+                // 어디에 세울지 — 가까운 졸음쉼터 지도 · 길찾기 (음성 · 퀴즈가 끝난 뒤에 누를 수 있음, [규정 듣기] 와 같게)
+                OutlinedButton.icon(
+                  onPressed: _voiceDone ? _openRestMap : null,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: fg,
+                    disabledForegroundColor: fg.withValues(alpha: 0.5),
+                    side: BorderSide(color: fg, width: 2),
+                    minimumSize: const Size.fromHeight(50),
+                    textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                  ),
+                  icon: const Icon(Icons.local_cafe_outlined),
+                  label: const Text('가까운 졸음쉼터'),
+                ),
                 const SizedBox(height: 10),
                 FilledButton(
                   onPressed: () async {

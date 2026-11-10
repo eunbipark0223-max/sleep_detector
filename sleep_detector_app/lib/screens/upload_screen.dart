@@ -5,8 +5,9 @@
 // 수업 원본: road_hazard_app/lib/screens/upload_screen.dart (🟡 수정)
 //
 // [이 파일이 하는 일]
-//   - 갤러리 / 촬영으로 사진 1장 → eye_monitor.analyzeFile 로 ML Kit 눈 뜸 확률 표시
-//   - → sendDetect (reason 없이) → 서버 EAR 결과 · 단계 표시
+//   - 갤러리 / 촬영으로 사진 1장 → eye_monitor.analyzeFile 로 ML Kit 눈 뜸 확률 재기 (화면에는 안 보여 줌)
+//   - → sendDetect (reason 없이, 눈 뜸 확률 같이) → 서버 결과 · 단계 표시
+//   - 화면에는 숫자(ML Kit 확률 · EAR · 판정 방식 · 10분 졸음 횟수)를 보여 주지 않음 (11/10 팀장 — 숫자는 서버로 넘어가 따로 저장됨)
 //
 // [주의]
 //   - 가장 먼저 완성 (카메라 자동 감지가 안 될 때 발표 보험)
@@ -145,19 +146,7 @@ class _UploadScreenState extends State<UploadScreen> {
                 ),
               ],
             ),
-            if (_photo != null) ...[
-              const SizedBox(height: 12),
-              // ML Kit (폰) 눈 뜸 확률 — 서버 판정(EAR)과 비교해서 볼 수 있게
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: _infoRow(
-                    'ML Kit 눈 뜸 확률 (폰)',
-                    _analyzing ? '재는 중…' : (_mlkitProb == null ? '얼굴 없음' : _mlkitProb!.toStringAsFixed(2)),
-                  ),
-                ),
-              ),
-            ],
+            // ML Kit 눈 뜸 확률은 화면에 보여 주지 않고 서버로만 보낸다 (11/10 팀장)
             const SizedBox(height: 12),
             FilledButton(
               onPressed: (_photo == null || _loading || _analyzing) ? null : _send,
@@ -206,7 +195,7 @@ class _UploadScreenState extends State<UploadScreen> {
     );
   }
 
-  // 결과 카드: 단계 색 카드 + (있으면) 기사 음성 보고 + 눈 숫자
+  // 결과 카드: 단계 색 카드 + (있으면) 기사 음성 보고 + 졸음 / 정상 (숫자는 빼기, 11/10 팀장)
   Widget _resultCard(SleepResponse r) {
     final bg = AppColors.stage(r.stage); // 단계(0~3) → 화면 색
     final fg = AppColors.onStage(r.stage); // 그 색 위에 올리는 글자색
@@ -256,14 +245,7 @@ class _UploadScreenState extends State<UploadScreen> {
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                _infoRow('졸음 판정', r.isSleep ? '졸음' : '정상'),
-                _infoRow('EAR (눈 열림)', r.ear?.toStringAsFixed(2) ?? '-'),
-                _infoRow('판정 방식', r.method.isEmpty ? '-' : r.method),
-                _infoRow('최근 10분 졸음', '${r.sleepCount10min}번'),
-              ],
-            ),
+            child: _infoRow('졸음 판정', r.isSleep ? '졸음' : '정상'),
           ),
         ),
       ],

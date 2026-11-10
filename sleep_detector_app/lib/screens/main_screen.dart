@@ -1,15 +1,17 @@
 // ═══════════════════════════════════════════════════════════════
-// screens/main_screen.dart — 하단 탭 (홈 · 운행 기록 · 규정 도우미)
+// screens/main_screen.dart — 하단 탭 (홈 · 운행 기록 · 가까운 졸음쉼터 · 규정 도우미)
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P0
 // 수업 원본: road_hazard_app/lib/screens/main_screen.dart (🟡 탭 변경)
 //
 // [이 파일이 하는 일]
-//   - 수업: 홈 · 위험 지도 · 내 신고 → 홈 · 운행 기록 · 규정 도우미
+//   - 수업: 홈 · 위험 지도 · 내 신고 → 홈 · 운행 기록 · 가까운 졸음쉼터 · 규정 도우미
+//   - 가까운 졸음쉼터: 홈 화면 버튼에서 아래 탭으로 옮김 (11/10 팀장 의견, C 가 옮김)
+//       지도 화면(B)은 제목줄이 따로 있어서, 이 탭에서는 위 제목줄 · ≡ 메뉴를 숨긴다 (제목줄이 두 줄로 겹치지 않게)
 //   - ≡ 메뉴: 내 정보 · 로그아웃
 //
 // [연결 — 각 화면의 클래스 이름]
-//   - 홈 HomeScreen · 운행 기록 HistoryScreen (D) · 규정 도우미 ChatScreen (B) · 내 정보 ProfileScreen (D) · 로그아웃 뒤 LoginScreen (C)
+//   - 홈 HomeScreen · 운행 기록 HistoryScreen (D) · 가까운 졸음쉼터 MapScreen (B) · 규정 도우미 ChatScreen (B) · 내 정보 ProfileScreen (D) · 로그아웃 뒤 LoginScreen (C)
 //   - 탭을 누를 때마다 그 화면을 새로 만든다 (운행 기록은 열 때마다 최신 경고 목록)
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
@@ -22,6 +24,7 @@ import 'chat_screen.dart';
 import 'history_screen.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
+import 'map_screen.dart';
 import 'profile_screen.dart';
 
 class MainScreen extends StatefulWidget {
@@ -32,7 +35,8 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  static const List<String> _titles = ['홈', '운행 기록', '규정 도우미'];
+  static const List<String> _titles = ['홈', '운행 기록', '가까운 졸음쉼터', '규정 도우미'];
+  static const int _mapTab = 2; // 지도 화면은 제목줄이 따로 있음 → 이 탭에서는 위 제목줄을 숨김
 
   int _index = 0;
 
@@ -42,6 +46,8 @@ class _MainScreenState extends State<MainScreen> {
         return const HomeScreen();
       case 1:
         return const HistoryScreen();
+      case _mapTab:
+        return const MapScreen();
       default:
         return const ChatScreen();
     }
@@ -75,7 +81,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: _index == _mapTab ? null : AppBar(
         title: Text(_titles[_index]),
         actions: [
           PopupMenuButton<String>(
@@ -96,6 +102,7 @@ class _MainScreenState extends State<MainScreen> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: '홈'),
           NavigationDestination(icon: Icon(Icons.history), label: '운행 기록'),
+          NavigationDestination(icon: Icon(Icons.local_cafe_outlined), selectedIcon: Icon(Icons.local_cafe), label: '가까운 졸음쉼터'),
           NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: '규정 도우미'),
         ],
       ),
