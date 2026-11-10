@@ -10,6 +10,9 @@
 //   - smileOpenProb = 0.8      (🆕 11/04) 웃음 확률이 이 이상이면 감김으로 세지 않음
 //   - closedSec = 1.5          감김이 이만큼 이어지면 미세수면 의심
 //   - microsleepPhotos = 3 · photoGapSec   (🆕 11/09) 눈 감김 미세수면 때 넘기는 사진 수 · 보관 간격
+//   - graceAfterWarningSec = 10   (🆕 11/10) 경고 뒤 눈을 한 번 뜨면 그때부터 미세수면 · 숙임 의심을 안 내는 시간
+//   - eyeResendOn              (🆕 11/10) 눈 감김을 서버가 취소했는데 계속 감으면 사진 없이 한 번 더
+//   - halfCheckOn (기본 꺼짐) · halfCheckSec = 10   (🆕 11/10) 반쯤 감은 눈 확인 사진 → onHalfCheck → 서버 EAR (출발 전 뜬 눈 × 0.85)
 //   - perclosWindowSec = 30    PERCLOS 계산 구간
 //   - perclosThreshold = 0.15  감김 비율이 이 이상이면 피로 누적 의심
 //   - unknownSec = 3           얼굴 없음 · 모름이 이만큼 이어지면 '카메라를 확인하세요'
@@ -43,13 +46,33 @@ class AppConfig {
 
   // 🆕 (11/09) 미세수면(눈 감김) 의심 때 넘기는 사진 수 — 감김 처음 · 가운데 · 마지막 (팀장 3장 검토, 11/07 1장 vs 3장 시험)
   //   감는 동안 프레임을 photoGapSec 간격으로만 들고 있음 (1.5초 → 최대 약 8장, 의심 뒤 · 눈 뜨면 바로 비움)
-  //   고개 숙임 · PERCLOS 는 아직 1장 (팀장 답 대기)
+  //   고개 숙임 · PERCLOS 는 1장, 재전송은 사진 없음 (11/09 팀장 결정: 숙임은 얼굴 없는 사진이 많고 재전송이 있음, PERCLOS 는 바로 확정 · 사진은 기록용)
   static const int microsleepPhotos = 3;
   static const double photoGapSec = 0.2;
 
   // 피로 누적(PERCLOS): 최근 30초 창 및 15% 임계값
   static const int perclosWindowSec = 30;
   static const double perclosThreshold = 0.15;
+
+  // 🆕 (11/10 팀장 결정) 경고 화면에서 돌아온 뒤 (reset) 눈을 한 번이라도 뜬 프레임이 나오면 → 그때부터 이만큼은 미세수면 · 고개 숙임 의심을 안 냄
+  //   한 번도 안 뜨고 계속 감고 있으면 봐주지 않음 (지금처럼 1.5초 뒤 바로 의심) · PERCLOS 는 30초 창을 다시 채우니까 그대로
+  //   전에는 경고를 닫고 눈을 비비기만 해도 바로 다음 의심 → 몇 초 만에 1 → 2 → 3단계 (팀장)
+  static const double graceAfterWarningSec = 10;
+
+  // 🆕 (11/10 팀장 결정, 11/05 빈틈) 눈 감김 의심을 서버가 취소했는데 계속 감고 있으면 → 고개 숙임처럼 사진 없이 한 번 더 (headResendSec 기준)
+  //   재생 기록 (11/04 ~ 11/09, 평소 운전 · 거치 약 76분): 후보 0번. 후보는 모두 일부러 감기 · 실눈 · 숙이기 구간
+  //   (C 실눈 유지 11/05 3.8분: 후보 6번 — 서버가 취소했을 때만 실제로 나감)
+  static const bool eyeResendOn = true;
+
+  // 🆕 (11/10 팀장 결정) 반쯤 감은 눈 확인 — 기본 꺼짐, 11/11 시험 기준을 넘으면 켬 (빌드 때 --dart-define=HALF_CHECK=true 로도 켬)
+  //   ML Kit 은 반쯤 감은 눈을 0.73 ~ 0.99 (뜸) 로 봐서 의심 자체가 안 감
+  //   눈을 뜬 상태 (감김 · 숙임 · 웃음 아님) 면 halfCheckSec 마다 사진 1장 → onHalfCheck → 서버 EAR 을 출발 전 측정 뜬 눈 EAR 과 비교
+  //   서버: × 0.85 미만 = 반쯤 (face_service.check_half) · 최근 4번 중 3번이면 피로 확정 (sleep_state.add_half). 사진은 판정 뒤 바로 지움
+  //   출발 전 측정 실패 (얼굴 3장 미만) 면 반쯤 판정 안 함
+  //   팀 영상 프레임 (눈 폭 약 19px, 5명, 시연 확인용): 평소 × 0.85 미만 → 반쯤 50/59 · 뜬 눈 오탐 0/60. 폰 EAR 은 0 ~ 1/8 이라 못 씀
+  //   켜는 기준 (11/11): 팀장 실눈 40초 3번 중 2번 이상 판정 · 평소 운전 2명 × 10분 0번. 1시간에 약 360장 (1장 약 40KB)
+  static const bool halfCheckOn = bool.fromEnvironment('HALF_CHECK', defaultValue: false);
+  static const double halfCheckSec = 10;
 
   // 얼굴 없음 / 모름(null) 연속 허용 시간 (초)
   static const double unknownSec = 3.0;

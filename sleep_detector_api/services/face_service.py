@@ -19,7 +19,11 @@
 #
 # [만들 것 (이름 약속 — 다른 파일이 이 이름으로 부름)]
 #   - check_eyes(image_path, user_id) → 판정 결과 dict
-#   - calibrate(image_paths) → 개인 기준 EAR
+#   - calibrate(image_paths, user_id) → 개인 기준 EAR (지금처럼 숫자 하나)
+#       🆕 (11/10) user_id 를 주면 뜬 눈 EAR 중간값도 sleep_state.set_open_ear 에 저장 (실패면 None)
+#       🆕 calibrate_detail(image_paths, user_id) → {"threshold", "open_ear", "faces"} — 중간값도 같이 받고 싶을 때
+#   - 🆕 (11/10) check_half(image_path, user_id) → {"ear", "baseline", "is_half"} — 반쯤 감은 눈 (EAR 만, 출발 전 뜬 눈 × 0.85 미만)
+#       baseline (출발 전 측정) 이 없으면 is_half False. detect.py 가 sleep_state.add_half 로 4번 중 3번을 셈 (팀장 연결)
 #
 # [주의]
 #   - mediapipe 1.1.0 에는 예전 mp.solutions.face_mesh 가 없음 → ml_models/face_landmarker.task 로 Face Landmarker 사용
@@ -67,6 +71,7 @@ CALIB_MIN_FACES = getattr(config, "CALIB_MIN_FACES", 3)
 CALIB_RATIO = getattr(config, "CALIB_RATIO", 0.7)
 CALIB_MIN = getattr(config, "CALIB_MIN", 0.15)
 CALIB_MAX = getattr(config, "CALIB_MAX", 0.25)
+HALF_RATIO = getattr(config, "HALF_RATIO", 0.85)   # 🆕 (11/10) 반쯤 감은 눈 = 출발 전 뜬 눈 EAR × 이 값 미만 (11/11 시험 전에는 그대로)
 
 DEFAULT_MODEL_PATH = os.path.join(BASE_DIR, "ml_models", "face_landmarker.task")
 FACE_LANDMARKER_PATH = getattr(config, "FACE_LANDMARKER_PATH", DEFAULT_MODEL_PATH)
@@ -362,7 +367,36 @@ def check_eyes(image_path: str, user_id=None, reason: str | None = None, **kwarg
     return _normalize(raw, threshold, reason=reason)
 
 
-def calibrate(image_paths: list[str], user_id=None, **kwargs) -> float:
+def check_half(image_path: str, user_id=None) -> dict:
+    """🆕 (11/10) 반쯤 감은 눈 확인 사진 1장 → {"ear", "baseline", "is_half"}
+
+    is_half = 서버 EAR < 출발 전 측정 뜬 눈 EAR × HALF_RATIO (0.85)
+    CNN 은 안 씀 — 반쯤 감은 눈을 CNN 548 은 뜸으로 봄 (팀 영상 팀장 감음 확률 중간 0.04)
+    baseline 없음 (측정 실패 · 측정 전) · 얼굴 없음 · 가짜 모드 · 판정 오류 → is_half False
+    """
+    baseline = None
+    if user_id is not None:
+        try:
+            from services import sleep_state
+            baseline = sleep_state.get_open_ear(user_id)
+        except Exception as e:
+            print(f"[face_service] 평소 뜬 눈 EAR 읽기 실패: {type(e).__name__} {e}")
+    ear = None
+    if USE_REAL_AI:
+        try:
+            raw = _real(image_path, EAR_THRESHOLD)
+            ear = raw.get("ear") if raw.get("face_found") else None
+        except Exception as e:
+            print(f"[face_service] 반쯤 확인 판정 실패: {type(e).__name__} {e}")
+    is_half = baseline is not None and ear is not None and float(ear) < float(baseline) * HALF_RATIO
+    return {"ear": ear, "baseline": None if baseline is None else round(float(baseline), 3), "is_half": bool(is_half)}
+
+
+def calibrate_detail(image_paths: list[str], user_id=None, **kwargs) -> dict:
+    """출발 전 정면 사진 → {"threshold": 개인 기준 EAR, "open_ear": 뜬 눈 EAR 중간값 (실패면 None), "faces": 얼굴 잡힌 장수}
+
+    🆕 (11/10) user_id 를 주면 open_ear 를 sleep_state 에 저장 (반쯤 감은 눈 평소 값, ÷ 0.7 로 되돌리지 않음 — 팀장)
+    """
     ears = []
     for path in image_paths:
         try:
@@ -374,13 +408,23 @@ def calibrate(image_paths: list[str], user_id=None, **kwargs) -> float:
             continue
 
     if len(ears) < CALIB_MIN_FACES:
-        return round(float(EAR_THRESHOLD), 3)
+        threshold, open_ear = round(float(EAR_THRESHOLD), 3), None
+    else:
+        median_ear = statistics.median(ears)
+        threshold = round(float(max(CALIB_MIN, min(CALIB_MAX, median_ear * CALIB_RATIO))), 3)   # 지금까지와 같은 계산
+        open_ear = round(float(median_ear), 3)
+    if user_id is not None:
+        try:
+            from services import sleep_state
+            sleep_state.set_open_ear(user_id, open_ear)
+        except Exception as e:
+            print(f"[face_service] 평소 뜬 눈 EAR 저장 실패: {type(e).__name__} {e}")
+    return {"threshold": threshold, "open_ear": open_ear, "faces": len(ears)}
 
-    median_ear = statistics.median(ears)
-    personal_threshold = median_ear * CALIB_RATIO
 
-    clamped = max(CALIB_MIN, min(CALIB_MAX, personal_threshold))
-    return round(float(clamped), 3)
+def calibrate(image_paths: list[str], user_id=None, **kwargs) -> float:
+    """개인 기준 EAR 숫자 하나 (지금 detect.py 그대로). user_id 를 주면 뜬 눈 EAR 중간값도 저장"""
+    return calibrate_detail(image_paths, user_id=user_id)["threshold"]
 
 
 def _label_of(filename: str) -> str:

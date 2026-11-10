@@ -18,6 +18,7 @@
 //   - 🆕 (11/09 팀장 측정 요청) 사람 버튼 (a · b · c · d · t) · 상태 버튼 (① 정면 뜸 ② 실눈 ③ 감음 ④ 시선만 아래 ⑤ 숙이고 뜸 · 0 쉼)
 //       → [eye_frame] 에 고개 각도 · 평소 각도 · 사람 · 상태가 같이 남음 → python tools/eye_replay.py states <기록>
 //       경고는 [eye_alarm] 한 줄 (원인 eye · head · head_resend · perclos · 사진 장수 · JPG 변환 ms)
+//       🆕 (11/10) 반쯤 확인 사진은 [eye_half] 한 줄 (시각 ms · 바이트 · 변환 ms · 사람 · 상태) — 서버로는 안 보냄
 //
 // [측정 순서 (11/09 팀장 요청 1번)]  사람마다 기록 파일 하나 — adb logcat -s flutter -v raw > D:\kpi_raw\phone_log\states_<사람>_<날짜>.txt
 //   0. 사람 버튼 고르기 → '0 쉼' 으로 정면 60초 이상 (평소 고개 각도 모으기, 표에서 뺌)
@@ -68,7 +69,7 @@ class _EyeLiveScreenState extends State<EyeLiveScreen> {
   @override
   void initState() {
     super.initState();
-    _eye = EyeMonitor(onSuspect: _onSuspect, onCheckCamera: _onCheckCamera, onFrameResult: _onFrame);
+    _eye = EyeMonitor(onSuspect: _onSuspect, onCheckCamera: _onCheckCamera, onFrameResult: _onFrame, onHalfCheck: _onHalfCheck);
     _openCamera();
   }
 
@@ -120,6 +121,11 @@ class _EyeLiveScreenState extends State<EyeLiveScreen> {
     _add('🚨 $reason ($cause) · 감김 ${closedSec.toStringAsFixed(1)}초 · PERCLOS ${(perclos * 100).toStringAsFixed(0)}% · '
         '확률 ${prob.toStringAsFixed(2)} · 숙임 ${_eye.isHeadDown ? "예" : "아니오"} · '
         '사진 ${jpgs.isEmpty ? "없음" : "${jpgs.length}장 $sizes (마지막 장보다 $gaps초 전) · 변환 ${_eye.lastJpgMs}ms"}');
+  }
+
+  // 🆕 (11/10) 반쯤 확인 사진 — 시험 앱은 서버로 안 보내고 보낸 시각 · 크기 · 변환 ms 만 남김 (판정은 본 앱 + 서버 [half] 줄)
+  void _onHalfCheck(Uint8List jpg) {
+    debugPrint('[eye_half] ${DateTime.now().difference(_start).inMilliseconds},${jpg.length},${_eye.lastHalfJpgMs},$_person,$_state');
   }
 
   void _onCheckCamera() {

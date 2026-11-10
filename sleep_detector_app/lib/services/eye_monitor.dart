@@ -23,6 +23,13 @@
 //       (11/09) 웃는 프레임은 고개 숙임 · 평소 각도에도 넣지 않음 — 정면에서 웃을 때 숙임 3초로 잡힘 (11/05 시연 폰, 팀장 요청)
 //   - 🆕 (11/09, AppConfig.microsleepPhotos) 눈 감김 미세수면은 감는 동안의 처음 · 가운데 · 마지막 3장을 넘김 (lastSuspectJpgs)
 //       고개 숙임 · PERCLOS 는 1장 그대로, 재전송은 사진 없음
+//   - 🆕 (11/10, AppConfig.graceAfterWarningSec) 경고 화면에서 돌아온 뒤 (reset) 눈을 한 번이라도 뜬 프레임이 나오면
+//       그때부터 10초는 미세수면 · 고개 숙임 의심을 안 냄 (팀장: 경고 뒤 눈 비비기로 단계가 바로 오름)
+//       한 번도 안 뜨고 계속 감고 있으면 봐주지 않음 (1.5초 뒤 바로 의심) · PERCLOS 는 30초 창을 다시 채우니 그대로
+//       10초 안에 시작된 감김 · 숙임은 계속 셈 → 10초가 끝날 때 아직 감고 · 숙이고 있으면 그때 의심
+//   - 🆕 (11/10, AppConfig.eyeResendOn) 눈 감김 의심을 서버가 취소했는데 계속 감고 있으면 → 고개 숙임처럼 사진 없이 한 번 더 (eye_resend)
+//   - 🆕 (11/10, AppConfig.halfCheckOn, 기본 꺼짐) 반쯤 감은 눈 확인: 눈을 뜬 상태 (감김 · 숙임 · 웃음 아님) 면 10초마다 사진 1장 → onHalfCheck
+//       ML Kit 은 반쯤 감은 눈을 뜸으로 봐서 판정은 서버 EAR (출발 전 뜬 눈 대비) 이 함 — face_service.check_half · sleep_state.add_half
 //   - 사진 파일 1장 분석 (사진 1장 테스트 · KPI ① 측정) · 개인 기준 측정 (평소 확률 중간값 × 0.5, 0.2~0.4, 실패 시 기본값 + 예외)
 //   - 🆕 (AppConfig.contourEarOn) 눈 윤곽 점 16개로 폰 EAR 계산 — 반쯤 감은 눈은 뜸 확률이 높게 나와서 보완용
 //       AppConfig.useContourEar 를 켜면 "뜸 확률 < 기준 또는 EAR < earClosed" 를 감김으로 봄 (시연 폰 확인 뒤에만)
@@ -34,9 +41,11 @@
 //       (null 이면 변환 실패 — 사진 없이 보내거나 다음 의심을 기다림)
 //   - 🆕 lastSuspectJpgs (List<Uint8List>, 찍은 순서, 없으면 빈 목록) · lastSuspectTimes — onSuspect 를 부르기 직전에 채움
 //       onSuspect 의 jpg = 이 목록의 마지막 장 (지금까지와 같은 사진) → 여러 장을 보낼 쪽은 onSuspect 안에서 _eye.lastSuspectJpgs 를 읽음
-//       lastSuspectCause = eye(눈 감김) · head(고개 숙임) · head_resend(취소 뒤 재전송) · perclos — reason 은 지금처럼 microsleep · perclos 두 가지
+//       lastSuspectCause = eye(눈 감김) · head(고개 숙임) · head_resend · eye_resend(취소 뒤 재전송) · perclos — reason 은 지금처럼 microsleep · perclos 두 가지
 //       lastJpgMs = 그 사진들 JPG 변환에 걸린 시간 합 (화면 쪽에서 돌아서 경고가 그만큼 늦어짐 — 시험 앱이 기록)
 //   - onCheckCamera()  ← drive_screen 이 받는 콜백
+//   - 🆕 onHalfCheck(Uint8List jpg)  ← (선택, 11/10) 반쯤 확인 사진 1장. drive_screen 은 sendDetect(jpg, reason: 'half') 로 보내고
+//       서버가 피로 확정 (isSleep) 일 때만 경고 · 아니면 아무것도 안 띄움 (취소 글자 · serverCancelled 도 부르지 않음)
 //   - reset()  ← drive_screen 이 경고 화면이 닫힐 때 부름 (판정 기록 비우기, 개인 기준은 그대로, 11/03 팀장)
 //   - serverCancelled()  ← drive_screen 이 서버 취소 응답을 받으면 부름 (안 부르면 한 번 더 보내기가 동작하지 않음)
 //   - onFrameResult(eyeOpenProb, perclos, ear)  ← (선택) 0단계 화면 표시용, 모름이면 eyeOpenProb · ear = null
@@ -111,6 +120,13 @@ class EyeMonitor {
   // 마지막 미세수면 · PERCLOS 의심 시각 — 이후 30초 창에는 같은 눈 감김이 남아 있으므로 PERCLOS 를 다시 내지 않음
   DateTime? _lastSuspectAt;
   bool _cameraWarnTriggered = false;
+  // 🆕 (11/10) 경고 뒤 봐주기 — reset 뒤 첫 '뜸' 프레임에서 _quietUntil = 그 시각 + graceAfterWarningSec
+  bool _graceArmed = false;
+  DateTime? _quietUntil;
+  // 🆕 (11/10) 마지막 반쯤 확인 사진 시각 · 보낸 횟수 · JPG 변환 시간 (시험 앱 기록용)
+  DateTime? _lastHalfCheckAt;
+  int halfChecks = 0;
+  int lastHalfJpgMs = 0;
 
   // 최근 30초 PERCLOS 계산용 큐 ("모름" 제외)
   final List<_FrameRecord> _history = [];
@@ -123,7 +139,8 @@ class EyeMonitor {
   DateTime? _headStartTime;   // 고개 숙임이 시작된 시각 (고개를 headUpResetSec 동안 들면 null)
   DateTime? _headUpSince;     // 숙임 중 고개를 든 첫 시각 (다시 숙이면 null)
   bool _headTriggered = false; // 이번 숙임으로 이미 의심을 냈는지 (고개를 들어야 다음)
-  DateTime? _cancelledAt;      // 고개 숙임 의심을 서버가 취소한 시각 (얼굴이 정상으로 돌아오면 null)
+  DateTime? _cancelledAt;      // 고개 숙임 · 눈 감김 의심을 서버가 취소한 시각 (얼굴이 정상으로 돌아오면 null)
+  String _cancelCause = 'head'; // 취소된 의심의 원인 (head · eye) → 재전송 시간 · 이름
   DateTime? _normalSince;      // 취소 뒤 얼굴이 정상으로 보이기 시작한 시각
   CameraImage? _headFrame;    // 이번 숙임 동안 찍은 마지막 얼굴 프레임 (서버로 갈 사진)
   DateTime? _headFrameAt;
@@ -164,6 +181,8 @@ class EyeMonitor {
 
   final void Function()? onCheckCamera;
   final void Function(double? eyeOpenProb, double perclos, double? ear)? onFrameResult;
+  // 🆕 (11/10) 반쯤 감은 눈 확인 사진 (머리말 참고)
+  final void Function(Uint8List jpg)? onHalfCheck;
 
   // 성능 시험용 (분석한 프레임만 셈 — 분석 중이라 버린 프레임은 빠짐)
   int lastProcessMs = 0;
@@ -183,6 +202,7 @@ class EyeMonitor {
     this.onSuspect,
     this.onCheckCamera,
     this.onFrameResult,
+    this.onHalfCheck,
   }) {
     _detector = FaceDetector(
       options: FaceDetectorOptions(
@@ -309,6 +329,11 @@ class EyeMonitor {
       final bool eyesClosed = !smiling &&
           (avgProb < threshold || (AppConfig.useContourEar && ear != null && ear < AppConfig.earClosed));
       _headDown = AppConfig.headRuleOn && _isHeadDown(face.headEulerAngleX, now, eyesClosed, smiling);
+      // (11/10) 경고 뒤 첫 '뜸' 프레임 → 그때부터 graceAfterWarningSec 봐줌
+      if (_graceArmed && !eyesClosed) {
+        _graceArmed = false;
+        _quietUntil = now.add(Duration(milliseconds: (AppConfig.graceAfterWarningSec * 1000).round()));
+      }
       _checkAfterCancel(now, !_headDown && !eyesClosed, avgProb);
 
       // 눈 감김 · PERCLOS 는 눈만으로 (고개만 숙이고 눈 뜬 프레임은 '뜸')
@@ -319,6 +344,7 @@ class EyeMonitor {
       } else {
         _headUp(now);
       }
+      _maybeHalfCheck(now, eyesClosed || _headDown || smiling, image, cam);
     } catch (e) {
       // 프레임 하나가 실패해도 다음 프레임은 계속 분석 (원인은 디버그 콘솔에만)
       debugPrint('[eye_monitor] 프레임 분석 실패: $e');
@@ -342,7 +368,7 @@ class EyeMonitor {
       _headCamera = cam;
     }
     final sec = now.difference(_headStartTime!).inMilliseconds / 1000.0;
-    if (sec < AppConfig.headDownSec || _headTriggered || _microsleepTriggered) return;
+    if (sec < AppConfig.headDownSec || _headTriggered || _microsleepTriggered || _quiet(now)) return;
 
     _headTriggered = true;
     _lastSuspectAt = now;
@@ -351,6 +377,29 @@ class EyeMonitor {
     final target = _headFrame;
     _send('microsleep', 'head', sec, _calculatePerclos(), avgProb ?? _lastEyeOpenProb,
         [if (target != null) _Shot(_headFrameAt ?? now, target)], _headCamera?.sensorOrientation ?? 270);
+  }
+
+  /// 🆕 (11/10) 경고 뒤 봐주는 시간 안인지 (graceAfterWarningSec)
+  bool _quiet(DateTime now) => _quietUntil != null && now.isBefore(_quietUntil!);
+
+  /// 🆕 (11/10) 반쯤 감은 눈 확인 사진 — 눈을 뜬 상태 (감김 · 숙임 · 웃음 아님) 면 halfCheckSec 마다 1장 → onHalfCheck
+  ///   감김이 이어지는 중 · 재의심 간격 안이면 안 보냄 (그때는 미세수면 · PERCLOS 가 맡음). 판정은 서버 EAR
+  void _maybeHalfCheck(DateTime now, bool notOpen, CameraImage frame, CameraDescription cam) {
+    if (!AppConfig.halfCheckOn || onHalfCheck == null) return;
+    if (notOpen || _closedStartTime != null) return;
+    final last = _lastHalfCheckAt;
+    if (last == null) {
+      _lastHalfCheckAt = now; // 출발 직후 첫 장도 halfCheckSec 뒤에
+      return;
+    }
+    if (now.difference(last).inMilliseconds < AppConfig.halfCheckSec * 1000) return;
+    _lastHalfCheckAt = now;
+    final watch = Stopwatch()..start();
+    final jpg = CameraImageUtils.toJpg(frame, rotation: cam.sensorOrientation);
+    lastHalfJpgMs = watch.elapsedMilliseconds;
+    if (jpg == null) return;
+    halfChecks++;
+    onHalfCheck?.call(jpg);
   }
 
   /// 의심 사진들을 JPG 로 바꿔 lastSuspect* 에 넣고 onSuspect 호출 (jpg 인자 = 마지막 장, 변환 실패한 장은 뺌)
@@ -395,8 +444,11 @@ class EyeMonitor {
 
   /// 서버가 의심을 취소했을 때 drive_screen 이 부름 — 이번 숙임에서 난 의심이면 headResendSec 에 한 번 더 보낼 수 있게
   ///   숙여서 사진에 얼굴이 안 잡히면 서버는 손으로 가린 경우처럼 취소 → 숙인 채 계속 자면 들 때까지 경고가 안 남 (11/04 시연 폰 시험)
+  ///   (11/10 팀장, 11/05 빈틈) 눈 감김 의심도 취소 뒤 계속 감고 있으면 한 번 더 (eyeResendOn) — 전에는 눈을 뜨기 전까지 다시 안 보냄
   void serverCancelled() {
-    if (!_headTriggered) return;
+    final eyeStill = AppConfig.eyeResendOn && lastSuspectCause == 'eye' && _closedStartTime != null;
+    if (!_headTriggered && !eyeStill) return;
+    _cancelCause = eyeStill ? 'eye' : 'head';
     _cancelledAt = DateTime.now();
     _normalSince = null;
   }
@@ -415,10 +467,12 @@ class EyeMonitor {
     }
     _normalSince = null;
     final waited = now.difference(at).inMilliseconds / 1000.0;
-    if (waited < AppConfig.headResendSec - AppConfig.headDownSec) return;
+    // 숙임: 3초 의심 → 취소 → 3초 더 / 눈 감김: 1.5초 의심 → 취소 → 4.5초 더 (둘 다 시작부터 약 6초 + 서버 응답 시간)
+    final firstSec = _cancelCause == 'eye' ? AppConfig.closedSec : AppConfig.headDownSec;
+    if (waited < AppConfig.headResendSec - firstSec) return;
     _cancelledAt = null;
     _lastSuspectAt = now;
-    _send('microsleep', 'head_resend', AppConfig.headDownSec + waited, _calculatePerclos(),
+    _send('microsleep', '${_cancelCause}_resend', firstSec + waited, _calculatePerclos(),
         avgProb ?? _lastEyeOpenProb, const [], 270);
   }
 
@@ -433,6 +487,11 @@ class EyeMonitor {
     _perclosTriggered = false;
     _lastSuspectAt = null;
     _cameraWarnTriggered = false;
+    // (11/10) 경고 뒤 눈을 비비기만 해도 바로 다음 의심 → 단계가 몇 초 만에 오름 (팀장)
+    //   → 돌아온 뒤 첫 '뜸' 프레임부터 graceAfterWarningSec 봐줌 (계속 감고 있으면 안 봐줌)
+    _graceArmed = true;
+    _quietUntil = null;
+    _lastHalfCheckAt = DateTime.now();
     _history.clear();
     _windowStart = null; // PERCLOS 는 다시 30초를 채운 뒤부터 판정
     _headHistory.clear();
@@ -531,11 +590,16 @@ class EyeMonitor {
           } else {
             _streakShots.add(_Shot(now, frame));
           }
+          // 경고 뒤 봐주는 시간 (graceAfterWarningSec) 때문에 감김이 1.5초보다 길어지면 마지막 closedSec + 0.5초 것만 들고 있음 (프레임 1장 약 0.5MB)
+          final keepMs = ((AppConfig.closedSec + 0.5) * 1000).round();
+          while (_streakShots.length > 1 && now.difference(_streakShots.first.time).inMilliseconds > keepMs) {
+            _streakShots.removeAt(0);
+          }
         }
       }
       if (avgProb != null) _lastEyeOpenProb = avgProb;
 
-      if (currentClosedSec >= AppConfig.closedSec && !_microsleepTriggered) {
+      if (currentClosedSec >= AppConfig.closedSec && !_microsleepTriggered && !_quiet(now)) {
         _microsleepTriggered = true; // 눈을 다시 떠야 다음 미세수면을 셈
         if (_headDown) _headTriggered = true; // 숙인 채 눈 감김으로 이미 경고 → 같은 숙임으로 다시 안 냄
         // 같은 감김이 눈 뜬 직후 PERCLOS 로 한 번 더 잡히지 않게 — PERCLOS 도 기준 아래로 내려갔다 다시 넘어야 셈
