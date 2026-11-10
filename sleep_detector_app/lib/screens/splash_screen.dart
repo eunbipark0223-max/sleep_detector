@@ -114,26 +114,10 @@ class _SplashScreenState extends State<SplashScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 96,
-                  height: 96,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(28),
-                  ),
-                  child: const Icon(Icons.warning_amber_rounded,
-                      size: 52, color: Colors.white),
-                ),
-                const SizedBox(height: 28),
-                const Text(
-                  '졸음 가드', // 기획안 타이틀 반영
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 8),
+                // 부엉이 트럭 로고 ("졸음 가드" 글씨 포함, 11/09 그림: 장수연님)
+                Image.asset('assets/owl/logo.png',
+                    width: MediaQuery.sizeOf(context).width * 0.85, semanticLabel: '졸음 가드'), // 화면 폭에 꽉 차게
+                const SizedBox(height: 12),
                 Text(
                   '졸기 전 · 졸 때 · 졸고 나서', // 기획안 서브타이틀 반영
                   style: TextStyle(

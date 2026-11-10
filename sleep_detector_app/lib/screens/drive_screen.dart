@@ -364,6 +364,9 @@ class _DriveScreenState extends State<DriveScreen> {
     // 보내기 전 단계 — 서버 답을 기다리는 몇 초 사이에 ping 이 새 단계를 먼저 받아 와 _stage 가 바뀌면,
     //   "단계 그대로"로 잘못 보고 알람 · 경고를 건너뛸 수 있어서 보내기 전 값과 비교한다 (11/09 팀장)
     final stageBefore = _stage;
+    // 감는 동안의 사진 여러 장 (A eye_monitor, 11/09) — 눈 감김 3장 · 고개 숙임 · PERCLOS 1장 · 재전송 0장.
+    //   다음 의심 때 덮어써지므로 바로 복사해 둔다. frame(대표 1장)은 이 목록의 마지막 장과 같음
+    final frames = List<Uint8List>.of(_eye.lastSuspectJpgs);
     // 서버 답을 못 받아도 기사를 깨운다 — 연결 실패는 바로, 답이 늦으면 10초 뒤 (응답은 계속 기다림).
     //   서버가 졸음을 확인한 것이 아니라 단계는 올리지 않고, 의심 1건에 한 번만 울린다 (11/04 팀장)
     var alarmed = false;
@@ -383,6 +386,7 @@ class _DriveScreenState extends State<DriveScreen> {
         eyeOpenProb: eyeOpenProb,
         lat: _lat, // 미리 받아 둔 위치 (없으면 빈칸으로 보냄)
         lng: _lng,
+        frames: frames,
       );
       slowAlarm.cancel();
       if (!mounted) return;
@@ -591,7 +595,7 @@ class _DriveScreenState extends State<DriveScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(_stageIcon(_stage), size: 36, color: fg),
+                Image.asset(_stageOwl(_stage), width: 52, height: 52),
                 const SizedBox(width: 10),
                 Flexible(
                   child: Text(
@@ -653,17 +657,6 @@ class _DriveScreenState extends State<DriveScreen> {
     }
   }
 
-  // 단계별 아이콘 (경고 화면과 같은 아이콘, 0단계만 눈)
-  IconData _stageIcon(int stage) {
-    switch (stage) {
-      case 1:
-        return Icons.notifications_active;
-      case 2:
-        return Icons.local_cafe;
-      case 3:
-        return Icons.warning_rounded;
-      default:
-        return Icons.remove_red_eye_outlined;
-    }
-  }
+  // 단계별 부엉이 얼굴 (0 초록 · 1 노랑 · 2 주황 · 3 빨강, 11/09 그림: 장수연님) — 경고 화면과 같은 부엉이
+  String _stageOwl(int stage) => 'assets/owl/owl_face${stage.clamp(0, 3)}.png';
 }

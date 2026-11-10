@@ -90,7 +90,14 @@ class ApiService {
 
   // ── 함수들 (이름 약속 그대로) ───────────────────────────────────
 
+  // 여러 장 사진을 보낼 칸 이름 — 서버(팀장 다수결 판정)와 맞춰 정할 것. 정해지면 이 한 줄만 바꾸면 됨 (11/10)
+  //   지금 서버는 이 칸을 모르면 그냥 무시하고 'file' 1장으로 판정한다 → 서버가 바뀌기 전에도 앱은 그대로 돌아감
+  static const String detectFramesField = 'files';
+
   // sendDetect (서버에 사진전송, 졸음판정 결과 서버에서 받아오기)
+  //   jpgBytes = 대표 사진 1장 ('file', 지금까지와 같음 — 마지막 장)
+  //   frames   = 눈 감김일 때 감는 동안의 사진 여러 장 (처음 · 가운데 · 마지막, 찍은 순서, A eye_monitor.lastSuspectJpgs)
+  //              2장 이상일 때만 detectFramesField 로 같이 보냄 (고개 숙임 · PERCLOS 는 1장, 재전송은 0장)
   static Future<SleepResponse> sendDetect(Uint8List? jpgBytes, {
     String reason = '',
     double? closedSec,
@@ -98,6 +105,7 @@ class ApiService {
     double? eyeOpenProb,
     double? lat,
     double? lng,
+    List<Uint8List> frames = const [],
   }) async {
     final headers = await AuthService.authHeaders();
     headers.remove('Content-Type');
@@ -117,6 +125,17 @@ class ApiService {
         filename: 'frame.jpg',
         contentType: MediaType('image', 'jpeg'),
       ));
+    }
+    // 여러 장 (찍은 순서대로 frame_0 · frame_1 · frame_2)
+    if (frames.length > 1) {
+      for (var i = 0; i < frames.length; i++) {
+        request.files.add(http.MultipartFile.fromBytes(
+          detectFramesField,
+          frames[i],
+          filename: 'frame_$i.jpg',
+          contentType: MediaType('image', 'jpeg'),
+        ));
+      }
     }
     final streamed = await request.send().timeout(const Duration(seconds: 30));
     final res = await http.Response.fromStream(streamed);

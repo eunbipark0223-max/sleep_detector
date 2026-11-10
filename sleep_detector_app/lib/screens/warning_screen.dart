@@ -401,23 +401,14 @@ class _WarningScreenState extends State<WarningScreen> {
     }
   }
 
-  // 단계별 아이콘
-  IconData get _icon {
-    switch (_stage) {
-      case 1:
-        return Icons.notifications_active;
-      case 2:
-        return Icons.local_cafe;
-      case 3:
-        return Icons.warning_rounded;
-      default:
-        return Icons.check_circle;
-    }
-  }
+  // 단계별 부엉이 (0 초록 · 1 노랑 · 2 주황 · 3 빨강, 11/09 그림: 장수연님)
+  //   큰 그림 = 몸 전체 (카메라가 없을 때), 작은 배지 = 얼굴
+  String get _owlBody => 'assets/owl/owl_stage${_stage.clamp(0, 3)}.png';
+  String get _owlFace => 'assets/owl/owl_face${_stage.clamp(0, 3)}.png';
 
-  // 맨 위 그림 — 운행 중이면 카메라 화면(내 얼굴) + 오른쪽 아래 단계 아이콘 배지, 카메라가 없으면 큰 아이콘
+  // 맨 위 그림 — 운행 중이면 카메라 화면(내 얼굴) + 오른쪽 아래 부엉이 배지, 카메라가 없으면 큰 부엉이
   Widget _topVisual(Color bg, Color fg) {
-    final bigIcon = Center(child: FittedBox(child: Icon(_icon, size: 88, color: fg)));
+    final bigIcon = Center(child: Image.asset(_owlBody, fit: BoxFit.contain, semanticLabel: '$_stage단계'));
     final cam = widget.camera;
     if (cam == null) return bigIcon;
     return ValueListenableBuilder<CameraController?>(
@@ -442,9 +433,9 @@ class _WarningScreenState extends State<WarningScreen> {
               right: 8,
               bottom: 8,
               child: Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(4),
                 decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                child: Icon(_icon, size: 24, color: bg),
+                child: Image.asset(_owlFace, width: 56, height: 56),
               ),
             ),
           ],
