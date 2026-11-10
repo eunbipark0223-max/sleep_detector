@@ -49,8 +49,12 @@ static/admin_login.html — 관리자 로그인 화면
     <div id="msg" role="alert"></div>
   </form>
 
-  <script src="js/api.js?v=20261105b"></script>
+  <script src="js/api.js?v=20261110"></script>
   <script>
+    // 관리자 화면에서 '관리자만 사용할 수 있어요(403)'로 돌아온 경우 이유를 알려 준다 (api.js 가 ?denied=1 을 붙여 보냄)
+    if (new URLSearchParams(location.search).has('denied')) {
+      document.getElementById('msg').textContent = '관리자 권한이 없는 계정이에요. 관리자 계정으로 다시 로그인해 주세요.';
+    }
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const button = document.getElementById('submit');

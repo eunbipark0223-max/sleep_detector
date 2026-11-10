@@ -8,8 +8,7 @@
 #   - GET /admin/events — 졸음 경고 목록 (사진 · 위치 · 단계 · 보고서 · 상태)
 #   - GET /admin/users — 기사 목록 (+ 전화번호 · 차량번호). /admin/events 한 줄에도 user_phone · user_vehicle_no 가 붙음 (연락 창)
 #     전화번호는 개인정보 → 관리자 API 에서만 내려보냄 (기사용 /events/my 에는 없음)
-#   - POST /admin/users — 관리자가 기사 계정 추가 {name, email, phone, vehicle_no?, privacy_agreed} (11/09)
-#     → 임시 비밀번호를 서버가 만들어 응답에 한 번만 실어 줌 (DB 에는 해시만). 이미 있는 이메일이면 409
+#     기사 계정은 관리자가 만들지 않는다 — 기사가 앱 회원가입(POST /users/signup)으로 직접 가입하면 같은 DB 라서 이 목록에 나타남 (11/10)
 #   - GET /admin/stats/* — (P2) 단계별 · 시간대별 통계
 #
 # [주의]
@@ -33,13 +32,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from auth.jwt import get_current_user
-from auth.password import hash_password
 from database.orm import get_db
 from models.models import SleepEvent, User
-from schema.request import AdminDriverCreate, make_temp_password
 from schema.response import (
     STAGE_LABELS,
-    AdminDriverCreated,
     AdminEventResponse,
     AdminUserResponse,
     HourStat,
@@ -128,22 +124,6 @@ def admin_users(db: Session = Depends(get_db), _admin: User = Depends(require_ad
         out.append(AdminUserResponse(id=user.id, email=user.email, name=user.name, role=user.role, phone=user.phone, vehicle_no=user.vehicle_no,
                                      event_count=count, last_event_at=last))
     return out
-
-
-@router.post("/users", status_code=201, response_model=AdminDriverCreated)
-def create_driver(body: AdminDriverCreate, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
-    """관리자가 기사 계정을 만든다 (앱 회원가입과 같은 칸 · 규칙). 기사는 이메일 + 임시 비밀번호로 앱에 로그인."""
-    email = str(body.email)
-    if db.scalar(select(User).where(User.email == email)):
-        raise HTTPException(status_code=409, detail="이미 가입된 이메일이에요")
-    temp_password = make_temp_password()
-    user = User(email=email, hashed_password=hash_password(temp_password), name=body.name, role="user", provider="email",
-                phone=body.phone, vehicle_no=body.vehicle_no)
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return AdminDriverCreated(id=user.id, email=user.email, name=user.name, role=user.role, phone=user.phone, vehicle_no=user.vehicle_no,
-                              event_count=0, last_event_at=None, temp_password=temp_password)
 
 
 # ── 통계 (P2) ─────────────────────────────────────────────────

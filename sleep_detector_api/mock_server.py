@@ -12,9 +12,8 @@
 #       POST /drive/start · /drive/calibrate · /drive/ping · /drive/rest · /drive/resume
 #       GET  /drive/state · POST /drive/end   앱을 껐다 켰을 때 [이어서 운행] (진짜 서버와 같은 모양)
 #       POST /quiz/answer                  VoiceQuizAnswer (quiz_id · answer_text · answer_sec)
-#       GET  /events/my · PATCH /events/{id}/status
+#       GET  /events/my · GET /events/{id}/photo (본인 또는 관리자) · PATCH /events/{id}/status
 #       GET  /admin/events · /admin/users · /admin/stats/stage · /admin/stats/hourly
-#       POST /admin/users                  관리자가 기사 추가 (진짜 서버와 같은 검사, 임시 비밀번호 — 모의는 로그인 때 비밀번호를 안 봄)
 #       GET  /chat/hello · POST /chat
 #   - 진짜처럼 도는 부분 (코드가 판정하는 것만): 10분 안 졸음 횟수 → 규칙 단계 · set_stage(올리기만) ·
 #     1단계 자동 해제 · 2단계는 휴식 후 [운행 재개] · 3단계는 관리자 조치완료 · 음성 퀴즈 출제 · 채점 · 2번 실패 → 단계 +1
@@ -52,11 +51,11 @@ from typing import Literal, Optional
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from schema.request import (AdminDriverCreate, PasswordChange, ProfileUpdate, format_phone, format_vehicle_no,   # 전화번호 · 차량번호 형식 검사는 진짜 서버와 같은 것을 쓴다
-                            make_temp_password)
+from schema.request import PasswordChange, ProfileUpdate, format_phone, format_vehicle_no   # 전화번호 · 차량번호 형식 검사는 진짜 서버와 같은 것을 쓴다
 
 # ── 기준 숫자 (진짜 서버는 config.py 에서 가져옴) ──────────────────
 WINDOW_SEC = int(os.getenv("MOCK_WINDOW_SEC", "60"))          # 1단계 자동 해제 · 졸음 횟수를 세는 구간 (진짜 600)
@@ -350,7 +349,7 @@ def add_event(user_id: int, stage: int, reason: str, report: dict, *, summary=""
 def event_out(e: dict, admin: bool = False) -> dict:
     out = dict(e)
     out.pop("photo_path")
-    out["photo_url"] = "/" + e["photo_path"] if e["photo_path"] else None
+    out["photo_url"] = f"/events/{e['id']}/photo" if e["photo_path"] else None    # 진짜 서버와 같음: 로그인 필요한 API 주소 (폴더는 공개 안 함)
     out["stage_label"] = STAGE_LABELS[e["stage"]]
     if admin:
         user = USERS.get(e["user_id"], {})
@@ -404,7 +403,6 @@ def reset_all() -> None:
 
 reset_all()
 os.makedirs(EVENT_DIR, exist_ok=True)
-app.mount("/uploads/events", StaticFiles(directory=EVENT_DIR), name="events")
 if os.path.isdir(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -787,6 +785,18 @@ def events_my(user: dict = Depends(current_user)):
     return [event_out(e) for e in sorted(mine, key=lambda e: e["id"], reverse=True)]
 
 
+@app.get("/events/{event_id}/photo")
+def event_photo(event_id: int, user: dict = Depends(current_user)):
+    """진짜 서버 routers/event.py event_photo 와 같음: 그 경고의 기사 본인 또는 관리자만, 아니면 똑같이 404."""
+    event = next((e for e in EVENTS if e["id"] == event_id), None)
+    if not event or not event["photo_path"] or (user["role"] != "admin" and event["user_id"] != user["id"]):
+        raise HTTPException(status_code=404, detail="사진이 없습니다")
+    path = os.path.join(EVENT_DIR, os.path.basename(event["photo_path"]))
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="사진이 없습니다")
+    return FileResponse(path, headers={"Cache-Control": "private, no-store"})
+
+
 @app.patch("/events/{event_id}/status")
 def event_status(event_id: int, body: StatusUpdate, admin: dict = Depends(require_admin)):
     event = next((e for e in EVENTS if e["id"] == event_id), None)
@@ -817,15 +827,6 @@ def admin_users(admin: dict = Depends(require_admin)):
         mine = [e for e in EVENTS if e["user_id"] == u["id"]]
         out.append({**u, "event_count": len(mine), "last_event_at": max((e["created_at"] for e in mine), default=None)})
     return out
-
-
-@app.post("/admin/users", status_code=201)
-def admin_create_driver(body: AdminDriverCreate, admin: dict = Depends(require_admin)):
-    """진짜 서버 routers/admin.py create_driver 와 같은 검사 · 응답 모양 (모의는 비밀번호를 저장하지 않음)."""
-    if any(u["email"] == str(body.email) for u in USERS.values()):
-        raise HTTPException(status_code=409, detail="이미 가입된 이메일이에요")
-    user = add_user(str(body.email), body.name, phone=body.phone, vehicle_no=body.vehicle_no)
-    return {**user, "event_count": 0, "last_event_at": None, "temp_password": make_temp_password()}
 
 
 @app.get("/admin/stats/stage")

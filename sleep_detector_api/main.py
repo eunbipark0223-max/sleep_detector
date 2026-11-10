@@ -10,7 +10,7 @@
 #   - 서버 시작 때 눈 판정 모델 미리 읽기 · 30일 지난 졸음 사진 정리 (그 뒤 24시간마다)
 #   - GET /health — 서버 상태 + CNN 이 실제로 쓰이는지 (mode · 모델 · 읽힘 · 판정 방식별 건수) · RAG 색인 준비 (rag_ready)
 #   - 서버 시작 때 RAG 색인을 백그라운드로 미리 읽기 (첫 경고가 색인 때문에 멈추지 않게, 문서 · 모델이 바뀌었으면 약 70초)
-#   - static/ (관리자 웹) 과 uploads/events/ (졸음 확정 사진) 를 정적 파일로 연결
+#   - static/ (관리자 웹) 을 정적 파일로 연결 (졸음 확정 사진 uploads/events/ 는 공개하지 않고 GET /events/{id}/photo 로만, 11/10)
 #   - 실행: python main.py  →  http://127.0.0.1:8000/docs
 #
 # [주의]
@@ -158,7 +158,7 @@ app.add_middleware(
 
 os.makedirs(config.UPLOAD_EVENT_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=os.path.join(config.BASE_DIR, "static")), name="static")
-app.mount("/uploads/events", StaticFiles(directory=config.UPLOAD_EVENT_DIR), name="events")  # 관리자 웹 · 앱 사진
+# 졸음 사진(uploads/events/)은 얼굴 사진이라 폴더를 공개하지 않는다 → GET /events/{id}/photo (로그인 + 본인 또는 관리자, routers/event.py)
 
 
 @app.get("/", tags=["기본"])
