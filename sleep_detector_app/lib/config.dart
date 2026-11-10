@@ -43,7 +43,7 @@ class AppConfig {
 
   // 🆕 (11/09) 미세수면(눈 감김) 의심 때 넘기는 사진 수 — 감김 처음 · 가운데 · 마지막 (팀장 3장 검토, 11/07 1장 vs 3장 시험)
   //   감는 동안 프레임을 photoGapSec 간격으로만 들고 있음 (1.5초 → 최대 약 8장, 의심 뒤 · 눈 뜨면 바로 비움)
-  //   고개 숙임 · PERCLOS 는 아직 1장 (팀장 답 대기)
+  //   고개 숙임 · PERCLOS 는 1장, 재전송은 사진 없음 (11/09 팀장 결정: 숙임은 얼굴 없는 사진이 많고 재전송이 있음, PERCLOS 는 바로 확정 · 사진은 기록용)
   static const int microsleepPhotos = 3;
   static const double photoGapSec = 0.2;
 
