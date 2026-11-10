@@ -168,7 +168,7 @@ async def drive_calibrate_handler(file: UploadFile = File(...), user: User = Dep
         return {"success": True, "count": count, "needed": config.CALIB_FRAMES, "done": False, "ear_threshold": None}
 
     try:
-        threshold = face_service.calibrate(photos)
+        threshold = face_service.calibrate(photos, user_id=user.id)   # user_id → 뜬 눈 EAR 중간값도 저장 (반쯤 감은 눈 기준, 11/10)
     finally:
         for p in photos:                     # 개인정보 — 측정이 끝나면 사진은 남기지 않음
             _remove(p)
@@ -316,7 +316,7 @@ async def detect_handler(
     user: User = Depends(get_current_user),
 ):
     # ① 로그인 · 사진 확인 (검사하는 동안만 임시 보관)
-    reason = reason if reason in ("microsleep", "perclos") else ""
+    reason = reason if reason in ("microsleep", "perclos", "half") else ""   # half = 반쯤 감은 눈 확인 (10초마다 1장, 11/10)
     if file is None and not reason:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "사진이 필요합니다 (사진 없이는 운행 중 졸음 의심만 보낼 수 있음)")
     if reason and sleep_state.get_state(user.id).get("rest_started_at") is not None:
@@ -329,7 +329,29 @@ async def detect_handler(
                 "sleep_count_10min": int(sleep_state.facts(user.id)["sleep_count_10min"]),
                 "voice_quiz": None, "regulations": [], "event_id": None}
     t_start = time.perf_counter()   # 단계별 걸린 시간 (응답이 느릴 때 어디서 걸렸는지 터미널로 보기, 11/05)
-    tmp_path = await _save_upload(file, config.UPLOAD_TMP_DIR, f"u{user.id}") if file is not None else None
+    # 반쯤 감은 눈 확인 (11/10 팀장) — 앱이 눈 뜬 상태에서 10초마다 보낸 사진 1장
+    #   서버 EAR < 출발 전 뜬 눈 EAR × 0.85 (face_service.check_half) → 최근 4번 중 3번이면 피로 확정 (sleep_state.add_half)
+    #   확정 전에는 조용히 응답하고 사진은 바로 지움 (경고 · 취소 글자 없음). 확정되면 아래 PERCLOS 확정과 같은 길 (report 에 trigger half)
+    half = None
+    tmp_path = None
+    if reason == "half":
+        if file is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "반쯤 감은 눈 확인에는 사진이 필요합니다")
+        tmp_path = await _save_upload(file, config.UPLOAD_TMP_DIR, f"u{user.id}h")
+        half = await run_in_threadpool(face_service.check_half, tmp_path, user.id)
+        if not sleep_state.add_half(user.id, half["is_half"]):
+            _remove(tmp_path)
+            stage = int(sleep_state.get_stage(user.id))
+            return {"success": True, "face_found": half["ear"] is not None, "ear": _r(half["ear"]), "eye_closed_prob": None,
+                    "eye_open_prob": None, "method": "ear", "perclos": None, "ear_threshold": _r(half["baseline"]),
+                    "is_sleep": False, "reason": "", "stage": stage, "status": _label(stage), "summary": "", "guidance": "",
+                    "driver_voice": "", "sleep_count_10min": int(sleep_state.facts(user.id)["sleep_count_10min"]),
+                    "voice_quiz": None, "regulations": [], "event_id": None}
+        print(f"[detect] {datetime.now():%H:%M:%S} u{user.id} half → 반쯤 감은 눈 피로 확정 (EAR {half['ear']} < "
+              f"평소 {half['baseline']} × 0.85) → PERCLOS 로 확정")
+        reason = "perclos"
+    elif file is not None:
+        tmp_path = await _save_upload(file, config.UPLOAD_TMP_DIR, f"u{user.id}")
     closed, pc, open_prob = _num(closed_sec), _num(perclos), _num(eye_open_prob)
     lat, lng = _num(latitude), _num(longitude)
 
@@ -400,7 +422,8 @@ async def detect_handler(
     report = {
         **agent["report"],
         "eye": {"closed_sec": closed, "perclos": pc, "eye_open_prob": open_prob, "ear": eye.get("ear"),
-                "photo": tmp_path is not None},
+                "photo": tmp_path is not None,
+                **({"trigger": "half", "half_ear": half["ear"], "half_baseline": half["baseline"]} if half else {})},
         "driving_quiz": [],
         "facts": facts,
         "is_real": {"llm": bool(analysis.get("is_real")), "rag": any(r.get("is_real") for r in regulations),

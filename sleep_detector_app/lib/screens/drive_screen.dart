@@ -498,7 +498,7 @@ class _DriveScreenState extends State<DriveScreen> {
   //   서버가 피로 확정(isSleep)일 때만 지금 졸음 확정과 똑같이 경고를 띄운다.
   //   확정이 아니면 아무것도 안 한다 — '서버 확인: 취소' 글자 X, _eye.serverCancelled() X, 실패해도 알람 X (A 요청)
   Future<void> _onHalfCheck(Uint8List jpg) async {
-    if (!mounted || _warningRoute != null || _pauseDetect.value) return; // 경고 · 퀴즈 · 휴식 화면이 떠 있으면 보내지 않음
+    if (!mounted || _pauseDetect.value || _sending) return; // 11/10 팀장: 경고 화면이 떠 있어도 음성 · 퀴즈가 끝났으면 계속 (반쯤으로 1단계가 된 뒤 2 · 3단계로 오를 수 있게). 다른 의심 전송 중이면 건너뜀 // 경고 · 퀴즈 · 휴식 화면이 떠 있으면 보내지 않음
     final stageBefore = _stage; // _onSuspect 와 같은 이유 (서버 답을 기다리는 사이 ping 이 단계를 바꿀 수 있음)
     try {
       final res = await ApiService.sendDetect(jpg, reason: 'half', lat: _lat, lng: _lng);

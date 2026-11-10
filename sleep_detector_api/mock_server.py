@@ -682,6 +682,12 @@ async def detect(
     if photo is not None and not photo:
         raise HTTPException(status_code=400, detail="사진이 비어 있습니다")
     st = state_of(user["id"])
+    if reason == "half":  # 반쯤 감은 눈 확인 (11/10) — 모의 서버는 판정하지 않고 언제나 '확정 아님' (조용히, 사진은 안 남김)
+        stage = refresh_stage(st)
+        return {"success": True, "face_found": photo is not None, "ear": None, "eye_closed_prob": None, "eye_open_prob": None,
+                "method": "ear", "perclos": None, "ear_threshold": None, "is_sleep": False, "reason": "", "stage": stage,
+                "status": STAGE_LABELS[stage], "summary": "", "guidance": "", "driver_voice": "",
+                "sleep_count_10min": len(recent_sleeps(st)), "voice_quiz": None, "regulations": [], "event_id": None}
     reason = reason if reason in ("microsleep", "perclos") else "microsleep"  # 비어 있으면 '사진 1장 테스트'
     closed = to_float(closed_sec, 0.0)
     perclos_v = to_float(perclos)

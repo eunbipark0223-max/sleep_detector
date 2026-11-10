@@ -28,7 +28,7 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 # ── 시연 ─────────────────────────────────────────────
-# True 면 시간 기준이 짧아짐 (10분→1분, 15분→1분, 2시간→2분). .env 에 DEMO_MODE=true 로도 켤 수 있음
+# True 면 시간 기준이 짧아짐 (10분→3분, 15분→1분, 2시간→2분 · 11/10 단계 창 1분 → 3분). .env 에 DEMO_MODE=true 로도 켤 수 있음
 DEMO_MODE = _env_bool("DEMO_MODE", False)
 
 # ── AI 스위치 (수업 방식: 가짜 ↔ 진짜, 실패하면 가짜로) ──
@@ -57,7 +57,7 @@ CALIB_MIN = 0.15              # 기준 하한
 CALIB_MAX = 0.25              # 기준 상한 (실패하면 EAR_THRESHOLD)
 
 # ── 경고 단계 (sleep_state · agent_service) ───────────
-WINDOW_MIN = 1 if DEMO_MODE else 10      # 졸음 횟수를 세는 창 · 1단계 자동 해제 시간
+WINDOW_MIN = 3 if DEMO_MODE else 10      # 졸음 횟수를 세는 창 · 1단계 자동 해제 시간
 AGENT_MAX_STEP_UP = 1         # 천장 규칙: Agent 는 규칙 단계보다 최대 +1
 STAGE_MAX = 3
 STAGE_LABELS = {0: "정상", 1: "주의", 2: "휴식 권고", 3: "긴급"}

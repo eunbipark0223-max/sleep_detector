@@ -344,6 +344,54 @@ SCENARIOS = [
     ("⑪ 운전 중 퀴즈 통과 → 단계 그대로",          "통과 · 1단계", s11),
     ("⑫ 운전 중 퀴즈 2번 실패 → 단계 +1",          "2단계 · no_response 1건", s12),
 ]
+def bonus_photo_access():
+    """경고 사진: 로그인 없음 401 · 본인 200 · 다른 기사 404 · 관리자 200 · 예전 공개 주소 404 (11/10 D: /events/{id}/photo)"""
+    before = set(os.listdir(config.UPLOAD_EVENT_DIR))
+    h, _ = new_driver()
+    doze(h)
+    url = client.get("/events/my", headers=h).json()[0]["photo_url"]
+    other, _ = new_driver()
+    try:
+        return " · ".join(str(x) for x in (
+            client.get(url).status_code, client.get(url, headers=h).status_code,
+            client.get(url, headers=other).status_code, client.get(url, headers=admin_headers()).status_code,
+            client.get("/uploads/events/..%5C..%5Cconfig.py", headers=admin_headers()).status_code))
+    finally:
+        for f in set(os.listdir(config.UPLOAD_EVENT_DIR)) - before:   # 시험이 남긴 가짜 사진
+            os.remove(os.path.join(config.UPLOAD_EVENT_DIR, f))
+
+
+def bonus_half_check():
+    """반쯤 감은 눈 확인 (11/10): 출발 전 측정이 뜬 눈 EAR 을 저장 · 4번 중 3번째 반쯤에 PERCLOS 로 확정 · 확정 전엔 조용히 · 기준 없으면 판정 안 함"""
+    import json
+    h, uid = new_driver()
+    for _ in range(config.CALIB_FRAMES):
+        client.post("/drive/calibrate", files={"file": ("open.png", PNG, "image/png")}, headers=h)
+    saved = sleep_state.get_open_ear(uid) is not None
+
+    def half():
+        return client.post("/detect", files={"file": ("open.png", PNG, "image/jpeg")}, data={"reason": "half"}, headers=h).json()
+
+    real = face_service.check_half
+    face_service.check_half = lambda path, user_id=None: {"ear": 0.15, "baseline": 0.30, "is_half": True}
+    before = set(os.listdir(config.UPLOAD_EVENT_DIR))
+    try:
+        r1, r2, r3 = half(), half(), half()
+    finally:
+        face_service.check_half = real
+    new = set(os.listdir(config.UPLOAD_EVENT_DIR)) - before
+    with TestSession() as s:
+        evs = s.query(SleepEvent).filter(SleepEvent.user_id == uid).all()
+    trig = json.loads(evs[-1].report)["eye"].get("trigger") if evs else None
+    for f in new:
+        os.remove(os.path.join(config.UPLOAD_EVENT_DIR, f))
+    h2, uid2 = new_driver()                      # 출발 전 측정을 안 한 기사 → 기준 없음 → 판정 안 함
+    quiet = [client.post("/detect", files={"file": ("closed.png", PNG, "image/jpeg")}, data={"reason": "half"}, headers=h2).json()["is_sleep"]
+             for _ in range(4)]
+    return (f"기준 저장 {saved} · 조용 {not r1['is_sleep'] and not r2['is_sleep']} · 3번째 확정 {r3['is_sleep']} · "
+            f"경고 {len(evs)}건 {evs[-1].reason if evs else '-'}·{trig} · 사진 {len(new)} · 기준 없음 확정 {any(quiet)}")
+
+
 def bonus_quiz_message():
     """통과 음성은 단계마다 다르게 (1단계에 '쉼터' · 3단계에 '운행' 이 나오면 안 됨)"""
     got = []
@@ -375,8 +423,10 @@ BONUS = [("(보너스) 3단계는 휴식으로 안 풀림 → 3단계", 3, bonus
          ("(보너스) 운행 종료 뒤 연속 운전 시간 유지", "배너 False · 100분", bonus_drive_end),
          ("(보너스) 서버 판정 오류 → 앱 판단대로 확정", "확정", bonus_error),
          ("(보너스) AI 처리 중 조치완료 → 단계 안 오름", "단계 0 · ping 0 · 퀴즈 False · 조치완료", bonus_reset_race),
+         ("(보너스) 경고 사진 권한", "401 · 200 · 404 · 200 · 404", bonus_photo_access),
          ("(보너스) 퀴즈 통과 음성: 1 · 2 · 3단계", "안전 운행하세요. / 쉼터까지 조심히 가세요. / 안전한 곳에 정차해 주세요.", bonus_quiz_message),
-         ("(보너스) [detect] 단계별 시간 기록", "눈판정 · LLM · RAG · Agent · 합계", bonus_detect_timing)]
+         ("(보너스) [detect] 단계별 시간 기록", "눈판정 · LLM · RAG · Agent · 합계", bonus_detect_timing),
+         ("(보너스) 반쯤 감은 눈 확인", "기준 저장 True · 조용 True · 3번째 확정 True · 경고 1건 perclos·half · 사진 1 · 기준 없음 확정 False", bonus_half_check)]
 
 
 def run(items):
