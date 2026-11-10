@@ -61,7 +61,7 @@ class SleepEventResponse(BaseModel):
     summary: str = ""
     guidance: str = ""
     report: dict[str, Any] = {}              # situation · stage_reason · regulation · recommended_action · location · eye · driving_quiz · rest
-    photo_url: Optional[str] = None          # /uploads/events/xxx.jpg
+    photo_url: Optional[str] = None          # /events/{id}/photo (토큰을 붙여 불러야 열림)
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     created_at: datetime
@@ -86,7 +86,8 @@ class SleepEventResponse(BaseModel):
         """DB 줄(SleepEvent) → 응답. photo_path 는 서버 안 경로라 내보내지 않고 photo_url 만 만든다."""
         data = cls.model_validate(event)
         data.stage_label = STAGE_LABELS.get(event.stage, "")
-        data.photo_url = f"/uploads/events/{os.path.basename(event.photo_path)}" if event.photo_path else None
+        # 파일 주소가 아니라 사진을 내주는 API 주소 (GET /events/{id}/photo — 로그인 토큰 + 본인 또는 관리자만). 폴더는 공개하지 않는다 (11/10)
+        data.photo_url = f"/events/{event.id}/photo" if event.photo_path else None
         return data
 
 

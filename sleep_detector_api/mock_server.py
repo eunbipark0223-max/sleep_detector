@@ -12,7 +12,7 @@
 #       POST /drive/start · /drive/calibrate · /drive/ping · /drive/rest · /drive/resume
 #       GET  /drive/state · POST /drive/end   앱을 껐다 켰을 때 [이어서 운행] (진짜 서버와 같은 모양)
 #       POST /quiz/answer                  VoiceQuizAnswer (quiz_id · answer_text · answer_sec)
-#       GET  /events/my · PATCH /events/{id}/status
+#       GET  /events/my · GET /events/{id}/photo (본인 또는 관리자) · PATCH /events/{id}/status
 #       GET  /admin/events · /admin/users · /admin/stats/stage · /admin/stats/hourly
 #       GET  /chat/hello · POST /chat
 #   - 진짜처럼 도는 부분 (코드가 판정하는 것만): 10분 안 졸음 횟수 → 규칙 단계 · set_stage(올리기만) ·
@@ -51,6 +51,7 @@ from typing import Literal, Optional
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -348,7 +349,7 @@ def add_event(user_id: int, stage: int, reason: str, report: dict, *, summary=""
 def event_out(e: dict, admin: bool = False) -> dict:
     out = dict(e)
     out.pop("photo_path")
-    out["photo_url"] = "/" + e["photo_path"] if e["photo_path"] else None
+    out["photo_url"] = f"/events/{e['id']}/photo" if e["photo_path"] else None    # 진짜 서버와 같음: 로그인 필요한 API 주소 (폴더는 공개 안 함)
     out["stage_label"] = STAGE_LABELS[e["stage"]]
     if admin:
         user = USERS.get(e["user_id"], {})
@@ -402,7 +403,6 @@ def reset_all() -> None:
 
 reset_all()
 os.makedirs(EVENT_DIR, exist_ok=True)
-app.mount("/uploads/events", StaticFiles(directory=EVENT_DIR), name="events")
 if os.path.isdir(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -783,6 +783,18 @@ def quiz_answer(body: VoiceQuizAnswer, user: dict = Depends(current_user)):
 def events_my(user: dict = Depends(current_user)):
     mine = [e for e in EVENTS if e["user_id"] == user["id"]]
     return [event_out(e) for e in sorted(mine, key=lambda e: e["id"], reverse=True)]
+
+
+@app.get("/events/{event_id}/photo")
+def event_photo(event_id: int, user: dict = Depends(current_user)):
+    """진짜 서버 routers/event.py event_photo 와 같음: 그 경고의 기사 본인 또는 관리자만, 아니면 똑같이 404."""
+    event = next((e for e in EVENTS if e["id"] == event_id), None)
+    if not event or not event["photo_path"] or (user["role"] != "admin" and event["user_id"] != user["id"]):
+        raise HTTPException(status_code=404, detail="사진이 없습니다")
+    path = os.path.join(EVENT_DIR, os.path.basename(event["photo_path"]))
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="사진이 없습니다")
+    return FileResponse(path, headers={"Cache-Control": "private, no-store"})
 
 
 @app.patch("/events/{event_id}/status")

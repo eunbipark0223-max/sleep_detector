@@ -53,6 +53,11 @@ async function apiFetch(path, options = {}) {
     location.href = 'admin_login.html';
     throw new Error('로그인이 필요합니다');
   }
+  if (res.status === 403 && !path.startsWith('/users/login')) {    // 이 서버의 403 은 '관리자만' (require_admin) — 기사 계정 토큰이거나 관리자 권한이 빠진 경우
+    clearToken();
+    location.href = 'admin_login.html?denied=1';                   // 로그인 화면이 이유를 안내 (연결 끊김 안내와 헷갈리지 않게)
+    throw new Error('관리자만 사용할 수 있습니다');
+  }
   let data = null;
   try { data = await res.json(); } catch (e) { /* 본문이 없는 응답 */ }
   if (!res.ok) {
@@ -86,6 +91,29 @@ function fetchAdminEvents(filters = {}) {
 function fetchAdminUsers() { return apiFetch('/admin/users'); }
 function fetchStageStats() { return apiFetch('/admin/stats/stage'); }
 function fetchHourlyStats() { return apiFetch('/admin/stats/hourly'); }
+
+// ── 졸음 사진: 로그인이 필요한 API 라서 <img src> 로는 못 열고, 토큰을 붙여 받아 브라우저 안 임시 주소(blob:)로 만든다 ──
+// 같은 사진은 한 번만 받고(10초마다 화면을 다시 그려도 깜빡이지 않게), 오래된 것부터 버려 메모리를 아낀다.
+const PHOTO_CACHE_MAX = 30;
+const photoCache = new Map();                       // 사진 주소 → Promise<blob: 주소>
+function fetchPhotoUrl(path) {
+  if (photoCache.has(path)) return photoCache.get(path);
+  const job = (async () => {
+    const token = getToken();
+    const res = await fetch(path, { headers: token ? { Authorization: 'Bearer ' + token } : {} });
+    if (res.status === 401) { clearToken(); location.href = 'admin_login.html'; throw new Error('로그인이 필요합니다'); }
+    if (!res.ok) throw new Error('사진을 불러올 수 없어요 (' + res.status + ')');
+    return URL.createObjectURL(await res.blob());
+  })();
+  photoCache.set(path, job);
+  job.catch(() => { if (photoCache.get(path) === job) photoCache.delete(path); });   // 실패는 기억하지 않음 (다음에 다시 시도)
+  while (photoCache.size > PHOTO_CACHE_MAX) {
+    const oldest = photoCache.keys().next().value;
+    photoCache.get(oldest).then((u) => URL.revokeObjectURL(u), () => {});
+    photoCache.delete(oldest);
+  }
+  return job;
+}
 
 // ── 내 정보 · 설정 (관리자 설정 화면) ─────────────────────────
 function fetchMe() { return apiFetch('/users/me'); }
