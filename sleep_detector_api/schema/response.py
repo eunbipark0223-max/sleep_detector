@@ -105,11 +105,6 @@ class AdminUserResponse(UserResponse):
     last_event_at: Optional[datetime] = None
 
 
-class AdminDriverCreated(AdminUserResponse):
-    """POST /admin/users 응답 — 새 기사 + 임시 비밀번호 (이 응답에서 한 번만. DB 에는 해시만 저장)."""
-    temp_password: str
-
-
 # ── 통계 (P2) ─────────────────────────────────────────────────
 class StageStat(BaseModel):
     stage: int

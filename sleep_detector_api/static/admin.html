@@ -20,8 +20,6 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     · 상세를 열면 미확인 → 확인 으로 자동으로 바뀜 (화면이 보일 때만. 서버는 '확인'을 미확인일 때만 받음 → 조치완료를 되돌리지 않음, 11/09)
     · 머리의 [조치완료] → PATCH /events/{id}/status → 3단계 해제 (페이지에 그대로 머묾)
   - 기사 관리: 탭(전체 · 조치 필요 · 확인 필요 · 이상 없음 · 전화번호 미등록, 건수 표시) + 표(이름 · 차량번호 · 전화번호 · 상태 · 오늘 경고 · 누적 경고(단계 색 막대) · 마지막 경고) + 검색
-    · [기사 추가] (11/09): 창에서 이름 · 이메일 · 전화번호 · 차량번호(선택) · 개인정보 동의 확인 → POST /admin/users
-      → 같은 창에 로그인 정보 + 임시 비밀번호(서버가 만듦, 이때 한 번만 보임, 누르면 복사)
     · 기사 상세 페이지 #driver/번호 — 경고 현황(오늘 · 누적 · 조치 필요 + 1 · 2 · 3단계 색 칸) · 최근 경고 10건(줄을 누르면 경고 상세로), 오른쪽에 연락처. 서버 API 추가 없이 이미 받은 경고 · 기사 목록으로 계산
   - 내 정보 #profile: 왼쪽 아래 프로필(이름 · 이메일)을 누르면 열림 (따로 '설정' 메뉴 없음, 옛 주소 #settings 도 여기로, 11/09)
     이름 · 전화번호 수정(이메일은 고정) → PATCH /users/me · 비밀번호 변경 → PUT /users/me/password(지금 비밀번호 확인, 가입과 같은 규칙)
@@ -348,26 +346,6 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     #confirmDlg h2 { padding: 18px 22px 0; font-size: 19px; font-weight: 800; }
     #confirmDlg p { padding: 10px 22px 20px; font-size: 16px; line-height: 1.6; }
     #confirmDlg form { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--border); background: var(--bg); }
-    /* 기사 추가 창 */
-    .title-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
-    .title-row .page-title { margin-bottom: 0; }
-    #driverDlg { margin: auto; border: 0; border-radius: 14px; padding: 0; width: min(480px, 94vw); max-height: 92vh; color: var(--text-main); box-shadow: 0 24px 48px rgba(0,0,0,.25); }
-    #driverDlg::backdrop { background: rgba(15, 23, 42, .55); }
-    #driverDlg .dlg-head { display: flex; align-items: center; gap: 10px; padding: 18px 22px 4px; }
-    #driverDlg h2 { font-size: 19px; font-weight: 800; flex: 1; }
-    #driverDlg .dlg-x { width: 36px; height: 36px; border: none; background: none; border-radius: 8px; cursor: pointer; color: var(--text-sub); display: flex; align-items: center; justify-content: center; }
-    #driverDlg .dlg-x:hover { background: #F1F5F9; color: var(--text-main); }
-    #driverDlg .dlg-body { padding: 10px 22px 6px; }
-    #driverDlg .dlg-lead { font-size: 15px; color: var(--text-sub); margin-bottom: 14px; }
-    #driverDlg .dlg-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--border); background: var(--bg); }
-    .req { color: var(--stage-3-text); margin-left: 2px; }
-    .opt { font-weight: 500; color: var(--text-sub); margin-left: 4px; }
-    .check { display: flex; align-items: flex-start; gap: 10px; font-size: 15px; line-height: 1.5; cursor: pointer; margin: 4px 0 12px; }
-    .check input { width: 20px; height: 20px; margin-top: 2px; flex: none; accent-color: var(--brand); }
-    .done-box { border: 1px solid var(--border); border-radius: 10px; background: var(--bg); padding: 14px 16px; }
-    .done-box .kv { font-size: 16px; }
-    .pw { font-family: Consolas, 'Courier New', monospace; font-size: 20px; letter-spacing: 1px; }
-    .warn-note { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; font-size: 14px; line-height: 1.5; color: #8A4500; background: #FFF4D6; border-radius: 8px; padding: 10px 12px; }
     @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
     @media (max-width: 900px) { .profile-grid { grid-template-columns: 1fr; } }
@@ -452,10 +430,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
 
     <!-- 기사 관리: 같은 방식의 탭 -->
     <section class="view" id="view-drivers" aria-labelledby="t-drivers">
-      <div class="title-row">
-        <h1 class="page-title" id="t-drivers" tabindex="-1">기사 관리</h1>
-        <button class="btn brand" type="button" id="addDriverBtn" aria-haspopup="dialog"><span data-icon="personAdd" data-size="20" aria-hidden="true"></span>기사 추가</button>
-      </div>
+      <h1 class="page-title" id="t-drivers" tabindex="-1">기사 관리</h1>
       <div class="tabs" id="driverTabs" role="tablist" aria-label="기사 상태"></div>
       <div class="table-section" id="driverPanel" role="tabpanel">
         <div class="table-toolbar">
@@ -496,9 +471,6 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     </form>
   </dialog>
 
-  <!-- 기사 추가 창: 입력 → 추가되면 같은 창에 로그인 정보(임시 비밀번호 한 번만) -->
-  <dialog id="driverDlg" aria-labelledby="driverDlgTitle"></dialog>
-
   <div id="toast" aria-hidden="true"></div>
 
   <script src="js/api.js?v=20261109"></script>
@@ -538,7 +510,6 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       mail: 'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z',
       alert: 'M11 15h2v2h-2zm0-8h2v6h-2zm.99-5C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z',
       copy: 'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z',
-      personAdd: 'M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
     };
     const SVG_NS = 'http://www.w3.org/2000/svg';
     function icon(name, size) {
@@ -860,82 +831,6 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       $('driverCount').textContent = list.length + '명' + (q ? ' (검색 결과)' : '');
       renderTabs($('driverTabs'), 'driverPanel', DRIVER_FILTERS.map(([key, label, fn]) => [key, label, drivers().filter(fn).length, key === 'urgent']), driverFilter, (key) => { driverFilter = key; renderAll(true); });
       if (keepKey) { const again = document.querySelector('[data-key="' + keepKey + '"]'); if (again) again.focus({ preventScroll: true }); }
-    }
-
-    // ── 기사 추가 (기사 관리 → [기사 추가], 11/09) ──────────────────────
-    // 이름 · 이메일(로그인 아이디) · 전화번호 · 차량번호(선택) · 개인정보 동의 확인 → POST /admin/users
-    // 추가되면 같은 창에 로그인 정보를 보여 줌. 임시 비밀번호는 이때 한 번만 (서버에는 해시만 저장)
-    function openDriverDlg() {
-      const dlg = $('driverDlg');
-      if (dlg.open || $('confirmDlg').open) return;
-      renderDriverForm();
-      dlg.showModal();
-      $('newName').focus();
-    }
-    const closeDriverDlg = () => $('driverDlg').close();
-    function dlgHead(title) {
-      return h('div', { class: 'dlg-head' }, h('h2', { id: 'driverDlgTitle', tabindex: '-1' }, title),
-        h('button', { class: 'dlg-x', type: 'button', 'aria-label': '닫기', onclick: closeDriverDlg }, icon('close', 22)));
-    }
-    function renderDriverForm() {
-      const label = (text, required) => [text, required ? h('span', { class: 'req', 'aria-hidden': 'true' }, '*') : h('span', { class: 'opt' }, '(선택)')];
-      const form = h('form', { id: 'driverForm', novalidate: true, onsubmit: submitDriver },
-        h('div', { class: 'dlg-body' },
-          h('p', { class: 'dlg-lead' }, '기사님 계정을 만들어요. 앱 로그인에 쓸 임시 비밀번호는 추가하면 바로 알려 드려요.'),
-          field('newName', label('이름', true), { type: 'text', maxlength: '50', autocomplete: 'off', required: true }),
-          field('newEmail', label('이메일', true), { type: 'email', maxlength: '100', autocomplete: 'off', required: true, 'aria-describedby': 'newEmailHint' }, '앱 로그인 아이디로 써요.'),
-          field('newPhone', label('전화번호', true), { type: 'tel', placeholder: '010-1234-5678', autocomplete: 'off', required: true }),
-          field('newVehicle', label('차량번호', false), { type: 'text', placeholder: '12가 3456', maxlength: '30', autocomplete: 'off', 'aria-describedby': 'newVehicleHint' }, '차량을 배정하기 전이면 비워 두세요.'),
-          h('label', { class: 'check' }, h('input', { type: 'checkbox', id: 'newAgree', required: true }),
-            h('span', null, '기사님 본인에게 개인정보(전화번호 · 차량번호) 수집 · 이용 동의를 받았어요.', h('span', { class: 'req', 'aria-hidden': 'true' }, '*'))),
-          h('p', { class: 'form-msg', id: 'driverMsg', role: 'alert' })),
-        h('div', { class: 'dlg-foot' },
-          h('button', { class: 'btn', type: 'button', onclick: closeDriverDlg }, '취소'),
-          h('button', { class: 'btn brand', type: 'submit', id: 'driverSave' }, '추가')));
-      fill($('driverDlg'), dlgHead('기사 추가'), form);
-    }
-    async function submitDriver(ev) {
-      ev.preventDefault();
-      const msg = $('driverMsg'), btn = $('driverSave');
-      const name = $('newName').value.trim(), email = $('newEmail').value.trim(), phone = $('newPhone').value.trim(), vehicle = $('newVehicle').value.trim();
-      ['newName', 'newEmail', 'newPhone', 'newVehicle', 'newAgree'].forEach((id) => $(id).removeAttribute('aria-invalid'));
-      const bad = (text, id) => { setMsg(msg, text, true); $(id).setAttribute('aria-invalid', 'true'); $(id).focus(); };
-      if (!name) return bad('이름을 입력해 주세요.', 'newName');
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return bad('이메일을 올바르게 입력해 주세요 (예: driver@company.com).', 'newEmail');
-      const d = digitsOf(phone);
-      if (d.length < 9 || d.length > 11) return bad('전화번호를 올바르게 입력해 주세요 (예: 010-1234-5678).', 'newPhone');
-      if (!$('newAgree').checked) return bad('기사님께 개인정보 수집 · 이용 동의를 받았는지 확인해 주세요.', 'newAgree');
-      btn.disabled = true; msg.textContent = '';
-      try {
-        const res = await createDriver({ name, email, phone, vehicle_no: vehicle, privacy_agreed: true });
-        const pw = res.temp_password;                    // scrub · clean 을 거치지 않음 (비밀번호 속 글자를 지우면 안 됨)
-        renderDriverDone(scrub(res), pw);
-        refreshAll(true);
-      } catch (err) {
-        const target = /이메일|email/i.test(err.message) ? 'newEmail' : /전화/.test(err.message) ? 'newPhone' : /차량/.test(err.message) ? 'newVehicle' : null;
-        if (target) bad(/^value is not a valid email/i.test(err.message) ? '이메일을 올바르게 입력해 주세요 (예: driver@company.com).' : err.message, target);
-        else setMsg(msg, '추가하지 못했어요: ' + err.message, true);
-        btn.disabled = false;
-      }
-    }
-    function renderDriverDone(u, pw) {
-      const kv = (k, v) => [h('dt', null, k), h('dd', null, v)];
-      const pwBtn = h('button', { class: 'copyable pw', type: 'button', title: '눌러서 임시 비밀번호 복사', onclick: () => copyText(pw) }, icon('copy', 16));
-      pwBtn.prepend(document.createTextNode(pw));        // 글자 그대로 (h 의 clean 을 거치지 않게)
-      fill($('driverDlg'), dlgHead('기사를 추가했어요'),
-        h('div', { class: 'dlg-body' },
-          h('p', { class: 'dlg-lead' }, honor(u.name) + '께 아래 로그인 정보를 알려 주세요. 누르면 복사돼요.'),
-          h('div', { class: 'done-box' }, h('dl', { class: 'kv' },
-            kv('이메일', copyable(u.email, '이메일')),
-            kv('임시 비밀번호', pwBtn),
-            kv('전화번호', u.phone || unsetNode()),
-            kv('차량번호', u.vehicle_no || unsetNode()))),
-          h('p', { class: 'warn-note' }, icon('alert', 18), h('span', null, '임시 비밀번호는 지금 한 번만 보여요. 창을 닫기 전에 복사해 두세요.'))),
-        h('div', { class: 'dlg-foot' },
-          h('a', { class: 'btn', href: '#driver/' + u.id, onclick: closeDriverDlg }, '기사 상세 보기'),
-          h('button', { class: 'btn brand', type: 'button', onclick: closeDriverDlg }, '확인')));
-      $('driverDlgTitle').focus();
-      sayLive('기사를 추가했어요. 임시 비밀번호는 지금 한 번만 보여요.');
     }
 
     // ── 사이드바 배지 · 안내 ──────────────────────────────────
@@ -1374,7 +1269,6 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button) return;       // 새 탭으로 열기는 브라우저에 맡김
       ev.preventDefault(); go(b.dataset.view);
     }));
-    $('addDriverBtn').addEventListener('click', openDriverDlg);
     $('ubView').addEventListener('click', () => { dismissAlert(); goHazards('urgent'); });
     $('ubClose').addEventListener('click', dismissAlert);
     $('soundBtn').addEventListener('click', () => {

@@ -9,7 +9,6 @@
 #   - VoiceQuizAnswer — quiz_id · answer_text(STT 글자, 무응답이면 '') · answer_sec(무응답이면 null)
 #   - DrivePing — perclos (기록용)
 #   - ProfileUpdate — phone · vehicle_no (PATCH /users/me, 기사 연락용. 형식 검사 · 정리는 format_phone · format_vehicle_no)
-#   - AdminDriverCreate — 관리자가 기사 계정 추가 (POST /admin/users, 11/09). 비밀번호는 서버가 make_temp_password 로 만들어 한 번만 돌려줌
 #
 # [주의]
 #   - 수업용 DirectReport · ReportSubmit 은 지운다
@@ -22,7 +21,6 @@
 # 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 # ═══════════════════════════════════════════════════════════════
 import re
-import secrets
 from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -131,50 +129,6 @@ class ProfileUpdate(BaseModel):
         if value is None or not value.strip():
             return "" if value is not None else None
         return format_vehicle_no(value)
-
-
-# ── 관리자가 기사 계정 추가 (POST /admin/users, 관리자 웹 기사 관리, 11/09) ─────
-# 기사가 앱에서 직접 가입하는 것과 같은 칸 · 같은 형식 규칙. 비밀번호는 받지 않고 서버가 임시 비밀번호를 만든다.
-class AdminDriverCreate(BaseModel):
-    name          : str           = Field(..., max_length=50, description="기사 이름")
-    email         : EmailStr      = Field(..., description="로그인 아이디로 쓰는 이메일")
-    phone         : str           = Field(..., max_length=30, description="전화번호 (필수 — 관리자가 경고 때 전화). 하이픈 형식으로 정리해 저장")
-    vehicle_no    : Optional[str] = Field(None, max_length=30, description="차량번호 (배정 전이면 비워 둠)")
-    privacy_agreed: bool          = Field(..., description="기사 본인에게 개인정보 수집 · 이용 동의를 받았는지 (관리자 확인). false 면 거절, DB 에는 저장하지 않음")
-
-    @field_validator("name")
-    def check_driver_name(cls, value):
-        value = value.strip()
-        if not value:
-            raise ValueError("이름을 입력해 주세요")
-        return value
-
-    @field_validator("phone")
-    def check_driver_phone(cls, value):
-        if not value.strip():
-            raise ValueError("전화번호를 입력해 주세요")
-        return format_phone(value)
-
-    @field_validator("vehicle_no")
-    def check_driver_vehicle_no(cls, value):
-        return format_vehicle_no(value) if value is not None and value.strip() else None
-
-    @field_validator("privacy_agreed")
-    def check_driver_privacy(cls, value):
-        if value is not True:
-            raise ValueError("기사님께 개인정보 수집 · 이용 동의를 받은 뒤 추가해 주세요.")
-        return value
-
-
-def make_temp_password(length: int = 10) -> str:
-    """기사 계정 추가 때 주는 임시 비밀번호. 가입 규칙(대 · 소문자 · 숫자 · 특수문자, 8자리 이상)을 지키고,
-    말로 불러 줘도 헷갈리지 않게 0 · O · 1 · l · I 는 뺀다."""
-    upper, lower, digits, special = "ABCDEFGHJKLMNPQRSTUVWXYZ", "abcdefghijkmnpqrstuvwxyz", "23456789", "!@#$%"
-    chars = [secrets.choice(upper), secrets.choice(upper), secrets.choice(special)]
-    chars += [secrets.choice(digits) for _ in range(3)]
-    chars += [secrets.choice(lower) for _ in range(length - len(chars))]
-    secrets.SystemRandom().shuffle(chars)
-    return check_password_rules("".join(chars))
 
 
 # ── 비밀번호 변경 (PUT /users/me/password, 관리자 설정 화면) ─────
