@@ -11,10 +11,9 @@
 #   - 운행 시작(start_drive): 0 · 1단계만 0단계로. 2 · 3단계 · 10분 졸음 기록은 유지 (다시 시작으로 경고를 끌 수 없게)
 #   - 개인 기준 EAR, 음성 보고용 facts (10분 졸음 횟수 · 마지막 closed_sec · 운행 분 · 단계)
 #   - 휴식 시작 시각 · 운전 중 퀴즈 실패 횟수 · 마지막 퀴즈 시각 · 마지막 ping 시각
-#   - 🆕 (11/10 팀장 요청) 반쯤 감은 눈 확인 add_half_check — 앱이 눈 뜬 상태에서 10초마다 보낸 사진의 서버 EAR 을
-#       그 사람의 평소 뜬 눈 EAR 과 비교 (× HALF_RATIO 0.85 미만 = 반쯤) → 최근 4번 중 3번 반쯤 (약 40초) 이면 피로 확정
-#       평소 뜬 눈 EAR = 반쯤 확인 사진 중 '반쯤 아님' 최근 18장 중간값 (같은 카메라 · 같은 크기), 6장 모이기 전에는 출발 전 측정값
-#       팀 영상 프레임 (눈 폭 약 19px, 5명, 시연 확인용): 평소 × 0.85 → 반쯤 50/59 · 뜬 눈 오탐 0/60 (고정 0.23 은 반쯤 53/109)
+#   - 🆕 (11/10 팀장 결정) 반쯤 감은 눈: 평소 뜬 눈 EAR (출발 전 5초 측정 중간값, set_open_ear · get_open_ear) 저장
+#       add_half(user_id, is_half) — 최근 4번 중 3번 반쯤이면 True (확정) → 기록 비움 (실눈이 이어져도 40초마다 단계가 오르지 않게)
+#       반쯤인지는 face_service.check_half 가 정함 (평소 × 0.85 미만). 측정 실패한 사람은 평소 값 None → 반쯤 판정 안 함
 #
 # [주의]
 #   - 연속 감김 · PERCLOS · 얼굴 없음 계산은 여기서 하지 않는다 → 앱 eye_monitor.dart
@@ -23,7 +22,6 @@
 # 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 # ═══════════════════════════════════════════════════════════════
 from datetime import datetime, timedelta
-import statistics
 import config
 
 # 기사별(user_id) 메모리 저장소
@@ -58,8 +56,7 @@ def get_state(user_id: int) -> dict:
             "last_quiz_at": None,        # 마지막 퀴즈 출제 시각 (2분 간격 제한용)
             "last_ping_at": None,        # 마지막 ping 수신 시각
             "reset_count": 0,            # 관리자 [조치완료] 횟수 (/detect 가 AI 처리 중 해제됐는지 확인)
-            "open_ear": None,            # 🆕 출발 전 측정 뜬 눈 EAR 중간값 (face_service.calibrate)
-            "half_base": [],             # 🆕 반쯤 확인 사진 중 '반쯤 아님' EAR (최근 HALF_BASE_N 장)
+            "open_ear": None,            # 🆕 출발 전 측정 뜬 눈 EAR 중간값 (face_service.calibrate, 실패면 None)
             "half_recent": [],           # 🆕 최근 반쯤 확인 결과 [(시각, 반쯤 여부)]
         }
     return _states[user_id]
@@ -99,7 +96,7 @@ def start_drive(user_id: int) -> dict:
     state["rest_started_at"] = None
     state["quiz_fails"] = 0
     state["last_ping_at"] = now
-    state["half_recent"] = []   # 반쯤 확인은 이번 운행부터 다시 셈 (평소 뜬 눈 EAR 은 유지)
+    state["half_recent"] = []   # 반쯤 확인은 이번 운행부터 다시 셈 (평소 뜬 눈 EAR 은 출발 전 측정이 새로 덮어씀)
     return state
 
 
@@ -354,56 +351,32 @@ def set_ear_threshold(user_id: int, ear: float) -> None:
     set_personal_ear(user_id, ear)
 
 
-# ── 🆕 (11/10) 반쯤 감은 눈 확인 ─────────────────────────────
-#   ML Kit 은 반쯤 감은 눈을 뜸 (0.73 ~ 0.99) 으로 봐서 앱이 의심을 안 냄 → 서버 EAR 을 사람별 평소 값과 비교
-#   값은 config 에 있으면 그 값 (팀장 파일), 없으면 아래 기본값
-HALF_RATIO = getattr(config, "HALF_RATIO", 0.85)        # 평소 뜬 눈 EAR × 이 값 미만 = 반쯤
+# ── 🆕 (11/10) 반쯤 감은 눈 ──────────────────────────────────
+#   ML Kit 은 반쯤 감은 눈을 뜸 (0.73 ~ 0.99) 으로 봐서 앱이 의심을 안 냄 → 앱이 10초마다 보낸 사진의 서버 EAR 로 판정
+#   값은 config 에 있으면 그 값 (팀장 파일), 없으면 아래 기본값 — 11/11 시험 전에는 바꾸지 않음 (팀장)
 HALF_RECENT = getattr(config, "HALF_RECENT", 4)         # 최근 몇 번을 볼지
 HALF_NEED = getattr(config, "HALF_NEED", 3)             # 그중 몇 번 반쯤이면 확정
-HALF_MAX_AGE_SEC = getattr(config, "HALF_MAX_AGE_SEC", 60)  # 이보다 오래된 결과는 버림 (10초 간격 4번 = 약 40초)
-HALF_BASE_N = getattr(config, "HALF_BASE_N", 18)        # 평소 값 = '반쯤 아님' 최근 18장 (약 3분) 중간값
-HALF_BASE_MIN = getattr(config, "HALF_BASE_MIN", 6)     # 6장 모이기 전에는 출발 전 측정값 (없으면 판정 안 함)
+HALF_MAX_AGE_SEC = getattr(config, "HALF_MAX_AGE_SEC", 60)  # 이보다 오래된 결과는 버림 (경고 · 휴식으로 끊긴 앞 기록을 이어 세지 않게)
 
 
-def set_open_ear(user_id: int, ear: float) -> None:
-    """face_service.calibrate 가 출발 전 사진 5장의 뜬 눈 EAR 중간값을 저장 (반쯤 확인의 첫 평소 값)"""
-    get_state(user_id)["open_ear"] = float(ear)
+def set_open_ear(user_id: int, ear: float | None) -> None:
+    """출발 전 측정 뜬 눈 EAR 중간값 저장 (face_service.calibrate). 측정 실패면 None → 반쯤 판정 안 함"""
+    get_state(user_id)["open_ear"] = None if ear is None else float(ear)
 
 
-def add_half_check(user_id: int, ear: float | None) -> dict:
-    """반쯤 확인 사진 1장의 서버 EAR → 반쯤인지 · 피로 확정인지
+def get_open_ear(user_id: int) -> float | None:
+    return get_state(user_id).get("open_ear")
 
-    반환: half (True / False / None=판정 안 함) · fatigue (확정) · base (평소 뜬 눈 EAR) · count ("3/4")
-      - 얼굴 없음 (ear None) · 평소 값이 아직 없음 → half None, 세지 않음
-      - 확정되면 최근 기록을 비움 → 다음 확정은 다시 3번이 쌓여야
-    """
+
+def add_half(user_id: int, is_half: bool) -> bool:
+    """반쯤 확인 결과 1개 기록 → 최근 HALF_RECENT 번 중 HALF_NEED 번 반쯤이면 True (피로 확정, 기록 비움)"""
     state = get_state(user_id)
     now = datetime.now()
-    if ear is None:
-        return {"half": None, "fatigue": False, "base": None, "count": ""}
-
-    base_list = state["half_base"]
-    if len(base_list) >= HALF_BASE_MIN:
-        base = statistics.median(base_list)
-    else:
-        base = state.get("open_ear")
-    if base is None:
-        base_list.append(float(ear))      # 출발 전 측정이 없으면 처음 6장으로 평소 값을 만듦 (그동안 판정 안 함)
-        del base_list[:-HALF_BASE_N]
-        return {"half": None, "fatigue": False, "base": None, "count": ""}
-
-    half = float(ear) < base * HALF_RATIO
-    if not half:
-        # 반쯤인 사진은 평소 값에 넣지 않음 (오래 실눈을 떠도 평소 값이 같이 내려가지 않게)
-        base_list.append(float(ear))
-        del base_list[:-HALF_BASE_N]
-
     recent = [(t, h) for t, h in state["half_recent"] if (now - t).total_seconds() <= HALF_MAX_AGE_SEC]
-    recent.append((now, half))
+    recent.append((now, bool(is_half)))
     recent = recent[-HALF_RECENT:]
     n_half = sum(1 for _, h in recent if h)
     fatigue = n_half >= HALF_NEED
-    count = f"{n_half}/{len(recent)}"
     state["half_recent"] = [] if fatigue else recent
-    print(f"[half] user={user_id} ear={float(ear):.3f} base={base:.3f} x{HALF_RATIO} half={half} {count} fatigue={fatigue}")
-    return {"half": half, "fatigue": fatigue, "base": round(base, 3), "count": count}
+    print(f"[half] {now:%H:%M:%S} u{user_id} half={bool(is_half)} {n_half}/{len(recent)} {'확정' if fatigue else '-'}")
+    return fatigue
