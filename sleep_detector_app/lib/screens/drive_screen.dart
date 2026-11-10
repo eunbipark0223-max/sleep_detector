@@ -11,6 +11,7 @@
 //   -   → 서버 답을 못 받으면 알람 (연결 실패는 바로, 답이 없으면 10초 뒤, 단계는 안 올림, 401 제외)
 //   - 인터넷 연결 끊김 (ping · 졸음 전송 실패) → "인터넷 연결이 끊겼어요" [다시 시도] 창 + 음성 한 번 (반복 안 함), 따로 다시 확인하지 않고 평소 30초 ping 이 성공하면 창 닫힘 (11/10 팀장)
 //   - 30초마다 sendPing → stage 로 화면 색 (1단계 자동 해제 · 조치완료 반영), restDue 면 휴게 배너 + 🔊 1번
+//   - onHalfCheck (A, 11/10, 기본 꺼짐) → sendDetect(reason: 'half') → 피로 확정일 때만 경고, 아니면 아무것도 안 함
 //   - onCheckCamera → '카메라를 확인하세요' 배너 (얼굴이 다시 잡힐 때까지) + 🔊 10초마다
 //   - 화면 꺼짐 방지 (wakelock_plus)
 //   - 기사님 화면에는 숫자(눈 기준 · 눈 뜸 확률 · 감은 비율)를 보여 주지 않음 (11/09 팀장 — 관리자 웹에서 확인). "서버 확인: 취소"는 유지
@@ -118,6 +119,7 @@ class _DriveScreenState extends State<DriveScreen> {
       onSuspect: _onSuspect,
       onCheckCamera: _onCheckCamera,
       onFrameResult: _onFrameResult,
+      onHalfCheck: _onHalfCheck, // 반쯤 감은 눈 확인 (A, 11/10 — 기본 꺼짐: AppConfig.halfCheckOn, 꺼져 있으면 안 불림)
     );
 
     // ⭐ 측정 화면이 돌려준 기준값을 눈 감시 도구에 넣는다 (없으면 기본값 그대로)
@@ -489,6 +491,28 @@ class _DriveScreenState extends State<DriveScreen> {
     } finally {
       slowAlarm.cancel();
       _sending = false;
+    }
+  }
+
+  // 반쯤 감은 눈 확인 사진 (A eye_monitor, 11/10) — 눈을 뜬 상태에서 10초마다 1장, 기본 꺼짐 (AppConfig.halfCheckOn)
+  //   서버가 피로 확정(isSleep)일 때만 지금 졸음 확정과 똑같이 경고를 띄운다.
+  //   확정이 아니면 아무것도 안 한다 — '서버 확인: 취소' 글자 X, _eye.serverCancelled() X, 실패해도 알람 X (A 요청)
+  Future<void> _onHalfCheck(Uint8List jpg) async {
+    if (!mounted || _warningRoute != null || _pauseDetect.value) return; // 경고 · 퀴즈 · 휴식 화면이 떠 있으면 보내지 않음
+    final stageBefore = _stage; // _onSuspect 와 같은 이유 (서버 답을 기다리는 사이 ping 이 단계를 바꿀 수 있음)
+    try {
+      final res = await ApiService.sendDetect(jpg, reason: 'half', lat: _lat, lng: _lng);
+      if (!mounted) return;
+      _markOnline();
+      if (!res.isSleep) return; // 확정 아님 → 아무것도 안 함
+      _saveRegs(res.regulations);
+      final sameStage = _warningRoute != null && res.stage == stageBefore;
+      _setStage(res.stage);
+      if (res.stage >= 1 && (!sameStage || res.voiceQuiz != null)) {
+        _showWarning(res, silent: sameStage);
+      }
+    } catch (_) {
+      // 반쯤 확인은 실패해도 조용히 넘어간다 (다음 10초에 다시 보냄)
     }
   }
 
