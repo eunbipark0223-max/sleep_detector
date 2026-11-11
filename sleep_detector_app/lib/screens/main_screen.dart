@@ -29,6 +29,9 @@ import 'guide_screen.dart';
 import 'profile_screen.dart';
 import 'upload_screen.dart';
 
+// [사진 1장 테스트] 같은 개발용 메뉴를 보일지 (기본 숨김 — 팀장 11/11, 시연 · 측정 때 --dart-define=SHOW_DEV_TOOLS=true)
+const bool _showDevTools = bool.fromEnvironment('SHOW_DEV_TOOLS');
+
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -100,11 +103,11 @@ class _MainScreenState extends State<MainScreen> {
             icon: const Icon(Icons.menu),
             tooltip: '메뉴',
             onSelected: _onMenu,
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'guide', child: Text('앱 사용 가이드')),
-              PopupMenuItem(value: 'photo', child: Text('사진 1장 테스트')),
-              PopupMenuItem(value: 'profile', child: Text('내 정보')),
-              PopupMenuItem(value: 'logout', child: Text('로그아웃')),
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'guide', child: Text('앱 사용 가이드')),
+              if (_showDevTools) const PopupMenuItem(value: 'photo', child: Text('사진 1장 테스트')), // 개발용 (기본 숨김)
+              const PopupMenuItem(value: 'profile', child: Text('내 정보')),
+              const PopupMenuItem(value: 'logout', child: Text('로그아웃')),
             ],
           ),
         ],

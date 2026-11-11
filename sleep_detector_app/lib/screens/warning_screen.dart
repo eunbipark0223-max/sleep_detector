@@ -6,7 +6,7 @@
 //
 // [이 파일이 하는 일]
 //   - 단계별 색 · 내 얼굴(카메라) · 큰 글씨 한 줄 + AI 안내 카드(보라) + [규정 듣기]
-//   - 소리 순서: 🔔 알람 → 고정 문구(1단계 '일어나세요' / 2단계 '계속 졸고 있습니다. 가까운 졸음쉼터로 이동하세요') → driverVoice
+//   - 소리 순서: 🔔 알람 → 고정 문구(1 · 2단계, stage_texts.dart) → driverVoice
 //   - 운전 중 음성 퀴즈 (부품 A): D 의 quiz_screen 을 띄우고, 돌려받은 단계로 색 갱신 (2번 실패면 한 단계 위 + 알람)
 //   - 같은 단계에서 또 졸면 알람 · 음성 보고 없이 낼 퀴즈만 (silent, 기획안 6-6)
 //   - 3단계: 관리자 조치완료 전까지 30초마다 알람 + '관리자에게 알렸습니다. 정차해 주세요.'
@@ -32,6 +32,7 @@ import 'package:flutter/material.dart';
 import '../models/sleep_response.dart';
 import '../services/rest_area_service.dart';
 import '../services/voice_service.dart';
+import '../stage_texts.dart';
 import '../theme.dart';
 import '../widgets/owl_says.dart';
 import 'map_screen.dart';
@@ -315,7 +316,7 @@ class ServerCancelText extends StatelessWidget {
           maintainState: true,
           child: const Padding(
             padding: EdgeInsets.only(top: 4, bottom: 8),
-            child: Text('서버 확인: 취소',
+            child: Text('졸음이 아닌 것으로 확인됐어요',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)), // 연한 바탕 위라 진한 글자 (11/11)
           ),
@@ -438,7 +439,7 @@ class _WarningScreenState extends State<WarningScreen> {
       if (_readingRegs) return; // 규정을 듣는 중에는 끊지 않음
       await VoiceService.alarm();
       if (!mounted || _repeat == null || _readingRegs) return;
-      await VoiceService.speak('관리자에게 알렸습니다. 정차해 주세요.');
+      await VoiceService.speak(StageTexts.voice(3));
     });
   }
 
@@ -450,9 +451,9 @@ class _WarningScreenState extends State<WarningScreen> {
       await VoiceService.alarm(); // 시작음
       if (!mounted || _flowStopped) return;
       // 1·2단계 고정 문구 (3단계는 고정 문구 없이 음성 보고만 — 기획안 8-7)
-      if (_stage == 1) await VoiceService.speak('일어나세요');
+      if (_stage == 1) await VoiceService.speak(StageTexts.voice(1)); // 문구는 stage_texts.dart 한 곳에서 (11/11)
       if (_stage == 2) {
-        await VoiceService.speak('계속 졸고 있습니다. 가까운 졸음쉼터로 이동하세요');
+        await VoiceService.speak(StageTexts.voice(2));
         if (!mounted || _flowStopped) return;
         await _speakNearRest(); // "가까운 ○○ 졸음쉼터, ○○방향, 약 ○킬로미터" (B 의 rest_area_service, 11/10)
       }
@@ -517,19 +518,8 @@ class _WarningScreenState extends State<WarningScreen> {
     listenRestMap(context, _nearRest!);
   }
 
-  // 단계별 큰 글씨 한 줄
-  String get _headline {
-    switch (_stage) {
-      case 1:
-        return '일어나세요';
-      case 2:
-        return '계속 졸고 있습니다.\n가까운 졸음쉼터로 이동하세요';
-      case 3:
-        return '관리자에게 알렸습니다.\n안전한 곳에 정차해 주세요.';
-      default:
-        return '정상 운행 중이에요';
-    }
-  }
+  // 단계별 큰 글씨 — 운행 화면 · 홈 화면 · 음성과 같은 문구 (stage_texts.dart, 11/11)
+  String get _headline => StageTexts.headline(_stage);
 
   // 단계별 부엉이 (0 초록 · 1 노랑 · 2 주황 · 3 빨강, 11/09 그림: 장수연님)
   //   큰 그림 = 몸 전체 (카메라가 없을 때), 작은 배지 = 얼굴
@@ -685,7 +675,7 @@ class _WarningScreenState extends State<WarningScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('🔊 기사 음성 보고',
+                      const Text('🔊 지금 상태',
                           style: TextStyle(
                               fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70)),
                       const SizedBox(height: 4),

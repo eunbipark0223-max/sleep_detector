@@ -19,7 +19,8 @@
 //   - minFaceSize = 0.15       ML Kit 최소 얼굴 크기 (조수석 · 뒷좌석 무시)
 //   - calibSec = 5 · calibRatio = 0.5 · calibMin = 0.2 · calibMax = 0.4 · calibMinFaces = 3   개인 기준
 //   - contourEarOn · useContourEar · earClosed   (🆕 10/27) ML Kit 눈 윤곽 점으로 폰에서 EAR — 반쯤 감은 눈용
-//   - headResendSec = 6        (🆕 11/04) 서버 취소 뒤 계속 숙이고 있으면 한 번 더 보내는 시간
+//   - headResendSec = 6        (🆕 11/04) 서버 취소 뒤 계속 숙이고 있으면 한 번 더 보내는 시간 (사진에 얼굴이 없어서 취소된 경우)
+//   - headResendFaceSec = 10   (🆕 11/11 팀장 결정) 얼굴이 보이는데 '눈 뜸' 으로 취소된 숙임은 숙임 시작부터 이만큼 (그 사이 안내 음성)
 //   - headRuleOn · headDownDeg = 6 · headDownSec = 3 · headBaseSec · headBaseMinFrames   (🆕 10/28) 고개 숙임 3초 → 미세수면 의심
 //   - pingSec = 30             서버 config.PING_SEC 과 같은 값
 //   - baseUrl                  서버 주소 (에뮬레이터는 http://10.0.2.2:8000)
@@ -64,14 +65,17 @@ class AppConfig {
   //   (C 실눈 유지 11/05 3.8분: 후보 6번 — 서버가 취소했을 때만 실제로 나감)
   static const bool eyeResendOn = true;
 
-  // 🆕 (11/10 팀장 결정) 반쯤 감은 눈 확인 — 기본 꺼짐, 11/11 시험 기준을 넘으면 켬 (빌드 때 --dart-define=HALF_CHECK=true 로도 켬)
+  // 🆕 (11/10 팀장 결정) 반쯤 감은 눈 확인 — 11/11 시험 기준 통과로 기본 켬 (팀장)
   //   ML Kit 은 반쯤 감은 눈을 0.73 ~ 0.99 (뜸) 로 봐서 의심 자체가 안 감
   //   눈을 뜬 상태 (감김 · 숙임 · 웃음 아님) 면 halfCheckSec 마다 사진 1장 → onHalfCheck → 서버 EAR 을 출발 전 측정 뜬 눈 EAR 과 비교
   //   서버: × 0.85 미만 = 반쯤 (face_service.check_half) · 최근 4번 중 3번이면 피로 확정 (sleep_state.add_half). 사진은 판정 뒤 바로 지움
   //   출발 전 측정 실패 (얼굴 3장 미만) 면 반쯤 판정 안 함
   //   팀 영상 프레임 (눈 폭 약 19px, 5명, 시연 확인용): 평소 × 0.85 미만 → 반쯤 50/59 · 뜬 눈 오탐 0/60. 폰 EAR 은 0 ~ 1/8 이라 못 씀
   //   켜는 기준 (11/11): 팀장 실눈 40초 3번 중 2번 이상 판정 · 평소 운전 2명 × 10분 0번. 1시간에 약 360장 (1장 약 40KB)
-  static const bool halfCheckOn = bool.fromEnvironment('HALF_CHECK', defaultValue: false);
+  //   11/11 재시험 결과 → 켬 (팀장): 실눈 40초 3번 모두 경고 (반쯤 확정 2 · 눈 감김 1) · 평소 운전 팀장 · A 각 10분 반쯤 확정 0번
+  //     한계: 경고 직후 평소 눈이 반쯤으로 확정 1번 (EAR 0.234 ~ 0.258 / 기준 0.262) — 출발 전 측정값과 평소 눈 차이가 5 ~ 10% 로 작음
+  //     끌 때는 --dart-define=HALF_CHECK=false
+  static const bool halfCheckOn = bool.fromEnvironment('HALF_CHECK', defaultValue: true);
   static const double halfCheckSec = 10;
 
   // 얼굴 없음 / 모름(null) 연속 허용 시간 (초)
@@ -115,6 +119,10 @@ class AppConfig {
   static const double headDownDeg = 6.0;
   static const double headDownSec = 3.0;
   static const double headResendSec = 6.0; // 숙임 시작부터 이만큼 지나도 서버 취소 뒤 얼굴이 정상으로 안 돌아오면 사진 없이 한 번 더 (11/04, 재시험 후 확정)
+  // 🆕 (11/11 팀장 결정) 서버가 얼굴을 보고 '눈 뜸' 으로 취소한 숙임 (face_found true) → 숙임 시작부터 10초에 재전송
+  //   11/11 재시험: 눈 비비기 · 경고 화면 내려다보기 (눈 뜬 채 숙임 3초) → 취소 → 6초 재전송으로 확정 → 단계가 오름
+  //   10초 안에 고개를 들면 (headUpResetSec) 재전송 없음. 얼굴이 안 보여서 취소된 숙임 · 눈 감김 재전송은 그대로 6초
+  static const double headResendFaceSec = 10.0;
   static const double headUpResetSec = 0.5; // 이만큼 계속 고개를 들어야 숙임 시간을 처음부터 (흔들림 1~2프레임은 숙임으로 이어 셈)
   static const int headBaseSec = 60;
   static const int headBaseMinFrames = 20;

@@ -23,6 +23,7 @@ import '../models/drive_status.dart';
 import '../models/sleep_event.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../stage_texts.dart';
 import '../theme.dart';
 import '../widgets/owl_says.dart';
 import 'calibration_screen.dart';
@@ -33,6 +34,8 @@ import 'warning_screen.dart' show stageTint;
 /// 커피 색 — [가까운 졸음쉼터] 버튼 (바탕 = 갈색 반투명, 커피잔 = 아메리카노 색, 11/11)
 const Color _coffee = Color(0xFF8B5A2B);
 const Color _americano = Color(0xFF3E2415);
+
+// (사진 1장 테스트 · 개발용 숨김은 main_screen 의 ≡ 메뉴로 옮김 — SHOW_DEV_TOOLS, 11/11)
 
 class HomeScreen extends StatefulWidget {
   /// 최근 경고를 가져오는 함수. 비워 두면 기본(_defaultLoad). 테스트 · 미리보기에서 바꿔 끼우는 입구.
@@ -182,6 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 10),
           // [가까운 졸음쉼터] — 반투명 갈색 바탕 + 아메리카노 색으로 채운 커피잔 (11/11, 쉼터 = 커피 한 잔)
+          // (사진 1장 테스트는 ≡ 메뉴로 옮김 — 팀장 main 의 '개발용 숨김'과 같은 뜻, 11/11)
           OutlinedButton.icon(
             onPressed: _openMap,
             icon: const Icon(Icons.local_cafe, color: _americano, size: 26),
@@ -271,12 +275,9 @@ class _StatusCard extends StatelessWidget {
   final int stage;
   const _StatusCard({required this.stage});
 
-  static const List<String> _messages = [
-    '출발하기 전에 폰을 거치대에 고정하고\n[운행 시작]을 눌러 주세요.',
-    '졸음이 감지됐어요.\n창문을 열고 환기하며 주의해서 운전해 주세요.',
-    '계속 졸고 있어요.\n가까운 졸음쉼터에서 15분 이상 쉬어 주세요.',
-    '관리자에게 알렸어요.\n안전한 곳에 정차해 주세요. 관리자가 조치하면 풀려요.',
-  ];
+  // 0단계는 출발 안내, 1 ~ 3단계는 경고 화면 · 운행 화면 · 음성과 같은 문구 (stage_texts.dart, 11/11)
+  static String _message(int stage) =>
+      stage <= 0 ? '출발하기 전에 폰을 거치대에 고정하고\n[운행 시작]을 눌러 주세요.' : StageTexts.headline(stage.clamp(1, 3));
 
   @override
   Widget build(BuildContext context) {
@@ -291,8 +292,8 @@ class _StatusCard extends StatelessWidget {
         children: [
           Text(SleepEvent.stageLabels[stage], style: TextStyle(fontSize: 34, fontWeight: FontWeight.w900, color: onColor)), // 단계 이름 크게 (11/11)
           const SizedBox(height: 10),
-          // 단계별 부엉이가 말풍선으로 안내 (11/11 C 초안 — 부엉이를 앱 시그니처로)
-          OwlSays(owl: OwlSays.body(stage), text: _messages[stage.clamp(0, 3)], owlSize: 112, fontSize: 19, maxLines: 6),
+          // 단계별 부엉이가 말풍선으로 안내 (11/11 C — 부엉이를 앱 시그니처로). 문구는 팀장 stage_texts 기준 (_message)
+          OwlSays(owl: OwlSays.body(stage), text: _message(stage), owlSize: 112, fontSize: 19, maxLines: 6),
         ],
       ),
     );

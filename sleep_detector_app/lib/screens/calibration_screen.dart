@@ -90,6 +90,10 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
   String _error = '';
   String _result = '';
   String _note = '';
+  // 출발 전 측정은 필수 (11/11 팀장) — 얼굴을 못 찾으면 한 번 더 측정을 권하고, 두 번 실패하면 기본 설정으로
+  static const int _maxTries = 2;
+  int _failures = 0;
+  String _retryMessage = ''; // 다시 측정을 권하는 안내 (비어 있으면 처음 측정)
 
   bool get _usesCamera => widget.capture == null;
 
@@ -192,10 +196,22 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     _deleteFiles(paths); // 얼굴 사진은 계산이 끝나면 지운다
     if (!mounted) return;
 
+    // 얼굴을 못 찾음 → 아직 기회가 있으면 같은 화면으로 돌아가 다시 측정을 권한다 (기본 설정으로 바로 가지 않음, 11/11)
+    if (threshold == null && _failures + 1 < _maxTries) {
+      _failures++;
+      const msg = '얼굴이 잘 보이지 않았어요.\n정면을 보고 다시 측정해 주세요';
+      setState(() {
+        _retryMessage = msg;
+        _phase = _Phase.ready;
+      });
+      _say(msg.replaceAll('\n', ' '));
+      return;
+    }
+
     final value = threshold ?? AppConfig.eyeClosedProb;
     setState(() {
-      _result = threshold == null ? '얼굴을 확인하지 못해 기본 기준으로 시작해요' : '내 눈 기준을 맞췄어요 (${value.toStringAsFixed(2)})';
-      _note = serverOk ? '' : '서버 기준은 기본값을 써요';
+      _result = threshold == null ? '얼굴을 확인하지 못해 기본 설정으로 시작해요' : '준비됐어요. 출발하세요'; // 숫자 · 서버 용어는 기사에게 안 보임 (11/11)
+      _note = serverOk ? '' : '연결이 불안정해 기본 설정으로 시작해요';
       _phase = _Phase.finishing;
     });
     await Future<void>.delayed(widget.finishDelay);
@@ -277,14 +293,19 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
         return [
           _Preview(controller: _controller),
           const SizedBox(height: 20),
+          if (_retryMessage.isNotEmpty) ...[
+            Text(_retryMessage,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.rest, height: 1.4)),
+            const SizedBox(height: 12),
+          ],
           const Text('정면을 보고 눈을 편하게 뜨세요', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
           const SizedBox(height: 6),
           Text('${widget.photoCount}장을 1초에 1장씩 찍어서 내 눈 기준을 맞춰요.\n폰을 거치대에 고정하고 눌러 주세요.',
               textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, height: 1.4, color: AppColors.textSecondary)),
           const SizedBox(height: 24),
-          FilledButton(onPressed: _measure, child: const Text('측정 시작')),
-          const SizedBox(height: 8),
-          TextButton(onPressed: _useDefault, child: const Text('기본 기준으로 시작')),
+          FilledButton(onPressed: _measure, child: Text(_failures > 0 ? '다시 측정' : '측정 시작')),
+          // [기본 기준으로 시작] 은 두지 않는다 — 출발 전 측정은 필수 (반쯤 감은 눈 확인의 기준이 됨, 11/11 팀장)
         ];
       case _Phase.measuring:
         return [
