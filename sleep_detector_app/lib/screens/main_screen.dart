@@ -25,7 +25,9 @@ import 'history_screen.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
 import 'map_screen.dart';
+import 'guide_screen.dart';
 import 'profile_screen.dart';
+import 'upload_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -54,6 +56,16 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _onMenu(String value) async {
+    if (value == 'guide') {
+      // 앱 사용 가이드 (11/11 · 부엉이로 쓰는 순서 · 색의 뜻)
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const GuideScreen()));
+      return;
+    }
+    if (value == 'photo') {
+      // 사진 1장 테스트 — 홈 버튼에서 ≡ 메뉴로 옮김 (11/11 · 비상 시연 · 측정용이라 기사님 홈에는 안 둠)
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UploadScreen()));
+      return;
+    }
     if (value == 'profile') {
       await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
       return;
@@ -89,6 +101,8 @@ class _MainScreenState extends State<MainScreen> {
             tooltip: '메뉴',
             onSelected: _onMenu,
             itemBuilder: (_) => const [
+              PopupMenuItem(value: 'guide', child: Text('앱 사용 가이드')),
+              PopupMenuItem(value: 'photo', child: Text('사진 1장 테스트')),
               PopupMenuItem(value: 'profile', child: Text('내 정보')),
               PopupMenuItem(value: 'logout', child: Text('로그아웃')),
             ],

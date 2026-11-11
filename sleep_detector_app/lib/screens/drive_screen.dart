@@ -41,6 +41,7 @@ import '../services/api_service.dart';
 import '../services/eye_monitor.dart';
 import '../services/voice_service.dart';
 import '../theme.dart';
+import '../widgets/owl_says.dart';
 import 'rest_screen.dart';
 import 'warning_screen.dart';
 
@@ -99,6 +100,7 @@ class _DriveScreenState extends State<DriveScreen> {
   // 30초마다 서버에 "운전 중이에요" 알리기 (ping) → 지금 단계 · 휴게 알림 받기
   Timer? _pingTimer;
   String _restMessage = ''; // 휴게 배너 글 (비어 있으면 배너 없음)
+  Future<String?>? _restVoice; // 휴게 배너 — 가까운 졸음쉼터 안내 문장 (못 찾으면 null)
 
   // 인터넷 연결 끊김 (와이파이 · 데이터 꺼짐, 터널 등) — ping · 졸음 전송이 실패하면 true, 다시 성공하면 false
   //   끊기면 [다시 시도] 창 + 음성 한 번 (반복 안 함). 따로 자주 확인하지 않음 — 평소 30초 ping 이 성공하면 창이 저절로 닫힘
@@ -250,7 +252,10 @@ class _DriveScreenState extends State<DriveScreen> {
       _setStage(status.stage);
       // 휴게 알림은 서버가 한 번만 true 로 보내 줌 → 한 번만 읽기
       // (경고 음성 · 퀴즈 · 휴식 중이면 배너만 띄우고 소리는 내지 않음)
-      if (status.restDue && !_pauseDetect.value) VoiceService.speak(status.restMessage);
+      if (status.restDue) {
+        _restVoice = nearRestVoice(_lat, _lng); // 가까운 졸음쉼터 문장 (휴게 띠 [가까운 졸음쉼터 듣기] 도 이걸 씀)
+        if (!_pauseDetect.value) _speakRestDue(status.restMessage);
+      }
       // 경고 화면 없이 2 · 3단계 (앱을 껐다 켬) → 경고 화면을 다시 띄운다. 그래야 2단계는 쉴 수 있고 3단계는 반복 음성이 나옴
       if (status.stage >= 2 && _warningRoute == null && !_sending && !_pauseDetect.value) {
         _showWarning(SleepResponse(
@@ -552,6 +557,15 @@ class _DriveScreenState extends State<DriveScreen> {
     }
   }
 
+  // 2시간 연속 운전 — 휴게 안내 → 가까운 졸음쉼터 한 번 읽기 (11/11 팀장: B 부품 문장 그대로)
+  Future<void> _speakRestDue(String message) async {
+    await VoiceService.speak(message);
+    final v = await _restVoice;
+    // 그 사이 경고가 떴거나(판정 쉬는 중) 기사가 띠를 닫았으면 읽지 않음
+    if (v == null || !mounted || _pauseDetect.value || _restMessage.isEmpty) return;
+    await VoiceService.speak(v);
+  }
+
   // 휴게 배너의 [정차했어요] → 휴식 15분 → [운행 재개] (2시간 연속 운전 휴식 인정, 기획안 3-2)
   Future<void> _goRest() async {
     if (!await confirmRest(context) || !mounted) return;
@@ -643,8 +657,8 @@ class _DriveScreenState extends State<DriveScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bg = AppColors.stage(_stage);
-    final fg = AppColors.onStage(_stage);
+    final bg = stageTint(_stage); // PPT 색 가이드 + 투명도 (경고 화면과 같게, 11/11)
+    const fg = AppColors.textPrimary;
 
     return Scaffold(
       backgroundColor: bg,
@@ -661,7 +675,7 @@ class _DriveScreenState extends State<DriveScreen> {
           banner: CameraBanner(faceLost: _faceLostNote),
           belowMax: 0.3,
           above: [
-            // 휴게 배너 (연속 운전 2시간) — [닫기]로 숨김, [정차했어요]로 휴식 시작
+            // 휴게 배너 (연속 운전 2시간) — [닫기]로 숨김, [가까운 졸음쉼터 듣기]로 지도, [정차했어요]로 휴식 시작
             if (_restMessage.isNotEmpty)
               Container(
                 padding: const EdgeInsets.fromLTRB(16, 8, 4, 12),
@@ -682,6 +696,20 @@ class _DriveScreenState extends State<DriveScreen> {
                         ),
                       ],
                     ),
+                    // [가까운 졸음쉼터 듣기] — 다시 읽고 지도 화면 (목록 · 길찾기, 11/11 팀장)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 12, bottom: 8),
+                      child: OutlinedButton.icon(
+                        onPressed: () => listenRestMap(context, _restVoice ??= nearRestVoice(_lat, _lng)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.textPrimary,
+                          side: const BorderSide(color: AppColors.cardBorder, width: 1.5),
+                          minimumSize: const Size.fromHeight(46),
+                        ),
+                        icon: const Icon(Icons.local_cafe_outlined),
+                        label: const Text('가까운 졸음쉼터 듣기'),
+                      ),
+                    ),
                     Padding(
                       padding: const EdgeInsets.only(right: 12),
                       child: FilledButton(
@@ -694,21 +722,8 @@ class _DriveScreenState extends State<DriveScreen> {
                 ),
               ),
             const SizedBox(height: 4),
-            // 단계 문구를 맨 위(눈높이)에 — 아이콘은 글자 옆에 작게
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Image.asset(_stageOwl(_stage), width: 52, height: 52),
-                const SizedBox(width: 10),
-                Flexible(
-                  child: Text(
-                    _stageTitle(_stage),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: fg, height: 1.25),
-                  ),
-                ),
-              ],
-            ),
+            // 단계 문구를 맨 위(눈높이)에 — 부엉이가 말풍선으로 안내 (11/11 초안)
+            OwlSays(owl: OwlSays.face(_stage), text: _stageTitle(_stage), owlSize: 92, fontSize: 25, maxLines: 2), // 운전 중이라 크게 (11/11)
             const SizedBox(height: 10),
           ],
           // 카메라 미리보기 — 칸 크기는 남는 자리에 맞추고 (OnePageLayout), 칸 안에서는 얼굴을 따라간다
@@ -760,6 +775,4 @@ class _DriveScreenState extends State<DriveScreen> {
     }
   }
 
-  // 단계별 부엉이 얼굴 (0 초록 · 1 노랑 · 2 주황 · 3 빨강, 11/09 그림: 장수연님) — 경고 화면과 같은 부엉이
-  String _stageOwl(int stage) => 'assets/owl/owl_face${stage.clamp(0, 3)}.png';
 }

@@ -15,7 +15,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../theme.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
@@ -27,6 +26,9 @@ class SplashScreen extends StatefulWidget {
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
+
+/// 시작 화면 그림(assets/owl/splash.png)의 바탕 남색
+const Color _splashNavy = Color(0xFF010972);
 
 class _SplashScreenState extends State<SplashScreen> {
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
@@ -107,27 +109,33 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.primary,
+      backgroundColor: _splashNavy, // 그림 바탕과 같은 남색 (그림 위아래 빈자리가 이어져 보이게)
       body: Stack(
         children: [
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 부엉이 트럭 로고 ("졸음 가드" 글씨 포함, 11/09 그림: 장수연님)
-                Image.asset('assets/owl/logo.png',
-                    width: MediaQuery.sizeOf(context).width * 0.85, semanticLabel: '졸음 가드'), // 화면 폭에 꽉 차게
-                const SizedBox(height: 12),
-                Text(
-                  '졸기 전 · 졸 때 · 졸고 나서', // 기획안 서브타이틀 반영
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white.withValues(alpha: 0.85),
-                  ),
-                ),
-              ],
-            ),
+          // 트럭 부엉이 시작 화면 그림 ("졸음 가드" 글씨 포함, 노션 '메인 로고 아이디어' 스플래시, 11/10) — 화면 폭에 꽉 차게
+          Positioned.fill(
+            child: Image.asset('assets/owl/splash.png', fit: BoxFit.contain, semanticLabel: '졸음 가드'),
           ),
+          // (11/11) 트럭 위에 단계 부엉이 3개 — 졸기 전(초록) · 졸 때(주황) · 졸고 나서(빨강). 노랑은 빼고 3개만
+          LayoutBuilder(builder: (context, box) {
+            final imgH = box.maxWidth * 1671 / 941; // 그림 비율 그대로 폭에 맞췄을 때 높이
+            final truckTop = (box.maxHeight - imgH) / 2 + imgH * 0.27; // 그림 속 트럭 지붕 위치
+            return Stack(children: [
+              Positioned(
+                left: 0,
+                right: 0,
+                top: (truckTop - 130).clamp(8.0, double.infinity),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _StageOwl(owl: 'assets/owl/owl_face0.png', label: '졸기 전'),
+                    _StageOwl(owl: 'assets/owl/owl_face2.png', label: '졸 때'),
+                    _StageOwl(owl: 'assets/owl/owl_face3.png', label: '졸고 나서'),
+                  ],
+                ),
+              ),
+            ]);
+          }),
           Align(
             alignment: Alignment.bottomCenter,
             child: Padding(
@@ -135,6 +143,8 @@ class _SplashScreenState extends State<SplashScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // "졸기 전 · 졸 때 · 졸고 나서" 는 위 부엉이 3개 이름으로 옮김 (11/11)
+
                   const CircularProgressIndicator(
                     color: Colors.white,
                     strokeWidth: 2.5,
@@ -163,4 +173,23 @@ class _SplashScreenState extends State<SplashScreen> {
       ),
     );
   }
-}
+}
+
+/// 시작 화면 트럭 위 작은 부엉이 + 이름 (졸기 전 · 졸 때 · 졸고 나서)
+class _StageOwl extends StatelessWidget {
+  final String owl;
+  final String label;
+  const _StageOwl({required this.owl, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Image.asset(owl, width: 72, height: 72),
+        const SizedBox(height: 4),
+        Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
+      ],
+    );
+  }
+}

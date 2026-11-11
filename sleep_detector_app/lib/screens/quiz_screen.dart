@@ -29,6 +29,8 @@ import '../models/sleep_response.dart';
 import '../services/api_service.dart';
 import '../services/voice_service.dart';
 import '../theme.dart';
+import '../widgets/owl_says.dart';
+import 'warning_screen.dart' show stageTint;
 
 class QuizScreen extends StatefulWidget {
   final VoiceQuiz quiz;
@@ -107,7 +109,7 @@ class _QuizScreenState extends State<QuizScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final onColor = AppColors.onStage(_stage);
+    const onColor = AppColors.textPrimary; // (11/11 C) 연한 바탕 위라 진한 글자
     final again = _guide.contains('다시');
     final guideColor = again ? AppColors.rest : AppColors.normal; // 다시 듣는 중이면 주황, 처음이면 초록
 
@@ -117,7 +119,7 @@ class _QuizScreenState extends State<QuizScreen> {
         if (!didPop) Navigator.of(context).pop(_stage);
       },
       child: Scaffold(
-        backgroundColor: AppColors.stage(_stage),
+        backgroundColor: stageTint(_stage), // (11/11 C) PPT 색 가이드 + 투명도 (경고 화면과 같게)
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -125,11 +127,8 @@ class _QuizScreenState extends State<QuizScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  _quiz.display,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: onColor, height: 1.3),
-                ),
+                // (11/11 C 초안) 부엉이 얼굴이 위에서 말하고, 아래 말풍선에 문제를 크게 (검정 글자가 가장 잘 보임)
+                OwlAbove(owl: 'assets/owl/owl_face${_stage.clamp(0, 3)}.png', text: _quiz.display, owlSize: 210, fontSize: 48),
                 const SizedBox(height: 32),
                 if (_guide.isNotEmpty)
                   Container(
