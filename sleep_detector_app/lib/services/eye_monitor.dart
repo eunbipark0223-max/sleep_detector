@@ -141,6 +141,10 @@ class EyeMonitor {
   bool _headTriggered = false; // 이번 숙임으로 이미 의심을 냈는지 (고개를 들어야 다음)
   DateTime? _cancelledAt;      // 고개 숙임 · 눈 감김 의심을 서버가 취소한 시각 (얼굴이 정상으로 돌아오면 null)
   String _cancelCause = 'head'; // 취소된 의심의 원인 (head · eye) → 재전송 시간 · 이름
+  bool _cancelFace = false;     // (11/11) 취소된 숙임 의심 사진에 서버가 얼굴을 찾았는지 → 재전송 headResendFaceSec
+  /// 🆕 (11/11 팀장) 방금 serverCancelled 가 '고개 숙임 + 얼굴 보임 (눈 뜸으로 취소)' 이었는지
+  ///   drive_screen 이 serverCancelled 바로 뒤에 보고 '고개를 들고 앞을 봐 주세요' 를 한 번 말함 (단계 변화 없음)
+  bool lastCancelHeadFace = false;
   DateTime? _normalSince;      // 취소 뒤 얼굴이 정상으로 보이기 시작한 시각
   CameraImage? _headFrame;    // 이번 숙임 동안 찍은 마지막 얼굴 프레임 (서버로 갈 사진)
   DateTime? _headFrameAt;
@@ -445,10 +449,15 @@ class EyeMonitor {
   /// 서버가 의심을 취소했을 때 drive_screen 이 부름 — 이번 숙임에서 난 의심이면 headResendSec 에 한 번 더 보낼 수 있게
   ///   숙여서 사진에 얼굴이 안 잡히면 서버는 손으로 가린 경우처럼 취소 → 숙인 채 계속 자면 들 때까지 경고가 안 남 (11/04 시연 폰 시험)
   ///   (11/10 팀장, 11/05 빈틈) 눈 감김 의심도 취소 뒤 계속 감고 있으면 한 번 더 (eyeResendOn) — 전에는 눈을 뜨기 전까지 다시 안 보냄
-  void serverCancelled() {
+  ///   (11/11 팀장) faceFound = 서버 응답 face_found. 숙임 + 얼굴 보임 → headResendFaceSec (10초), 아니면 headResendSec (6초)
+  ///   faceFound 를 안 주면 (null) 얼굴 없음과 같게 6초 — 지금까지와 같음
+  void serverCancelled({bool? faceFound}) {
+    lastCancelHeadFace = false;
     final eyeStill = AppConfig.eyeResendOn && lastSuspectCause == 'eye' && _closedStartTime != null;
     if (!_headTriggered && !eyeStill) return;
     _cancelCause = eyeStill ? 'eye' : 'head';
+    _cancelFace = !eyeStill && faceFound == true;
+    lastCancelHeadFace = _cancelFace;
     _cancelledAt = DateTime.now();
     _normalSince = null;
   }
@@ -468,8 +477,10 @@ class EyeMonitor {
     _normalSince = null;
     final waited = now.difference(at).inMilliseconds / 1000.0;
     // 숙임: 3초 의심 → 취소 → 3초 더 / 눈 감김: 1.5초 의심 → 취소 → 4.5초 더 (둘 다 시작부터 약 6초 + 서버 응답 시간)
+    //   (11/11) 숙임 + 얼굴 보임으로 취소 → 3초 의심 → 취소 → 7초 더 (시작부터 약 10초)
     final firstSec = _cancelCause == 'eye' ? AppConfig.closedSec : AppConfig.headDownSec;
-    if (waited < AppConfig.headResendSec - firstSec) return;
+    final resendSec = _cancelFace ? AppConfig.headResendFaceSec : AppConfig.headResendSec;
+    if (waited < resendSec - firstSec) return;
     _cancelledAt = null;
     _lastSuspectAt = now;
     _send('microsleep', '${_cancelCause}_resend', firstSec + waited, _calculatePerclos(),

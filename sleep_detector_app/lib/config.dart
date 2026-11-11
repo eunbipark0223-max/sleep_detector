@@ -19,7 +19,8 @@
 //   - minFaceSize = 0.15       ML Kit 최소 얼굴 크기 (조수석 · 뒷좌석 무시)
 //   - calibSec = 5 · calibRatio = 0.5 · calibMin = 0.2 · calibMax = 0.4 · calibMinFaces = 3   개인 기준
 //   - contourEarOn · useContourEar · earClosed   (🆕 10/27) ML Kit 눈 윤곽 점으로 폰에서 EAR — 반쯤 감은 눈용
-//   - headResendSec = 6        (🆕 11/04) 서버 취소 뒤 계속 숙이고 있으면 한 번 더 보내는 시간
+//   - headResendSec = 6        (🆕 11/04) 서버 취소 뒤 계속 숙이고 있으면 한 번 더 보내는 시간 (사진에 얼굴이 없어서 취소된 경우)
+//   - headResendFaceSec = 10   (🆕 11/11 팀장 결정) 얼굴이 보이는데 '눈 뜸' 으로 취소된 숙임은 숙임 시작부터 이만큼 (그 사이 안내 음성)
 //   - headRuleOn · headDownDeg = 6 · headDownSec = 3 · headBaseSec · headBaseMinFrames   (🆕 10/28) 고개 숙임 3초 → 미세수면 의심
 //   - pingSec = 30             서버 config.PING_SEC 과 같은 값
 //   - baseUrl                  서버 주소 (에뮬레이터는 http://10.0.2.2:8000)
@@ -115,6 +116,10 @@ class AppConfig {
   static const double headDownDeg = 6.0;
   static const double headDownSec = 3.0;
   static const double headResendSec = 6.0; // 숙임 시작부터 이만큼 지나도 서버 취소 뒤 얼굴이 정상으로 안 돌아오면 사진 없이 한 번 더 (11/04, 재시험 후 확정)
+  // 🆕 (11/11 팀장 결정) 서버가 얼굴을 보고 '눈 뜸' 으로 취소한 숙임 (face_found true) → 숙임 시작부터 10초에 재전송
+  //   11/11 재시험: 눈 비비기 · 경고 화면 내려다보기 (눈 뜬 채 숙임 3초) → 취소 → 6초 재전송으로 확정 → 단계가 오름
+  //   10초 안에 고개를 들면 (headUpResetSec) 재전송 없음. 얼굴이 안 보여서 취소된 숙임 · 눈 감김 재전송은 그대로 6초
+  static const double headResendFaceSec = 10.0;
   static const double headUpResetSec = 0.5; // 이만큼 계속 고개를 들어야 숙임 시간을 처음부터 (흔들림 1~2프레임은 숙임으로 이어 셈)
   static const int headBaseSec = 60;
   static const int headBaseMinFrames = 20;
