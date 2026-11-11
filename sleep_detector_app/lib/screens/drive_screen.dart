@@ -91,6 +91,8 @@ class _DriveScreenState extends State<DriveScreen> {
   DateTime? _cameraSpokeAt;
   // 배너 "카메라를 확인하세요" · 글자 "서버 확인: 취소" — 경고 화면도 같이 보여 준다
   final ValueNotifier<bool> _faceLostNote = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _preWarnNote = ValueNotifier<bool>(false); // 예비 경고 노란 띠 (11/12 팀장)
+  Timer? _preWarnClear;
   final ValueNotifier<bool> _cancelNote = ValueNotifier<bool>(false);
   // 얼굴 위치 (카메라 칸이 따라감) — 세워서 거울처럼 본 화면 기준 0~1 비율
   final ValueNotifier<Rect?> _faceBoxNote = ValueNotifier<Rect?>(null);  static const int _cancelKeepSec = 5; // 얼굴이 계속 보이는 중에 취소되면 이 시간 뒤 글자를 지운다
@@ -424,6 +426,8 @@ class _DriveScreenState extends State<DriveScreen> {
     VoiceService.stop(); // 말하기 멈춤
     WakelockPlus.disable(); // 운행이 끝나면 화면 꺼짐을 원래대로
     _pingTimer?.cancel(); // ping 끄기
+    _preWarnClear?.cancel();
+    _preWarnNote.dispose();
     _retryingNote.dispose();
     _watchdog?.cancel(); // 카메라 지킴이 끄기
     _liveStage.dispose();
@@ -474,6 +478,18 @@ class _DriveScreenState extends State<DriveScreen> {
       slowAlarm.cancel();
       if (!mounted) return;
       _markOnline();
+      // (11/12 팀장) 예비 경고 — 운행 중 첫 졸음. 단계 · 경고 화면 · 퀴즈 없이 알람 + 음성 + 노란 띠 10초
+      //   계속 감고 있으면 눈 감시 도구가 한 번 더 보내고 → 그때는 주의(1단계)
+      if (res.preWarning) {
+        _eye.serverCancelled(faceFound: res.faceFound);
+        _sending = false;
+        _preWarnNote.value = true;
+        _preWarnClear?.cancel();
+        _preWarnClear = Timer(const Duration(seconds: 10), () => _preWarnNote.value = false);
+        await VoiceService.alarm();
+        if (mounted && !_pauseDetect.value && res.driverVoice.isNotEmpty) VoiceService.speak(res.driverVoice);
+        return;
+      }
       // 서버가 취소하면 눈 감시 도구에 알린다 (고개 숙인 채 계속 자면 사진 없이 한 번 더 보내게, A)
       if (!res.isSleep) {
         // 얼굴이 보였는데 취소 = 눈 뜬 채 숙임 → 재전송은 숙임 시작부터 10초 + 안내 음성 한 번 (11/11 팀장, 단계 변화 없음)
@@ -677,7 +693,10 @@ class _DriveScreenState extends State<DriveScreen> {
       body: SafeArea(
         child: OnePageLayout(
           // 카메라 확인 배너 — 얼굴이 다시 잡히면 사라짐 (취소 글자는 맨 아래, 1초 뒤 사라짐)
-          banner: CameraBanner(faceLost: _faceLostNote),
+          banner: Column(mainAxisSize: MainAxisSize.min, children: [
+            CameraBanner(faceLost: _faceLostNote),
+            _PreWarnBanner(show: _preWarnNote),
+          ]),
           belowMax: 0.3,
           above: [
             // 휴게 배너 (연속 운전 2시간) — [닫기]로 숨김, [가까운 졸음쉼터 듣기]로 지도, [정차했어요]로 휴식 시작
@@ -769,4 +788,34 @@ class _DriveScreenState extends State<DriveScreen> {
   // 단계별 큰 글자 (0 정상 · 1 주의 · 2 휴식 권고 · 3 긴급) — 경고 화면 · 홈 화면 · 음성과 같은 문구 (stage_texts.dart, 11/11)
   String _stageTitle(int stage) => StageTexts.headline(stage);
 
+}
+
+/// 예비 경고 노란 띠 (11/12 팀장) — 운행 중 첫 졸음 때 10초. 카메라 칸 위에 겹쳐 뜬다
+class _PreWarnBanner extends StatelessWidget {
+  final ValueNotifier<bool> show;
+  const _PreWarnBanner({required this.show});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: show,
+      builder: (_, on, _) => !on
+          ? const SizedBox.shrink()
+          : Container(
+              margin: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(color: AppColors.caution, borderRadius: BorderRadius.circular(14)),
+              child: const Row(
+                children: [
+                  Icon(Icons.notifications_active, color: Color(0xFF3A2A00), size: 26),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text('졸음이 느껴지면\n창문을 열고 환기해 주세요',
+                        style: TextStyle(color: Color(0xFF3A2A00), fontSize: 18, height: 1.3, fontWeight: FontWeight.w800)),
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
 }

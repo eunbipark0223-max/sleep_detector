@@ -21,6 +21,7 @@ import 'package:flutter/services.dart';
 
 import '../services/auth_service.dart';
 import '../theme.dart';
+import '../widgets/auth_ui.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -135,76 +136,112 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  // ── 화면 ────────────────────────────────────────────────────
+  // ── 화면 (Figma 시안: 인사 · 아이콘 입력칸 · 둥근 동의 체크 · 큰 버튼, 디자인만 바꿈 — 검사 · 가입은 위 함수 그대로) ──
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('회원가입', style: TextStyle(fontSize: 16))),
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: AppColors.textPrimary,
+        surfaceTintColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        toolbarHeight: 66,
+        leading: IconButton(
+          icon: const Icon(Icons.chevron_left, size: 30),
+          tooltip: '뒤로 가기',
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+        title: const Text('회원가입',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.5,
+                color: AppColors.textPrimary)),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(22, 17, 22, 20),
           child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _label('이름'),
-                TextFormField(
+                const Text('안전 운전을 시작해 볼까요?',
+                    style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900, letterSpacing: -0.8,
+                        color: AppColors.textPrimary)),
+                const SizedBox(height: 4),
+                const Text('꼭 필요한 정보만 알려 주세요.',
+                    style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+                const SizedBox(height: 21),
+                AuthField(
+                  label: '이름',
+                  icon: Icons.person_outline,
                   controller: _name,
+                  hint: '이름을 입력하세요',
                   enabled: !_loading,
+                  height: 53,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(hintText: '이름을 입력하세요'),
                   validator: _checkName,
                 ),
-                const SizedBox(height: 14),
-                _label('이메일'),
-                TextFormField(
+                const SizedBox(height: 13),
+                AuthField(
+                  label: '이메일',
+                  icon: Icons.mail_outline,
                   controller: _email,
+                  hint: '이메일을 입력하세요',
                   enabled: !_loading,
+                  height: 53,
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(hintText: '이메일을 입력하세요'),
                   validator: _checkEmail,
                 ),
-                const SizedBox(height: 14),
-                _label('비밀번호'),
-                TextFormField(
+                const SizedBox(height: 13),
+                AuthField(
+                  label: '비밀번호',
+                  icon: Icons.lock_outline,
                   controller: _password,
+                  hint: '비밀번호를 입력하세요',
+                  helper: '대소문자·숫자·특수문자 포함 8자리 이상',
+                  password: true,
                   enabled: !_loading,
-                  obscureText: true,
+                  height: 53,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(hintText: '대소문자·숫자·특수문자 포함 8자리 이상'),
                   validator: _checkPassword,
                 ),
-                const SizedBox(height: 14),
-                _label('비밀번호 확인'),
-                TextFormField(
+                const SizedBox(height: 13),
+                AuthField(
+                  label: '비밀번호 확인',
+                  icon: Icons.lock_outline,
                   controller: _passwordConfirm,
+                  hint: '다시 입력하세요',
+                  password: true,
                   enabled: !_loading,
-                  obscureText: true,
+                  height: 53,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(hintText: '다시 입력하세요'),
                   validator: _checkPasswordConfirm,
                 ),
-                const SizedBox(height: 14),
-                _label('전화번호'),
-                TextFormField(
+                const SizedBox(height: 13),
+                AuthField(
+                  label: '전화번호',
+                  icon: Icons.phone_outlined,
                   controller: _phone,
+                  hint: '010-1234-5678',
                   enabled: !_loading,
+                  height: 53,
                   keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.next,
                   inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9\-]'))],
-                  decoration: const InputDecoration(hintText: '010-1234-5678'),
                   validator: _checkPhone,
                 ),
-                const SizedBox(height: 14),
-                _label('차량번호'),
-                TextFormField(
+                const SizedBox(height: 13),
+                AuthField(
+                  label: '차량번호',
+                  icon: Icons.local_shipping_outlined,
                   controller: _vehicle,
+                  hint: '12가 3456',
                   enabled: !_loading,
+                  height: 53,
                   textInputAction: TextInputAction.done,
                   onFieldSubmitted: (_) => _submit(),
-                  decoration: const InputDecoration(hintText: '12가 3456'),
                   validator: _checkVehicle,
                 ),
                 const SizedBox(height: 6),
@@ -212,17 +249,17 @@ class _SignupScreenState extends State<SignupScreen> {
                   '졸음 경고가 나면 관리자가 이 연락처로 연락해요.',
                   style: TextStyle(fontSize: 12, color: AppColors.textMuted),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 10),
                 _consentRow(),
                 if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+                  const SizedBox(height: 8),
+                  Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13, fontWeight: FontWeight.w600)),
                 ],
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
                 if (_loading)
-                  const Center(child: CircularProgressIndicator())
+                  const SizedBox(height: 58, child: Center(child: CircularProgressIndicator()))
                 else
-                  ElevatedButton(onPressed: _submit, child: const Text('회원가입')),
+                  AuthButton(text: '가입하기', onPressed: _submit),
               ],
             ),
           ),
@@ -231,42 +268,62 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
+  // 동의 줄 (Figma .check-row — 둥근 네모 체크 · 글 · 오른쪽 화살표 = 내용 보기)
   Widget _consentRow() {
+    void toggle() => setState(() {
+          _agreed = !_agreed;
+          if (_agreed) _agreeError = false;
+        });
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Checkbox(
-              value: _agreed,
-              onChanged: _loading ? null : (v) => setState(() {
-                _agreed = v ?? false;
-                if (_agreed) _agreeError = false;
-              }),
-            ),
-            Expanded(
-              child: GestureDetector(
-                onTap: _loading ? null : () => setState(() {
-                  _agreed = !_agreed;
-                  if (_agreed) _agreeError = false;
-                }),
-                child: const Text('(필수) 개인정보 수집 · 이용에 동의합니다', style: TextStyle(fontSize: 14)),
+        SizedBox(
+          height: 50,
+          child: Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: _loading ? null : toggle,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Row(
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 120),
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: _agreed ? AppColors.navy : Colors.white,
+                          border: Border.all(
+                              color: _agreed
+                                  ? AppColors.navy
+                                  : (_agreeError ? AppColors.danger : AppColors.cardBorder),
+                              width: 1.5),
+                          borderRadius: BorderRadius.circular(7),
+                        ),
+                        child: _agreed ? const Icon(Icons.check, size: 17, color: Colors.white) : null,
+                      ),
+                      const SizedBox(width: 9),
+                      const Expanded(
+                        child: Text('(필수) 개인정보 수집 및 이용에 동의합니다',
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                                color: AppColors.textSecondary)),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-            TextButton(onPressed: _showConsent, child: const Text('내용 보기')),
-          ],
+              IconButton(
+                onPressed: _showConsent,
+                tooltip: '동의 내용 보기',
+                icon: const Icon(Icons.chevron_right, size: 22, color: AppColors.textMuted),
+              ),
+            ],
+          ),
         ),
         if (_agreeError)
-          const Padding(
-            padding: EdgeInsets.only(left: 12),
-            child: Text('개인정보 수집 · 이용에 동의해야 가입할 수 있어요', style: TextStyle(color: AppColors.danger, fontSize: 12)),
-          ),
+          const Text('개인정보 수집 · 이용에 동의해야 가입할 수 있어요',
+              style: TextStyle(color: AppColors.danger, fontSize: 12, fontWeight: FontWeight.w600)),
       ],
     );
   }
-
-  Widget _label(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Text(text, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-      );
 }

@@ -53,6 +53,7 @@ dependencies:
   image: ^4.12.0                        # 졸음 의심 순간 프레임 → jpg 변환 (camera_image_utils)
   url_launcher: ^6.3.3      # 졸음쉼터 [길찾기] → 카카오맵 앱 · 폰 브라우저 (map_screen)
   audioplayers: ^6.8.1
+  permission_handler: 11.4.0
 
 dev_dependencies:
   flutter_test:

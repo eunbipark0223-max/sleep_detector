@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import '../models/sleep_event.dart';
 import '../services/api_service.dart';
 import '../theme.dart';
+import '../widgets/owl_says.dart';
 
 class HistoryScreen extends StatefulWidget {
   /// 경고 목록을 가져오는 함수. 비워 두면 기본(_defaultLoad). null 을 돌려주면 '아직 서버와 연결되지 않음'.
@@ -57,38 +58,64 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _FilterBar(selected: _stage, stages: _filterStages, onSelected: (stage) => setState(() => _stage = stage)),
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: () async => _reload(),
-            child: FutureBuilder<List<SleepEvent>?>(
-              future: _events,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
-                  return _scroll(const [Padding(padding: EdgeInsets.all(48), child: Center(child: CircularProgressIndicator()))]);
-                }
-                if (snapshot.hasError) {
-                  return _scroll([_Hint(text: '운행 기록을 불러오지 못했어요', actionText: '다시 시도', onAction: _reload)]);
-                }
-                final events = snapshot.data;
-                if (events == null) return _scroll(const [_Hint(text: '운행 기록 불러오기는 준비 중이에요')]);
-                if (events.isEmpty) return _scroll(const [_Hint(text: '아직 경고 기록이 없어요')]);
+    return Container(
+      color: const Color(0xFFF8F9FC),
+      child: Column(
+        children: [
+          _FilterBar(
+            selected: _stage,
+            stages: _filterStages,
+            onSelected: (stage) => setState(() => _stage = stage),
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () async => _reload(),
+              child: FutureBuilder<List<SleepEvent>?>(
+                future: _events,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return _scroll(const [
+                      Padding(
+                        padding: EdgeInsets.all(48),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                    ]);
+                  }
+                  if (snapshot.hasError) {
+                    return _scroll([
+                      _Hint(
+                        text: '운행 기록을 불러오지 못했어요',
+                        actionText: '다시 시도',
+                        onAction: _reload,
+                      ),
+                    ]);
+                  }
+                  final events = snapshot.data;
+                  if (events == null)
+                    return _scroll(const [_Hint(text: '운행 기록 불러오기는 준비 중이에요')]);
+                  if (events.isEmpty)
+                    return _scroll(const [_Hint(text: '아직 경고 기록이 없어요')]);
 
-                // 받은 목록을 건드리지 않게 복사해서 최신순으로 정렬한다
-                final shown = events.where((e) => _stage == null || e.stage == _stage).toList()
-                  ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-                final now = DateTime.now();
-                return _scroll([
-                  _Summary(events: events, now: now), // 요약은 단계 필터와 상관없이 전체 기준
-                  if (shown.isEmpty) const _Hint(text: '이 단계의 경고가 없어요') else ..._byDay(shown, now),
-                ]);
-              },
+                  // 받은 목록을 건드리지 않게 복사해서 최신순으로 정렬한다
+                  final shown =
+                      events
+                          .where((e) => _stage == null || e.stage == _stage)
+                          .toList()
+                        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+                  final now = DateTime.now();
+                  return _scroll([
+                    _Summary(events: events, now: now), // 요약은 단계 필터와 상관없이 전체 기준
+                    if (shown.isEmpty)
+                      const _Hint(text: '이 단계의 경고가 없어요')
+                    else
+                      ..._byDay(shown, now),
+                  ]);
+                },
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -103,7 +130,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     for (final e in sorted) {
       final key = _dayKey(e.createdAt);
       if (key != lastKey) {
-        out.add(_DayHeader(label: _dayLabel(e.createdAt, now), count: counts[key]!));
+        out.add(
+          _DayHeader(label: _dayLabel(e.createdAt, now), count: counts[key]!),
+        );
         lastKey = key;
       }
       out.add(_EventCard(event: e));
@@ -115,7 +144,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget _scroll(List<Widget> children) {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
       children: children,
     );
   }
@@ -132,7 +161,11 @@ String _dayLabel(DateTime t, DateTime now) {
   final d = t.toLocal();
   if (d.year < 2000) return '날짜 없음'; // created_at 이 비었을 때의 대신값(1970년)
   // 날짜끼리만 비교하려고 자정 UTC 로 맞춘다 (시각 차이 · 서머타임에 흔들리지 않게)
-  final days = DateTime.utc(now.year, now.month, now.day).difference(DateTime.utc(d.year, d.month, d.day)).inDays;
+  final days = DateTime.utc(
+    now.year,
+    now.month,
+    now.day,
+  ).difference(DateTime.utc(d.year, d.month, d.day)).inDays;
   if (days == 0) return '오늘';
   if (days == 1) return '어제';
   const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
@@ -140,7 +173,7 @@ String _dayLabel(DateTime t, DateTime now) {
   return '$year${d.month}월 ${d.day}일 (${weekdays[d.weekday - 1]})';
 }
 
-// 목록 맨 위 요약: 오늘 · 누적 · 단계별 건수 (전체 기록 기준)
+// 목록 맨 위 남색 띠 (Figma 시안 '졸음운전 감지 앱3' 운행 기록, 11/12 — 예전 건수 요약 대신)
 class _Summary extends StatelessWidget {
   final List<SleepEvent> events;
   final DateTime now;
@@ -148,57 +181,46 @@ class _Summary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final todayKey = _dayKey(now);
-    final today = events.where((e) => _dayKey(e.createdAt) == todayKey).length;
-    int countStage(int stage) => events.where((e) => e.stage == stage).length;
-
     return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+      constraints: const BoxConstraints(minHeight: 82),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.cardBorder),
+        color: AppColors.navy,
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
         children: [
-          _Stat(value: today, label: '오늘'),
-          _Stat(value: events.length, label: '누적'),
-          for (final stage in const [1, 2, 3]) _Stat(value: countStage(stage), label: '$stage단계', dot: AppColors.stage(stage)),
-        ],
-      ),
-    );
-  }
-}
-
-class _Stat extends StatelessWidget {
-  final int value;
-  final String label;
-  final Color? dot; // 단계별 칸은 단계 색 점 (색만으로 구분하지 않게 글자도 같이)
-  const _Stat({required this.value, required this.label, this.dot});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Semantics(
-        label: '$label $value건',
-        excludeSemantics: true,
-        child: Column(
-          children: [
-            Text('$value', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-            const SizedBox(height: 2),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Image.asset(
+              OwlSays.body(0),
+              width: 62,
+              height: 62,
+              fit: BoxFit.contain,
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (dot != null) ...[
-                  Container(width: 8, height: 8, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
-                  const SizedBox(width: 4),
-                ],
-                Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                Text(
+                  '이번 주도 안전하게',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+                SizedBox(height: 3),
+                Text(
+                  '경고 뒤 충분히 쉬어 주세요',
+                  style: TextStyle(fontSize: 13, color: Color(0xFFBEC8E9)),
+                ),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -213,15 +235,17 @@ class _DayHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 14, bottom: 8, left: 2),
+      padding: const EdgeInsets.only(top: 20, bottom: 9, left: 2),
       child: Semantics(
         header: true,
-        child: Row(
-          children: [
-            Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-            const SizedBox(width: 6),
-            Text('$count건', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-          ],
+        label: '$label $count건',
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+            color: AppColors.textPrimary,
+          ),
         ),
       ),
     );
@@ -232,25 +256,58 @@ class _FilterBar extends StatelessWidget {
   final int? selected;
   final List<int> stages;
   final ValueChanged<int?> onSelected;
-  const _FilterBar({required this.selected, required this.stages, required this.onSelected});
+  const _FilterBar({
+    required this.selected,
+    required this.stages,
+    required this.onSelected,
+  });
+
+  // 시안의 둥근 알약 버튼 (선택 = 남색 바탕 흰 글)
+  Widget _pill(String text, bool on, VoidCallback tap) => Padding(
+    padding: const EdgeInsets.only(right: 8),
+    child: Material(
+      color: on ? AppColors.navy : Colors.white,
+      shape: StadiumBorder(
+        side: BorderSide(color: on ? AppColors.navy : AppColors.cardBorder),
+      ),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: tap,
+        child: Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          alignment: Alignment.center,
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: on ? Colors.white : AppColors.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
-        children: [
-          ChoiceChip(label: const Text('전체'), selected: selected == null, onSelected: (_) => onSelected(null)),
-          for (final stage in stages) ...[
-            const SizedBox(width: 8),
-            ChoiceChip(
-              label: Text(SleepEvent.stageLabels[stage]),
-              selected: selected == stage,
-              onSelected: (_) => onSelected(stage),
-            ),
+    return Align(
+      alignment: Alignment.centerLeft, // 시안처럼 왼쪽부터
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(18, 7, 18, 15),
+        child: Row(
+          children: [
+            _pill('전체', selected == null, () => onSelected(null)),
+            for (final stage in stages)
+              _pill(
+                SleepEvent.stageLabels[stage],
+                selected == stage,
+                () => onSelected(stage),
+              ),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -260,83 +317,117 @@ class _EventCard extends StatelessWidget {
   final SleepEvent event;
   const _EventCard({required this.event});
 
+  // 날짜는 위 구분 줄에 있으니 카드에는 시각만 (오후 2:40)
+  static String _time(DateTime t) {
+    final d = t.toLocal();
+    if (d.year < 2000) return '시각 없음';
+    final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
+    final ampm = d.hour < 12 ? '오전' : '오후';
+    return '$ampm $h:${d.minute.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: event.isUrgent ? AppColors.urgent : AppColors.cardBorder),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: AppColors.stage(event.stage),
-              child: Text('${event.stage}', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.onStage(event.stage))),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+    final s = event.stage.clamp(0, 3);
+    final c = AppColors.stage(s);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 9),
+      child: Material(
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(17),
+          side: BorderSide(
+            color: event.isUrgent ? AppColors.urgent : AppColors.cardBorder,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          // TODO(상세 화면): 경고 상세 화면이 생기면 여기서 연다 — 예) Navigator.push(... EventDetailScreen(event: event))
+          onTap: () {},
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 95),
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                // 단계 숫자 네모 (단계 색 — 가이드 '부엉이 색의 뜻'과 같게)
+                Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: c,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$s',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.onStage(s),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Text('${event.stageLabel} · ${event.reasonLabel}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: c.withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              event.stageLabel,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                                color: Color.lerp(c, Colors.black, 0.35),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _time(event.createdAt),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
                       ),
-                      _StatusBadge(status: event.status),
+                      const SizedBox(height: 5),
+                      Text(
+                        event.summary.isEmpty
+                            ? event.reasonLabel
+                            : event.summary,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          height: 1.35,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(event.createdLabel, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                  if (event.summary.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(event.summary, style: const TextStyle(fontSize: 14, height: 1.35, color: AppColors.textPrimary)),
-                  ],
-                  if (event.guidance.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(event.guidance, style: const TextStyle(fontSize: 13, height: 1.35, color: AppColors.textSecondary)),
-                  ],
-                ],
-              ),
+                ),
+                const SizedBox(width: 6),
+                const Icon(
+                  Icons.chevron_right,
+                  size: 22,
+                  color: AppColors.textMuted,
+                ), // 상세 화면으로 (시안 화살표)
+              ],
             ),
-          ],
+          ),
         ),
       ),
-    );
-  }
-}
-
-class _StatusBadge extends StatelessWidget {
-  final String status;
-  const _StatusBadge({required this.status});
-
-  // 미확인 주황 · 확인 남색 · 조치완료 / 휴식완료 초록 (그 밖의 글자는 회색)
-  Color get _color {
-    switch (status) {
-      case '미확인':
-        return AppColors.rest;
-      case '확인':
-        return AppColors.primary;
-      case '조치완료':
-      case '휴식완료':
-        return AppColors.normal;
-      default:
-        return AppColors.textMuted;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(left: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: _color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-      child: Text(status, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _color)),
     );
   }
 }
@@ -349,18 +440,15 @@ class _Hint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 10),
       child: Column(
         children: [
-          Text(text, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+          Text(
+            text,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 15, color: AppColors.textMuted),
+          ),
           if (actionText != null) ...[
             const SizedBox(height: 8),
             TextButton(onPressed: onAction, child: Text(actionText!)),

@@ -91,6 +91,21 @@ class VoiceService {
     _ttsReady = true;
   }
 
+  /// 마이크 권한을 이미 받았는지 (운행 시작 안내창을 띄울지 정할 때, 11/12)
+  static Future<bool> micGranted() async {
+    try {
+      return await _stt.hasPermission;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 마이크 권한을 운행 시작 때 미리 요청 (퀴즈 직전에 시스템 창이 뜨지 않게, 11/12) — 음성 인식 준비도 같이 끝남
+  static Future<void> prepareMic() async {
+    _sttReady = null; // 거절했다가 다시 묻는 경우도 새로 확인
+    await _initStt();
+  }
+
   static Future<bool> _initStt() async {
     if (_sttReady != null) return _sttReady!;
     try {

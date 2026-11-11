@@ -48,7 +48,7 @@ class _MainScreenState extends State<MainScreen> {
   Widget _page(int index) {
     switch (index) {
       case 0:
-        return const HomeScreen();
+        return HomeScreen(onOpenRecords: () => setState(() => _index = 1)); // [전체 보기] → 운행 기록 탭
       case 1:
         return const HistoryScreen();
       case _mapTab:
@@ -93,10 +93,78 @@ class _MainScreenState extends State<MainScreen> {
     Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
   }
 
+  // 홈 탭 제목줄 (Figma 시안 '졸음운전 감지 앱2' — 디자인만, 메뉴 동작은 _onMenu 그대로)
+  PreferredSizeWidget _homeBar([String title = '안녕하세요, 기사님']) {
+    PopupMenuItem<String> item(String value, IconData icon, String text, {bool danger = false}) => PopupMenuItem(
+          value: value,
+          height: 54,
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(color: const Color(0xFFEDF0F8), borderRadius: BorderRadius.circular(11)),
+                child: Icon(icon, size: 20, color: danger ? AppColors.danger : AppColors.navy),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(text,
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: danger ? AppColors.danger : AppColors.textPrimary)),
+              ),
+              if (!danger) const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
+            ],
+          ),
+        );
+    return AppBar(
+      toolbarHeight: 66,
+      backgroundColor: const Color(0xFFF8F9FC),
+      surfaceTintColor: const Color(0xFFF8F9FC),
+      foregroundColor: AppColors.textPrimary,
+      elevation: 0,
+      titleSpacing: 18,
+      centerTitle: false,
+      title: Text(title, // 왼쪽 위 로고는 뺌 (11/12 팀장)
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.5, color: AppColors.textPrimary)),
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: 18),
+          child: PopupMenuButton<String>(
+            tooltip: '메뉴',
+            onSelected: _onMenu,
+            offset: const Offset(0, 54),
+            color: Colors.white,
+            surfaceTintColor: Colors.white,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(19), side: const BorderSide(color: AppColors.cardBorder)),
+            itemBuilder: (_) => [
+              item('profile', Icons.person_outline, '내 정보'),
+              item('guide', Icons.menu_book_outlined, '앱 사용 가이드'),
+              if (_showDevTools) item('photo', Icons.photo_camera_outlined, '사진 1장 테스트'), // 개발용 (기본 숨김)
+              item('logout', Icons.logout, '로그아웃', danger: true),
+            ],
+            child: Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.cardBorder),
+              ),
+              child: const Icon(Icons.menu, color: AppColors.navy),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: _index == _mapTab ? null : AppBar(
+      appBar: _index == _mapTab ? null : _index == 0 ? _homeBar() : _index == 1 ? _homeBar('운행 기록') : AppBar(
         title: Text(_titles[_index]),
         actions: [
           PopupMenuButton<String>(

@@ -18,6 +18,7 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'main_screen.dart';
 import 'signup_screen.dart';
+import '../widgets/auth_ui.dart';
 
 // StatefulWidget - 클래스가 두개
 // 위젯은 화면을 다시 그릴 때마다 새로 만들어진다. 입력값이 사라진다. 값은 State에 따로 보관
@@ -104,142 +105,105 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
     }
   }
 
+  // ── 화면 (Figma 시안: 로고 · 인사 · 아이콘 입력칸 · 큰 버튼, 디자인만 바꿈 — 기능은 위 함수 그대로) ──
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar( // appBarTheme이 적용된 것
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, size: 20),
-            SizedBox(width: 8),
-            Text('졸음 가드', style: TextStyle(fontSize: 16)),
-          ],
-        ),
-      ),
-      body: SingleChildScrollView( // 입력칸을 누르면 키보드가 올라와 아래쪽 버튼이 가려진다. 스크롤해서 볼 수 있다
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: AppColors.cardBorder),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: SingleChildScrollView( // 키보드가 올라와도 아래 버튼까지 스크롤해서 볼 수 있다
+          padding: const EdgeInsets.fromLTRB(22, 34, 22, 22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Center(child: AuthLogo(size: 82)),
+              const SizedBox(height: 19),
+              const Text('다시 만나 반가워요',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 27, fontWeight: FontWeight.w900, letterSpacing: -1,
+                      color: AppColors.textPrimary)),
+              const SizedBox(height: 6),
+              const Text('졸음을 먼저 알아채 안전을 지켜드려요',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+              const SizedBox(height: 29),
+              _loginForm(),
+              const SizedBox(height: 25),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Row(
-                    children: [
-                      _tab('로그인', true, () {}), // 지금 화면이라 눌러도 그대로
-                      _tab('회원가입', false, _openSignup), // 새 화면으로 이동
-                    ],
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: _loginForm(),
+                  const Text('처음 오셨나요?', style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+                  TextButton(
+                    onPressed: _isLoading ? null : _openSignup,
+                    style: TextButton.styleFrom(minimumSize: const Size(0, 44)),
+                    child: const Text('회원가입',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.navy)),
                   ),
                 ],
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-  // 4.조건부 화면 - 탭에 따라 다른 폼, 상태에 따라 다른 위젯
-  // 탭
-  Widget _tab(String label, bool active, VoidCallback onTap){
-    return Expanded( // 탭 두개가 정확히 반씩 차지한다
-      child: InkWell( // 누를 수 있게 만들고 물결 효과를 준다
-        onTap: onTap, // setState(() => _isSignup = false)
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: active ? AppColors.primary : AppColors.cardBorder,
-                width: active ? 2 : 0.5,
-              ),
-            ),
-          ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: active ? AppColors.primary : AppColors.textSecondary,
-            ),
+            ],
           ),
         ),
       ),
     );
   }
-  // 5.TextField - 입력칸 + 컨트롤러
-  // TextField - 입력칸
+
   Widget _loginForm() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch, //  가로를 꽉 채운다
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _label('이메일'),
-        TextField(
+        AuthField(
+          label: '이메일',
+          icon: Icons.mail_outline,
           controller: _emailController,
+          hint: '이메일을 입력하세요',
           keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(hintText: '이메일을 입력하세요'),
+          textInputAction: TextInputAction.next,
+          enabled: !_isLoading,
         ),
         const SizedBox(height: 14),
-        _label('비밀번호'),
-        TextField(
+        AuthField(
+          label: '비밀번호',
+          icon: Icons.lock_outline,
           controller: _passwordController,
-          obscureText: true, // 입력한 글자를 ●로 가린다
-          decoration: const InputDecoration(hintText: '비밀번호를 입력하세요'),
+          hint: '비밀번호를 입력하세요',
+          password: true,
+          textInputAction: TextInputAction.done,
+          onFieldSubmitted: (_) => _loginWithEmail(),
+          enabled: !_isLoading,
         ),
         const SizedBox(height: 18),
         if (_error != null) ...[ // 오류 메시지(있을 때만)
-          Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+          Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13, fontWeight: FontWeight.w600)),
           const SizedBox(height: 12),
         ],
-        if(_isLoading)
-          const Center(child: CircularProgressIndicator())
+        if (_isLoading)
+          const SizedBox(height: 58, child: Center(child: CircularProgressIndicator()))
         else ...[
-          ElevatedButton(onPressed: _loginWithEmail, child: const Text('로그인')), // theme.dart의 elevatedButtonTheme
-          const SizedBox(height: 12),
+          AuthButton(text: '로그인', onPressed: _loginWithEmail),
+          const SizedBox(height: 14),
           _divider(), // 또는
-          const SizedBox(height: 12),
-          _googleButton(), // 구글 로그인 버튼
+          const SizedBox(height: 14),
+          AuthButton(
+            text: 'Google로 계속하기',
+            primary: false,
+            onPressed: _signInWithGoogle,
+            leading: const Text('G',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFF4285F4))),
+          ),
         ],
       ],
     );
   }
-  Widget _label(String text) => Padding(
-    padding: const EdgeInsets.only(bottom: 6),
-    child: Text(text, style: const TextStyle(
-      fontSize: 13, fontWeight: FontWeight.w500)),
-  );
 
-  Widget _divider() => Row(
+  Widget _divider() => const Row(
     children: [
-      const Expanded(child: Divider(color: AppColors.cardBorder)),
+      Expanded(child: Divider(color: AppColors.cardBorder)),
       Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: Text('또는', style: TextStyle(
-          fontSize: 12, color: AppColors.textMuted)),
+        padding: EdgeInsets.symmetric(horizontal: 12),
+        child: Text('또는', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
       ),
-      const Expanded(child: Divider(color: AppColors.cardBorder)),
+      Expanded(child: Divider(color: AppColors.cardBorder)),
     ],
   );
-
-  // 3. 구글 버튼
-  Widget _googleButton() => OutlinedButton.icon(
-      onPressed: _signInWithGoogle,
-      icon: const Text('G', style: TextStyle(
-        fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF4285F4))),
-      label: const Text('Google로 계속하기'),
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(double.infinity, 46),
-        side: const BorderSide(color: AppColors.cardBorder),
-        foregroundColor: AppColors.textPrimary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-  );
-}
+}

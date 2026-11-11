@@ -105,6 +105,7 @@ def _new_state() -> dict:
         "rest_started": None, "rest_event_id": None,
         "last_quiz_at": 0.0, "quiz_fail": 0, "last_ping": None, "ended": False,
         "calib": 0, "ear_threshold": DEFAULT_EAR_THRESHOLD,
+        "pre_warned": False,  # (11/12) 이번 운행에서 예비 경고를 했는지
     }
 
 
@@ -560,7 +561,8 @@ def delete_my_photo(user: dict = Depends(current_user)):
 def drive_start(user: dict = Depends(current_user)):
     st = state_of(user["id"])
     reset_state(st)
-    st.update({"drive_start": time.time(), "drive_offset_min": 0, "rest_due_sent": False, "last_quiz_at": 0.0, "last_ping": time.time()})
+    st.update({"drive_start": time.time(), "drive_offset_min": 0, "rest_due_sent": False, "last_quiz_at": 0.0, "last_ping": time.time(),
+               "pre_warned": False})  # (11/12 팀장) 운행마다 첫 졸음은 예비 경고 한 번
     return {"success": True, "message": "운행을 시작합니다", "stage": 0, "status": STAGE_LABELS[0]}
 
 
@@ -573,6 +575,7 @@ async def drive_calibrate(file: UploadFile = File(...), user: dict = Depends(cur
     if done:
         st["calib"] = 0
         st["ear_threshold"] = 0.21
+        st["pre_warned"] = False  # (11/12) 앱은 운행마다 출발 전 측정을 함 → 새 운행의 첫 졸음은 다시 예비 경고
     return {"success": True, "face_found": True, "count": CALIB_FRAMES if done else st["calib"], "needed": CALIB_FRAMES,
             "done": done, "ear_threshold": st["ear_threshold"] if done else None}
 
@@ -702,8 +705,22 @@ async def detect(
         return {**base, "is_sleep": False, "reason": "", "stage": stage, "status": STAGE_LABELS[stage], "summary": "", "guidance": "",
                 "driver_voice": "", "sleep_count_10min": len(recent_sleeps(st)), "voice_quiz": None, "regulations": [], "event_id": None}
 
-    # ③ 졸음 1회 기록 → 규칙 단계 (시나리오 stageN 이면 그 단계로 고정)
+    # ②-1 (11/12 팀장) 예비 경고 — 운행 중 첫 졸음이고 지금 0단계면 단계를 올리지 않고 알림만 (횟수에 안 셈, 퀴즈 없음, 기록은 남김)
     fs = forced_stage()
+    if not fs and not st.get("pre_warned", True) and refresh_stage(st) == 0:
+        st["pre_warned"] = True
+        voice = "졸음이 느껴지면 창문을 열고 환기해 주세요. 다시 졸면 주의 단계로 경고해요."
+        event = add_event(user["id"], 0, "pre_warning", {"situation": "운행 중 첫 졸음 — 예비 경고", "trigger": reason,
+                          "eye": {"closed_sec": closed, "perclos": perclos_v, "eye_open_prob": open_prob, "ear": ear, "photo": photo is not None},
+                          "driving_quiz": [], "rest": None},
+                          summary="운행 중 첫 졸음이라 예비 경고만 했습니다.", guidance="창문을 열고 환기해 주세요.", ear=ear,
+                          eye_closed_prob=None if open_prob is None else round(1 - open_prob, 3), method=base["method"], perclos=perclos_v,
+                          photo_path=None, lat=lat, lng=lng)
+        return {**base, "is_sleep": False, "pre_warning": True, "reason": "pre_warning", "stage": 0, "status": STAGE_LABELS[0],
+                "summary": "", "guidance": "", "driver_voice": voice, "sleep_count_10min": len(recent_sleeps(st)), "voice_quiz": None,
+                "regulations": [], "event_id": event["id"]}
+
+    # ③ 졸음 1회 기록 → 규칙 단계 (시나리오 stageN 이면 그 단계로 고정)
     if fs:
         st["sleeps"], st["stage"] = [time.time()] * fs, fs
         count, stage = fs, fs

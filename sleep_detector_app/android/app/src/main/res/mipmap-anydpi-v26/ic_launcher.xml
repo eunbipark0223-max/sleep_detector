@@ -1,9 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 시연용 (집 컴퓨터): 아이콘 그림이 보이는 영역 전체를 꽉 채우게 — 그림 = drawable/ic_launcher_full -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-  <background android:drawable="@color/ic_launcher_background"/>
-  <foreground>
-      <inset
-          android:drawable="@drawable/ic_launcher_foreground"
-          android:inset="16%" />
-  </foreground>
+  <background android:drawable="@drawable/ic_launcher_full"/>
+  <foreground android:drawable="@android:color/transparent"/>
 </adaptive-icon>

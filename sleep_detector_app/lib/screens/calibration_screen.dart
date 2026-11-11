@@ -258,7 +258,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     return PopScope(
       canPop: canLeave, // 측정 중에는 뒤로 가기로 나갈 수 없다
       child: Scaffold(
-        appBar: AppBar(title: const Text('내 눈 기준 맞추기'), automaticallyImplyLeading: canLeave),
+        appBar: AppBar(title: const Text('눈 크기 측정하기'), automaticallyImplyLeading: canLeave),
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -298,11 +298,13 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.rest, height: 1.4)),
             const SizedBox(height: 12),
+          ] else ...[
+            // 처음 측정 때만 안내 — 다시 측정할 때는 위 '얼굴이 잘 보이지 않았어요' 문구만 (11/12 팀장)
+            const Text('정면을 보고 눈을 편하게 뜨세요', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            const SizedBox(height: 6),
+            const Text('폰을 거치대에 고정하고 눌러 주세요.',
+                textAlign: TextAlign.center, style: TextStyle(fontSize: 14, height: 1.4, color: AppColors.textSecondary)),
           ],
-          const Text('정면을 보고 눈을 편하게 뜨세요', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-          const SizedBox(height: 6),
-          Text('${widget.photoCount}장을 1초에 1장씩 찍어서 내 눈 기준을 맞춰요.\n폰을 거치대에 고정하고 눌러 주세요.',
-              textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, height: 1.4, color: AppColors.textSecondary)),
           const SizedBox(height: 24),
           FilledButton(onPressed: _measure, child: Text(_failures > 0 ? '다시 측정' : '측정 시작')),
           // [기본 기준으로 시작] 은 두지 않는다 — 출발 전 측정은 필수 (반쯤 감은 눈 확인의 기준이 됨, 11/11 팀장)

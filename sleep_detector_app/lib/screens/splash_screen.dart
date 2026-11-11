@@ -116,26 +116,6 @@ class _SplashScreenState extends State<SplashScreen> {
           Positioned.fill(
             child: Image.asset('assets/owl/splash.png', fit: BoxFit.contain, semanticLabel: '졸음 가드'),
           ),
-          // (11/11) 트럭 위에 단계 부엉이 3개 — 졸기 전(초록) · 졸 때(주황) · 졸고 나서(빨강). 노랑은 빼고 3개만
-          LayoutBuilder(builder: (context, box) {
-            final imgH = box.maxWidth * 1671 / 941; // 그림 비율 그대로 폭에 맞췄을 때 높이
-            final truckTop = (box.maxHeight - imgH) / 2 + imgH * 0.27; // 그림 속 트럭 지붕 위치
-            return Stack(children: [
-              Positioned(
-                left: 0,
-                right: 0,
-                top: (truckTop - 130).clamp(8.0, double.infinity),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _StageOwl(owl: 'assets/owl/owl_face0.png', label: '졸기 전'),
-                    _StageOwl(owl: 'assets/owl/owl_face2.png', label: '졸 때'),
-                    _StageOwl(owl: 'assets/owl/owl_face3.png', label: '졸고 나서'),
-                  ],
-                ),
-              ),
-            ]);
-          }),
           Align(
             alignment: Alignment.bottomCenter,
             child: Padding(
@@ -171,25 +151,6 @@ class _SplashScreenState extends State<SplashScreen> {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// 시작 화면 트럭 위 작은 부엉이 + 이름 (졸기 전 · 졸 때 · 졸고 나서)
-class _StageOwl extends StatelessWidget {
-  final String owl;
-  final String label;
-  const _StageOwl({required this.owl, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Image.asset(owl, width: 72, height: 72),
-        const SizedBox(height: 4),
-        Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
-      ],
     );
   }
 }

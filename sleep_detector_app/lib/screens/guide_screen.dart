@@ -16,10 +16,11 @@ import 'warning_screen.dart' show stageTint;
 class GuideScreen extends StatelessWidget {
   const GuideScreen({super.key});
 
-  static const List<(String, String)> _steps = [
-    ('폰을 거치대에 고정해요', '얼굴이 화면 가운데에 보이게'),
-    ('[운행 시작]을 눌러요', '부엉이가 눈을 지켜보기 시작해요'),
-    ('부엉이 말을 들어요', '졸면 소리로 깨우고, 쉴 곳을 알려 줘요'),
+  // 쓰는 순서 3가지 (Figma 시안 '졸음운전 감지 앱2' 앱 사용 가이드, 11/12 팀장)
+  static const List<(IconData, String, String)> _steps = [
+    (Icons.photo_camera_outlined, '휴대폰을 거치해 주세요', '얼굴이 카메라 가운데 보이도록 맞춰 주세요.'),
+    (Icons.visibility_outlined, '앞을 보고 운전해 주세요', '화면 대신 음성 안내를 들어 주세요.'),
+    (Icons.volume_up_outlined, '경고가 들리면 따라 주세요', '단계별 안내에 따라 안전한 곳에서 쉬어 주세요.'),
   ];
 
   static const List<(String, String)> _stages = [
@@ -42,28 +43,51 @@ class GuideScreen extends StatelessWidget {
           const SizedBox(height: 12),
           for (var i = 0; i < _steps.length; i++)
             Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 9),
+              constraints: const BoxConstraints(minHeight: 92),
+              padding: const EdgeInsets.all(13),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(color: AppColors.cardBorder),
               ),
               child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundColor: AppColors.navy,
-                    child: Text('${i + 1}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.white)),
+                  // 왼쪽 아이콘 칸 (연한 남색 네모)
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(color: const Color(0xFFEDF0F8), borderRadius: BorderRadius.circular(14)),
+                    child: Icon(_steps[i].$1, size: 24, color: AppColors.navy),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 13),
                   Expanded(
-                    child: Column(
+                    child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(_steps[i].$1, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-                        const SizedBox(height: 2),
-                        Text(_steps[i].$2, style: const TextStyle(fontSize: 15, color: AppColors.textSecondary)),
+                        // 번호 동그라미
+                        Container(
+                          width: 20,
+                          height: 20,
+                          margin: const EdgeInsets.only(top: 2, right: 6),
+                          alignment: Alignment.center,
+                          decoration: const BoxDecoration(color: AppColors.navy, shape: BoxShape.circle),
+                          child: Text('${i + 1}',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Colors.white)),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(_steps[i].$2,
+                                  style: const TextStyle(
+                                      fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
+                              const SizedBox(height: 4),
+                              Text(keepWords(_steps[i].$3),
+                                  style: const TextStyle(fontSize: 14, height: 1.4, color: AppColors.textSecondary)),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),

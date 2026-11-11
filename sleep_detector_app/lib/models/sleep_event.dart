@@ -25,6 +25,7 @@ class SleepEvent {
     'perclos': '피로 누적',
     'rest_overdue': '휴게 미준수',
     'no_response': '음성 응답 없음',
+    'pre_warning': '첫 졸음',
   };
 
   final int id;
@@ -64,7 +65,7 @@ class SleepEvent {
   });
 
   /// 단계 이름 (0 정상 · 1 주의 · 2 휴식 권고 · 3 긴급)
-  String get stageLabel => stageLabels[stage.clamp(0, 3)];
+  String get stageLabel => reason == 'pre_warning' ? '예비 경고' : stageLabels[stage.clamp(0, 3)];
 
   /// 경고 종류 이름. 모르는 값이면 서버가 준 글자 그대로.
   String get reasonLabel => reasonLabels[reason] ?? reason;
