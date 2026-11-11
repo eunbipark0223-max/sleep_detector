@@ -389,6 +389,8 @@ def check_half(image_path: str, user_id=None) -> dict:
         except Exception as e:
             print(f"[face_service] 반쯤 확인 판정 실패: {type(e).__name__} {e}")
     is_half = baseline is not None and ear is not None and float(ear) < float(baseline) * HALF_RATIO
+    print(f"[half_ear] u{user_id} EAR {None if ear is None else round(float(ear), 3)} · 평소 {baseline} · 기준 "
+          f"{None if baseline is None else round(float(baseline) * HALF_RATIO, 3)}")   # 재시험 기록용 (11/11)
     return {"ear": ear, "baseline": None if baseline is None else round(float(baseline), 3), "is_half": bool(is_half)}
 
 
@@ -413,6 +415,7 @@ def calibrate_detail(image_paths: list[str], user_id=None, **kwargs) -> dict:
         median_ear = statistics.median(ears)
         threshold = round(float(max(CALIB_MIN, min(CALIB_MAX, median_ear * CALIB_RATIO))), 3)   # 지금까지와 같은 계산
         open_ear = round(float(median_ear), 3)
+    print(f"[calib] u{user_id} 얼굴 {len(ears)}/{len(image_paths)}장 · 평소 뜬 눈 EAR {open_ear} · 기준 {threshold}")   # 재시험 기록용 (11/11)
     if user_id is not None:
         try:
             from services import sleep_state
