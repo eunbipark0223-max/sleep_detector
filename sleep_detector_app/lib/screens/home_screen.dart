@@ -6,14 +6,13 @@
 //
 // [이 파일이 하는 일]
 //   - [운행 시작] → calibration_screen (내 눈 기준 측정) → drive_screen
-//   - [사진 1장 테스트] → upload_screen
+//   - [사진 1장 테스트] 는 ≡ 메뉴로 옮김 (main_screen, 11/11 — 기사님 홈에는 운전에 필요한 것만)
 //   - [가까운 졸음쉼터] → map_screen (B 의 카카오맵 지도)
 //   - 최근 경고 2~3건 (GET /events/my). 운행 · 사진 1장 테스트에서 돌아오면 다시 불러온다
 //   - 맨 위 상태 카드: 내 경고 기록으로 가늠한 지금 단계 (currentStage — 3단계는 조치완료 전까지, 2단계는 휴식 전까지, 1단계는 10분)
 //
 // [연결됨]
 //   - 최근 경고 : C 의 ApiService.fetchMyEvents() (GET /events/my). 실패하면 '불러오지 못했어요 + 다시 시도'
-//   - [사진 1장 테스트] : C 의 UploadScreen
 //   - [운행 시작]      : D 의 CalibrationScreen → C 의 DriveScreen(threshold: 기준 값)
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
@@ -26,13 +25,17 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../stage_texts.dart';
 import '../theme.dart';
+import '../widgets/owl_says.dart';
 import 'calibration_screen.dart';
 import 'drive_screen.dart';
 import 'map_screen.dart';
-import 'upload_screen.dart';
+import 'warning_screen.dart' show stageTint;
 
-// [사진 1장 테스트] 처럼 개발용 기능을 보일지 (기본 숨김, 빌드할 때 --dart-define=SHOW_DEV_TOOLS=true, 11/11)
-const bool _showDevTools = bool.fromEnvironment('SHOW_DEV_TOOLS');
+/// 커피 색 — [가까운 졸음쉼터] 버튼 (바탕 = 갈색 반투명, 커피잔 = 아메리카노 색, 11/11)
+const Color _coffee = Color(0xFF8B5A2B);
+const Color _americano = Color(0xFF3E2415);
+
+// (사진 1장 테스트 · 개발용 숨김은 main_screen 의 ≡ 메뉴로 옮김 — SHOW_DEV_TOOLS, 11/11)
 
 class HomeScreen extends StatefulWidget {
   /// 최근 경고를 가져오는 함수. 비워 두면 기본(_defaultLoad). 테스트 · 미리보기에서 바꿔 끼우는 입구.
@@ -150,11 +153,6 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MapScreen()));
   }
 
-  Future<void> _photoTest() async {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UploadScreen()));
-    if (mounted) _reload(); // 사진 1장 테스트로 생긴 경고도 마찬가지
-  }
-
   @override
   Widget build(BuildContext context) {
     return RefreshIndicator(
@@ -186,28 +184,18 @@ class _HomeScreenState extends State<HomeScreen> {
             label: const Text('운행 시작'),
           ),
           const SizedBox(height: 10),
-          if (_showDevTools) ...[ // 개발용 (기사 화면에서는 숨김, 11/11 팀장)
-          OutlinedButton.icon(
-            onPressed: _photoTest,
-            icon: const Icon(Icons.photo_camera_outlined),
-            label: const Text('사진 1장 테스트'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(48),
-              foregroundColor: AppColors.primary,
-              side: const BorderSide(color: AppColors.cardBorder),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-          ),
-          const SizedBox(height: 10),
-          ],
+          // [가까운 졸음쉼터] — 반투명 갈색 바탕 + 아메리카노 색으로 채운 커피잔 (11/11, 쉼터 = 커피 한 잔)
+          // (사진 1장 테스트는 ≡ 메뉴로 옮김 — 팀장 main 의 '개발용 숨김'과 같은 뜻, 11/11)
           OutlinedButton.icon(
             onPressed: _openMap,
-            icon: const Icon(Icons.local_cafe_outlined),
+            icon: const Icon(Icons.local_cafe, color: _americano, size: 26),
             label: const Text('가까운 졸음쉼터'),
             style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(48),
-              foregroundColor: AppColors.primary,
-              side: const BorderSide(color: AppColors.cardBorder),
+              minimumSize: const Size.fromHeight(52),
+              backgroundColor: _coffee.withValues(alpha: 0.16),
+              foregroundColor: _americano,
+              side: BorderSide(color: _coffee.withValues(alpha: 0.45)),
+              textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
@@ -293,20 +281,19 @@ class _StatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = AppColors.stage(stage);
-    final onColor = AppColors.onStage(stage);
+    // (11/11 C) 원색 바탕이면 같은 색 부엉이가 묻혀서 → 경고 화면과 같게 PPT 색 가이드 + 투명도 (진한 글자)
+    final color = stageTint(stage);
+    const onColor = AppColors.textPrimary;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(SleepEvent.stageLabels[stage], style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: onColor)),
-          const SizedBox(height: 6),
-          Text(
-            _message(stage),
-            style: TextStyle(fontSize: 14, height: 1.4, color: onColor),
-          ),
+          Text(SleepEvent.stageLabels[stage], style: TextStyle(fontSize: 34, fontWeight: FontWeight.w900, color: onColor)), // 단계 이름 크게 (11/11)
+          const SizedBox(height: 10),
+          // 단계별 부엉이가 말풍선으로 안내 (11/11 C — 부엉이를 앱 시그니처로). 문구는 팀장 stage_texts 기준 (_message)
+          OwlSays(owl: OwlSays.body(stage), text: _message(stage), owlSize: 112, fontSize: 19, maxLines: 6),
         ],
       ),
     );

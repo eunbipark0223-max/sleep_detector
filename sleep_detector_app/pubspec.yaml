@@ -66,14 +66,14 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.1  # 앱 아이콘 만들기 (dart run flutter_launcher_icons)
 
-# 앱 아이콘 — "졸음가드" 부엉이 로고 그대로 (11/09, 그림: 장수연님). 바꾸면 dart run flutter_launcher_icons 다시 실행
+# 앱 아이콘 — 부엉이 + 종 (11/11 확정 그림). 듀오링고처럼 캐릭터를 가운데 안전 구역에 두고 바깥은 같은 파랑 → 어느 폰 모양으로 잘려도 같은 얼굴. 바꾸면 dart run flutter_launcher_icons 다시 실행
 flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/icon/app_icon.png"
   remove_alpha_ios: true
-  # 안드로이드 적응형 아이콘 (폰마다 동그라미 · 네모로 잘림) — 배경은 로고 테두리와 같은 남색 + 가운데에 로고 그대로
-  adaptive_icon_background: "#001B8C"
+  # 안드로이드 적응형 아이콘 (폰마다 동그라미 · 네모로 잘림) — 배경 = 그림 바깥과 같은 파랑, 앞 그림 = 부엉이를 칸의 90% 로 가운데에 (가장자리는 부드럽게 흐려서 경계선 없음)
+  adaptive_icon_background: "#011396"
   adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
 
 # For information on the generic Dart part of this file, see the

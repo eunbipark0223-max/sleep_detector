@@ -201,7 +201,8 @@ class _RestScreenState extends State<RestScreen> {
         final busy = _phase == _Phase.resuming;
         final progress = _totalSec == 0 ? 0.0 : 1 - _left.inSeconds / _totalSec;
         return _Centered(children: [
-          Icon(done ? Icons.check_circle_outline : Icons.local_cafe_outlined, size: 48, color: done ? AppColors.normal : AppColors.rest),
+          // (11/11 C 초안) 컵 아이콘 대신 부엉이 — 쉬는 중 = 눈 감고 자는 초록 부엉이, 다 쉬었으면 = 엄지 척 초록 부엉이
+          Image.asset(done ? 'assets/owl/owl_stage0.png' : 'assets/owl/owl_sleep.png', width: 190, height: 190), // 쉬는 중 = 편하게 자는 초록 부엉이 (11/11 초안 그림)
           const SizedBox(height: 12),
           Text(done ? '충분히 쉬었어요' : '쉬는 중이에요', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
           if (_message.isNotEmpty) ...[
