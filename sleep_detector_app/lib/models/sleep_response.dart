@@ -24,6 +24,7 @@
 class SleepResponse {
   // 필드(멤버 변수) 선언
   final bool isSleep;
+  final bool faceFound; // 서버 사진에서 얼굴을 찾았는지 (11/11 — 고개 숙임 취소 뒤 재전송 시간 · 안내 음성)
   final int stage;
   final String status;
   final String reason;
@@ -42,6 +43,7 @@ class SleepResponse {
 
   SleepResponse({
     required this.isSleep,
+    this.faceFound = false,
     required this.stage,
     required this.status,
     required this.reason,
@@ -66,6 +68,7 @@ class SleepResponse {
   factory SleepResponse.fromJson(Map<String, dynamic> json){
     return SleepResponse(
       isSleep: json['is_sleep'] as bool? ?? false,
+      faceFound: json['face_found'] == true,
       stage: _toInt(json['stage']),
       status: json['status'] as String? ?? '',
       reason: json['reason'] as String? ?? '',

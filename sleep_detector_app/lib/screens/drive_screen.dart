@@ -40,6 +40,7 @@ import '../models/sleep_response.dart';
 import '../services/api_service.dart';
 import '../services/eye_monitor.dart';
 import '../services/voice_service.dart';
+import '../stage_texts.dart';
 import '../theme.dart';
 import 'rest_screen.dart';
 import 'warning_screen.dart';
@@ -469,7 +470,11 @@ class _DriveScreenState extends State<DriveScreen> {
       if (!mounted) return;
       _markOnline();
       // 서버가 취소하면 눈 감시 도구에 알린다 (고개 숙인 채 계속 자면 사진 없이 한 번 더 보내게, A)
-      if (!res.isSleep) _eye.serverCancelled();
+      if (!res.isSleep) {
+        // 얼굴이 보였는데 취소 = 눈 뜬 채 숙임 → 재전송은 숙임 시작부터 10초 + 안내 음성 한 번 (11/11 팀장, 단계 변화 없음)
+        _eye.serverCancelled(faceFound: res.faceFound);
+        if (_eye.lastCancelHeadFace && !_pauseDetect.value) VoiceService.speak(StageTexts.headDownGuide);
+      }
       _saveRegs(res.regulations);
       _cancelClear?.cancel();
       _cancelledAt = res.isSleep ? null : DateTime.now();
@@ -746,19 +751,8 @@ class _DriveScreenState extends State<DriveScreen> {
     );
   }
 
-  // 단계별 큰 글자 (0 정상 · 1 주의 · 2 휴식 권고 · 3 긴급) — 경고 화면 문구와 같은 말로 맞춤
-  String _stageTitle(int stage) {
-    switch (stage) {
-      case 1:
-        return '졸음 주의!\n정신 차리고 운전하세요';
-      case 2:
-        return '가까운 졸음쉼터로\n이동하세요';
-      case 3:
-        return '관리자에게 알렸습니다.\n정차해 주세요';
-      default:
-        return '안전 운전 중이에요';
-    }
-  }
+  // 단계별 큰 글자 (0 정상 · 1 주의 · 2 휴식 권고 · 3 긴급) — 경고 화면 · 홈 화면 · 음성과 같은 문구 (stage_texts.dart, 11/11)
+  String _stageTitle(int stage) => StageTexts.headline(stage);
 
   // 단계별 부엉이 얼굴 (0 초록 · 1 노랑 · 2 주황 · 3 빨강, 11/09 그림: 장수연님) — 경고 화면과 같은 부엉이
   String _stageOwl(int stage) => 'assets/owl/owl_face${stage.clamp(0, 3)}.png';
