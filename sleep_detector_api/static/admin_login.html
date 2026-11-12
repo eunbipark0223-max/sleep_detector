@@ -8,6 +8,7 @@ static/admin_login.html — 관리자 로그인 화면
   - 이메일 · 비밀번호로 POST /users/login → 관리자(role admin)면 토큰 저장 후 admin.html 로 이동
   - 기사 계정이면 "관리자 계정이 아닙니다"
   - 로고: img/logo.png (졸음 가드 올빼미, 팀 확정 이미지) · 탭 아이콘 img/favicon.png
+  - 화면 모양 (11/12): 앱(졸음 가드)과 같은 테마 — navy 그라데이션 바탕 · 큰 둥근 흰 카드 · 큰 둥근 navy 버튼. 부엉이 캐릭터는 쓰지 않고 로고만 둠
 ═══════════════════════════════════════════════════════════════
 -->
 <!DOCTYPE html>
@@ -20,25 +21,30 @@ static/admin_login.html — 관리자 로그인 화면
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&display=swap">
   <style>
-    :root { --navy: #1E40AF; --line: #E2E8F0; --bg: #F8FAFC; --red: #B3261E; }   /* 관리자 화면(admin.html)의 브랜드 파랑과 같은 값 */
+    :root { --navy: #1F2A5C; --navy-dark: #141C42; --bg: #F3F5FA; --red: #B3261E; --control-border: #6A7189; --tile: #E9EDF8; }   /* 관리자 화면(admin.html)과 같은 값 */
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--navy);
-           font-family: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; color: #1E293B; }
-    form { width: min(380px, 90vw); background: #fff; border-radius: 20px; padding: 36px 30px 30px; box-shadow: 0 12px 40px rgba(0, 0, 0, .28); }
-    .logo { width: 88px; height: 88px; margin: 0 auto 14px; display: block; }
-    h1 { margin: 0 0 4px; font-size: 24px; font-weight: 800; color: var(--navy); text-align: center; }
-    p.sub { margin: 0 0 24px; font-size: 14px; color: #667; text-align: center; }
-    label { display: block; margin: 14px 0 6px; font-size: 14px; font-weight: 700; }
-    input { width: 100%; padding: 13px 14px; border: 1px solid #64748B; border-radius: 12px; font-size: 16px; background: var(--bg); }
-    input:focus { outline: 2px solid var(--navy); border-color: transparent; background: #fff; }
-    button { width: 100%; margin-top: 24px; padding: 14px; border: 0; border-radius: 12px; background: var(--navy); color: #fff; font-size: 16px; font-weight: 800; cursor: pointer; font-family: inherit; }
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+           background: radial-gradient(900px 520px at 12% 0%, #3B4DA3 0%, rgba(59, 77, 163, 0) 62%), linear-gradient(160deg, #2B3A82 0%, #1F2A5C 55%, #141C42 100%);
+           font-family: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; color: #1F2430; }
+    form { width: min(420px, 100%); background: #fff; border-radius: 28px; padding: 40px 34px 34px; box-shadow: 0 24px 60px rgba(10, 16, 48, .45); }
+    .logo { width: 72px; height: 72px; margin: 0 auto 14px; display: block; border-radius: 20px; }
+    .pill { display: block; width: fit-content; margin: 0 auto 12px; padding: 6px 16px; border-radius: 999px; background: var(--tile); color: var(--navy); font-size: 14px; font-weight: 800; }
+    h1 { margin: 0 0 6px; font-size: 28px; font-weight: 800; color: #1F2430; text-align: center; letter-spacing: -.02em; }
+    p.sub { margin: 0 0 26px; font-size: 15px; color: #4A5068; text-align: center; }
+    label { display: block; margin: 16px 0 8px; font-size: 14px; font-weight: 700; }
+    input { width: 100%; height: 54px; padding: 0 18px; border: 1.5px solid var(--control-border); border-radius: 16px; font-size: 16px; font-family: inherit; background: var(--bg); }
+    input:focus { outline: 3px solid #3B57D9; outline-offset: 2px; border-color: var(--navy); background: #fff; }
+    button { width: 100%; height: 58px; margin-top: 28px; border: 0; border-radius: 18px; background: var(--navy); color: #fff; font-size: 17px; font-weight: 800; cursor: pointer; font-family: inherit; box-shadow: 0 6px 16px rgba(31, 42, 92, .3); }
+    button:hover:not(:disabled) { background: var(--navy-dark); }
+    button:focus-visible { outline: 3px solid #3B57D9; outline-offset: 3px; }
     button:disabled { opacity: .6; cursor: default; }
-    #msg { min-height: 20px; margin-top: 12px; font-size: 14px; color: var(--red); text-align: center; }
+    #msg { min-height: 22px; margin-top: 14px; font-size: 14px; font-weight: 600; color: var(--red); text-align: center; }
   </style>
 </head>
 <body>
   <form id="loginForm">
-    <img class="logo" src="img/logo.png" alt="졸음 가드 로고 (올빼미)" width="88" height="88">
+    <img class="logo" src="img/logo.png" alt="졸음 가드 로고 (올빼미)" width="72" height="72">
+    <span class="pill">관리자 전용</span>
     <h1>졸음 가드 관리자</h1>
     <p class="sub">졸음 경고 확인 · 조치완료</p>
     <label for="email">이메일</label>
