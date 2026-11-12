@@ -20,7 +20,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     → 지금 처리할 일(긴급 제외, 아직 열어 보지 않은 1 · 2단계 5건) → 이번 주 졸음 경고가 많은 기사 TOP 3 → 단계별 경고 · 시간대별 졸음 차트 (서버 /admin/stats/*)
     (모두 이미 받은 경고 · 기사 목록으로 계산. '조치까지 걸린 시간' 은 경고에 조치 시각 칸이 없어서 못 넣음)
   - 호칭: 글 속의 기사는 '이정자 기사님' (이름 + 기사님). 이름이 없으면 '기사님'. AI 글의 '기사에게 · 기사의' 도 이름으로 바꿔 보여 줌
-  - 긴급 알림: 새 3단계 · "음성 응답 없음"이 생기면 빨간 배너 + 알림음(삐 3번) + 탭 제목 깜빡임. [알림음 켜짐] 버튼으로 끌 수 있음
+  - 긴급 알림: 새 3단계 · "음성 응답 없음"이 생기면 빨간 배너 + 알림음(삐 3번) + 탭 제목 깜빡임. 위쪽 종 모양 아이콘 버튼으로 켜고 끔 (글자 없이 종 / 빗금 친 종, 11/12)
     (브라우저는 화면을 한 번 누르기 전에는 소리를 막아서, 그때는 배너에 안내가 나옴)
     배너는 미처리 긴급이 1건이라도 있으면 계속 보임 ("미처리 긴급 N건 [바로 보기]"). [닫기] 는 알림음 · 깜빡임만 끄고, 전부 조치완료되면 배너가 사라짐
   - 졸음 경고: 제목 바로 아래 탭(전체 · 미확인 · 긴급 · 휴게 미준수 · 음성 응답 없음 · 3단계, 탭마다 건수) + 표. 좌우 화살표로 탭 이동
@@ -36,7 +36,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     · 기사 상세 페이지 #driver/번호 — 경고 현황(오늘 · 누적 · 조치 필요 + 1 · 2 · 3단계 색 칸) · 최근 경고 10건(줄을 누르면 경고 상세로), 오른쪽에 연락처. 서버 API 추가 없이 이미 받은 경고 · 기사 목록으로 계산
   - 내 정보 #profile: 왼쪽 아래 프로필(이름 · 이메일)을 누르면 열림 (따로 '설정' 메뉴 없음, 옛 주소 #settings 도 여기로, 11/09)
     이름 · 전화번호 수정(이메일은 고정) → PATCH /users/me · 비밀번호 변경 → PUT /users/me/password(지금 비밀번호 확인, 가입과 같은 규칙)
-    알림음 켜고 끄기는 위쪽 [알림음] 버튼 하나로. 새로고침은 10초 자동 갱신 + 브라우저 새로고침으로 충분해서 버튼을 두지 않음 (끊겼을 때만 배너에 [다시 시도])
+    알림음 켜고 끄기는 위쪽 종 아이콘 버튼 하나로. 새로고침은 10초 자동 갱신 + 브라우저 새로고침으로 충분해서 버튼을 두지 않음 (끊겼을 때만 배너에 [다시 시도])
     로고는 img/logo.png (팀 확정 올빼미), 탭 아이콘 img/favicon.png
   - AI 처리 표시: 보고서의 report.is_real(llm · rag · agent)로 '모의'로 대체된 단계가 있으면 카드 아래에 한 줄로 알려 줌
 
@@ -141,6 +141,9 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     .topbar { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 6px; font-size: 14px; color: var(--text-sub); }
     .topbar button { white-space: nowrap; border: 1.5px solid var(--control-border); background: var(--surface); border-radius: 999px; min-height: 38px; padding: 0 18px; font-weight: 700; color: var(--navy); cursor: pointer; }
     .topbar button:hover { border-color: var(--navy); background: var(--brand-light); }
+    /* 알림음 켜짐 · 꺼짐 아이콘 버튼 (글자 없음). 꺼짐은 회색 + 빗금 친 종으로 모양도 달라서 색만으로 구분하지 않음 */
+    .topbar button.icon-btn { width: 44px; height: 44px; min-height: 0; padding: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+    .topbar button.icon-btn[aria-pressed="false"] { color: var(--text-sub); background: #F6F7FC; }
     /* 긴급 알림 배너: 새 3단계 · 음성 응답 없음이 생기면 위에 붙어서 보인다 */
     .urgent-banner { position: sticky; top: 0; z-index: 60; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: var(--stage-3-solid); color: #fff; padding: 14px 20px; border-radius: 22px; margin-bottom: 14px; font-size: 15px; font-weight: 700; box-shadow: 0 8px 20px rgba(198, 40, 40, .30); }
     .urgent-banner[hidden] { display: none; }
@@ -476,7 +479,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       <button type="button" id="ubClose" title="알림음과 탭 깜빡임만 꺼요. 배너는 미처리 긴급이 모두 처리될 때까지 남아요.">닫기</button>
     </div>
     </div>
-    <div class="topbar"><span id="updated">불러오는 중…</span><button type="button" id="soundBtn" aria-pressed="true" title="새 긴급 경고(3단계 · 음성 응답 없음)가 오면 삐 소리">알림음 켜짐</button></div>
+    <div class="topbar"><span id="updated">불러오는 중…</span><button type="button" class="icon-btn" id="soundBtn" aria-pressed="true" aria-label="알림음" title="알림음 켜짐"></button></div>
 
     <!-- 대시보드 -->
     <section class="view" id="view-dashboard" aria-labelledby="t-dashboard">
@@ -593,6 +596,8 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       mail: 'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z',
       alert: 'M11 15h2v2h-2zm0-8h2v6h-2zm.99-5C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z',
       copy: 'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z',
+      bell: 'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z',
+      bellOff: 'M20 18.69L7.84 6.14 5.27 3.49 4 4.76l2.8 2.8v.01c-.52.99-.8 2.16-.8 3.42v5l-2 2v1h13.73l2 2L21 19.72l-1-1.03zM12 22c1.11 0 2-.89 2-2h-4c0 1.11.89 2 2 2zm6-7.32V11c0-3.08-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68c-.15.03-.29.08-.42.12-.1.03-.2.07-.3.11h-.01c-.01 0-.01 0-.02.01-.23.09-.46.2-.68.31 0 0-.01 0-.01.01L18 14.68z',
     };
     const SVG_NS = 'http://www.w3.org/2000/svg';
     function icon(name, size) {
@@ -1053,7 +1058,13 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       startBlink();
     }
     document.addEventListener('visibilitychange', () => { if (!document.hidden) stopBlink(); }); // 탭으로 돌아오면 깜빡임은 멈춘다 (배너는 남음)
-    function syncSoundBtn() { const b = $('soundBtn'); b.setAttribute('aria-pressed', String(soundOn)); b.textContent = soundOn ? '알림음 켜짐' : '알림음 꺼짐'; }
+    // 알림음 켜짐 · 꺼짐은 글자 없이 아이콘으로 (11/12): 켜짐 = 종, 꺼짐 = 빗금 친 종. 이름(aria-label)은 늘 '알림음', 상태는 aria-pressed 로 읽힘
+    function syncSoundBtn() {
+      const b = $('soundBtn');
+      b.setAttribute('aria-pressed', String(soundOn));
+      b.title = soundOn ? '알림음 켜짐 (누르면 꺼요) — 새 긴급 경고가 오면 삐 소리가 나요' : '알림음 꺼짐 (누르면 켜요)';
+      b.replaceChildren(icon(soundOn ? 'bell' : 'bellOff', 22));
+    }
 
     // 바뀐 것만 다시 그림 (10초마다 불러와도 포커스 · 스크롤 유지)
     function renderAll(force) {
@@ -1365,7 +1376,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
         h('button', { class: 'btn brand', type: 'submit', id: 'pwSave' }, '비밀번호 변경'));
       pwForm.addEventListener('submit', savePassword);
 
-      // 알림음 켜고 끄기는 위쪽 [알림음] 버튼 하나로 (여기에 같은 버튼을 또 두지 않음)
+      // 알림음 켜고 끄기는 위쪽 종 아이콘 버튼 하나로 (여기에 같은 버튼을 또 두지 않음)
       fill(box, h('div', { class: 'profile-grid' },
         h('section', { class: 'card' }, h('h3', null, icon('person', 20), '프로필'), profileForm),
         h('section', { class: 'card' }, h('h3', null, icon('shield', 20), '비밀번호 변경'), pwForm)));
