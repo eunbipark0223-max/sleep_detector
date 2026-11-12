@@ -4,22 +4,35 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
 담당: D   |   우선: P0
 수업 원본: road_hazard_api/static/admin.html (🟡 수정)
 화면 모양: 「관리자 (2).html」 확정본 (사이드바 · 통계 카드 · 차트 · 경고 표) — 상세는 모달이 아니라 주소가 있는 페이지(11/05 변경)
+           11/12: 앱(졸음 가드)과 같은 테마로 다시 입힘 — navy 사이드바 · 라벤더 바탕 · 둥근 큰 카드 · 단계별 파스텔 카드 · 단계 색 큰 상황 카드(대시보드 맨 위 · 경고 상세 머리)
+           부엉이 캐릭터는 쓰지 않고 로고만 둠. 기능 · 글은 그대로 (CSS 와 대시보드 맨 위 상황 카드 · 카드 색만 바뀜)
+           11/12 (2차 — 시연 흐름 "앱 3단계 → 관리자 웹 첫 화면에 바로 빨갛게 → 전화 → [조치완료] → 앱 해제" 를 클릭 한두 번에):
+             · 대시보드 맨 위를 '지금 긴급' 영역으로 바꿈 (옛 상황 카드는 이 영역이 대신함). 통계 카드 4개는 그 아래 작게
+             · [조치완료] 를 긴급 영역과 경고 표의 긴급 줄에서 바로 누름 (확인 창 askConfirm → changeStatus 그대로 재사용)
+             · 빨간 배너는 미처리 긴급이 있는 동안 계속 보임 ([닫기] 는 알림음 · 깜빡임만 끔)
+             · 경고 화면은 미처리 긴급이 있으면 '긴급' 탭으로 열림 · '지금 처리할 일' 은 긴급을 빼고 미확인만 · 기사 관리는 조치 필요 기사가 맨 위
+             서버 API · JSON 칸 이름은 그대로 (PATCH /events/{id}/status)
 
 [이 파일이 하는 일]
-  - 대시보드: 오늘 전체 경고(어제와 비교) · 긴급(조치 필요: 3단계 + 음성 응답 없음, 미처리) · 등록된 기사(조치 필요 · 확인 필요 · 이상 없음 수) · 휴게 미준수(오늘) 카드 (누르면 목록으로)
-    → 지금 처리할 일(긴급 먼저 · 미확인, 5건) → 이번 주 졸음 경고가 많은 기사 TOP 3 · 전화번호가 없는 기사 → 단계별 경고 · 시간대별 졸음 차트 (서버 /admin/stats/*)
+  - 대시보드: 맨 위 '지금 긴급' 영역(미처리 긴급 isOpenUrgent 전부, 건수 제한 없음. 줄마다 기사 이름 · 차량번호 · 단계(3단계 / 음성 응답 없음) · 몇 분 전 · 주소 · 전화번호 + [전화 걸기] [상세 보기] [조치완료].
+    긴급이 0건이면 초록으로 "처리할 긴급 경고가 없어요" 한 줄)
+    → 작은 통계 카드 4개: 오늘 전체 경고(어제와 비교) · 긴급(조치 필요: 3단계 + 음성 응답 없음, 미처리) · 등록된 기사(조치 필요 · 확인 필요 · 이상 없음 수) · 휴게 미준수(오늘) (누르면 목록으로)
+    → 지금 처리할 일(긴급 제외, 아직 열어 보지 않은 1 · 2단계 5건) → 이번 주 졸음 경고가 많은 기사 TOP 3 → 단계별 경고 · 시간대별 졸음 차트 (서버 /admin/stats/*)
     (모두 이미 받은 경고 · 기사 목록으로 계산. '조치까지 걸린 시간' 은 경고에 조치 시각 칸이 없어서 못 넣음)
   - 호칭: 글 속의 기사는 '이정자 기사님' (이름 + 기사님). 이름이 없으면 '기사님'. AI 글의 '기사에게 · 기사의' 도 이름으로 바꿔 보여 줌
   - 긴급 알림: 새 3단계 · "음성 응답 없음"이 생기면 빨간 배너 + 알림음(삐 3번) + 탭 제목 깜빡임. [알림음 켜짐] 버튼으로 끌 수 있음
     (브라우저는 화면을 한 번 누르기 전에는 소리를 막아서, 그때는 배너에 안내가 나옴)
-  - 졸음 경고: 제목 바로 아래 탭(전체 · 미확인 · 긴급 · 3단계 · 휴게 미준수 · 음성 응답 없음, 탭마다 건수) + 표. 좌우 화살표로 탭 이동
-    · 3단계 / "음성 응답 없음"(reason no_response) 미처리 줄은 연한 빨강으로 표시
+    배너는 미처리 긴급이 1건이라도 있으면 계속 보임 ("미처리 긴급 N건 [바로 보기]"). [닫기] 는 알림음 · 깜빡임만 끄고, 전부 조치완료되면 배너가 사라짐
+  - 졸음 경고: 제목 바로 아래 탭(전체 · 미확인 · 긴급 · 휴게 미준수 · 음성 응답 없음 · 3단계, 탭마다 건수) + 표. 좌우 화살표로 탭 이동
+    · 미처리 긴급이 있으면 '긴급' 탭으로 열림 (목록 카드 · 배너에서 탭을 골라 들어온 때는 그 탭). '3단계' 는 긴급과 겹쳐서 맨 뒤로
+    · 3단계 / "음성 응답 없음"(reason no_response) 미처리 줄은 연한 빨강으로 표시하고 그 줄에 [조치완료] 버튼
     · 검색칸: 기사 이름 · 주소 · 종류 · 번호. 줄을 누르면 상세로 (번호는 진짜 링크라 새 탭으로도 열림). 따로 [상세 보기] 버튼은 두지 않음 (11/09)
     · 경고 상세 페이지 #event/번호 — 왼쪽: 지금 할 일 → AI 분석 결과(무슨 일 · 왜 이 단계 · 법규 · 안내 · 퀴즈 · 휴식 기록), 오른쪽: 사진 · 위치 · 기사 연락처
       (눈 측정값 · 좌표 숫자는 보여 주지 않음. LLM · RAG · Agent 같은 용어는 쓰지 않고 시험용 모의 값이 섞였을 때만 안내)
     · 상세를 열면 미확인 → 확인 으로 자동으로 바뀜 (화면이 보일 때만. 서버는 '확인'을 미확인일 때만 받음 → 조치완료를 되돌리지 않음, 11/09)
     · 머리의 [조치완료] → PATCH /events/{id}/status → 3단계 해제 (페이지에 그대로 머묾)
-  - 기사 관리: 탭(전체 · 조치 필요 · 확인 필요 · 이상 없음 · 전화번호 미등록, 건수 표시. 조치 필요 = 미처리 긴급 경고, 확인 필요 = 아직 열어 보지 않은 경고, 나머지 = 이상 없음) + 표(이름 · 차량번호 · 전화번호 · 상태 · 오늘 경고 · 누적 경고(단계 색 막대) · 마지막 경고) + 검색
+  - 기사 관리: 탭(전체 · 조치 필요 · 확인 필요 · 이상 없음 · 전화번호 미등록, 건수 표시. 조치 필요 = 미처리 긴급 경고, 확인 필요 = 아직 열어 보지 않은 경고, 나머지 = 이상 없음) + 표(이름 · 차량번호 · 전화번호 · 상태 · 오늘 경고 · 누적 경고(단계 색 막대) · 마지막 경고 · 연락) + 검색
+    · 조치 필요 기사는 맨 위에 빨간 줄로, 그 줄에서 바로 [전화 걸기]
     · 기사 상세 페이지 #driver/번호 — 경고 현황(오늘 · 누적 · 조치 필요 + 1 · 2 · 3단계 색 칸) · 최근 경고 10건(줄을 누르면 경고 상세로), 오른쪽에 연락처. 서버 API 추가 없이 이미 받은 경고 · 기사 목록으로 계산
   - 내 정보 #profile: 왼쪽 아래 프로필(이름 · 이메일)을 누르면 열림 (따로 '설정' 메뉴 없음, 옛 주소 #settings 도 여기로, 11/09)
     이름 · 전화번호 수정(이메일은 고정) → PATCH /users/me · 비밀번호 변경 → PUT /users/me/password(지금 비밀번호 확인, 가입과 같은 규칙)
@@ -63,111 +76,165 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&display=swap">
   <style>
+    /* ═══════════════════════════════════════════════════════════
+       앱(졸음 가드)과 같은 테마 (11/12) — theme.dart 의 navy · 라벤더 바탕 · 둥근 큰 카드 ·
+       '부엉이 색의 뜻' 파스텔 카드 · 단계 색 큰 상황 카드. 부엉이 캐릭터는 쓰지 않는다.
+       글자 14px 이상 · 글자 대비 4.5:1 이상 · 색만으로 구분하지 않기는 그대로 지킨다.
+       ═══════════════════════════════════════════════════════════ */
     :root {
-      --brand: #1E40AF; --brand-dark: #1E3A8A; --brand-light: #DBEAFE;
-      --bg: #F8FAFC; --surface: #FFFFFF; --text-main: #1E293B; --text-sub: #55617A; --border: #E2E8F0;
-      --control-border: #64748B;   /* 버튼 · 입력 칸 테두리 (바탕과 3:1 이상, --border 는 장식용 선) */
-      /* 단계 색 (확정본 값). 흰 글자를 올릴 때는 -solid 를, 글자색으로는 -text 를 쓴다 (모두 4.5:1 이상) */
+      --navy: #1F2A5C; --navy-2: #2B3A82; --navy-dark: #141C42;
+      --brand: var(--navy); --brand-dark: var(--navy-dark); --brand-light: #E9EDF8;   /* 아이콘 타일 · 연한 칸 */
+      --bg: #F3F5FA; --surface: #FFFFFF; --cream: #FFF8EC;
+      --text-main: #1F2430; --text-sub: #4A5068; --border: #E1E5F0;
+      --control-border: #6A7189;   /* 입력 칸 테두리 (바탕과 3:1 이상, --border 는 장식용 선) */
+      /* 단계 색. 흰 글자를 올릴 때는 -solid 를, 글자색으로는 -text 를 쓴다 (모두 4.5:1 이상) */
       --stage-0: #1D9E75; --stage-0-solid: #0F7B5A;
       --stage-1: #E8AE1E; --stage-2: #EF7D27;
       --stage-3: #E24B4A; --stage-3-solid: #C62828; --stage-3-text: #B3261E;
-      --alert-bg: #FEF2F2; --alert-border: #FCA5A5;
+      /* 앱 '부엉이 색의 뜻' 카드의 파스텔 + 그 위에 얹는 진한 글자색 */
+      --p-0: #BFE0CD; --ink-0: #14532D;
+      --p-1: #F6DFA4; --ink-1: #5C3D00;
+      --p-2: #F4BC8E; --ink-2: #7C2D12;
+      --p-3: #F0B0AE; --ink-3: #7F1D1D;
+      --alert-bg: #FDEEEE; --alert-row: #FBE6E4; --alert-border: #F0A8A7;
+      --shadow: 0 6px 18px rgba(31, 42, 92, .07);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; }
     svg { display: block; flex: none; }
     button { font-family: inherit; font-size: inherit; color: inherit; }
-    :focus-visible { outline: 3px solid #2563EB; outline-offset: 2px; }
+    :focus-visible { outline: 3px solid #3B57D9; outline-offset: 2px; }
+    .sidebar :focus-visible { outline-color: #fff; }
+    .page-head :focus-visible { outline-color: #fff; box-shadow: 0 0 0 2px rgba(20, 28, 66, .75); }   /* 어떤 단계 색 위에서도 보이게 안쪽에 어두운 줄 */
     body { word-break: keep-all; overflow-wrap: anywhere; }   /* 한글 낱말 중간에서 줄이 바뀌지 않게 */
     body { display: flex; height: 100vh; height: 100dvh; background: var(--bg); color: var(--text-main); overflow: hidden; font-size: 16px; line-height: 1.5; }
     .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-    .skip { position: absolute; left: 12px; top: -60px; background: #fff; color: var(--brand); padding: 10px 16px; border-radius: 8px; font-weight: 800; z-index: 300; }
+    .skip { position: absolute; left: 12px; top: -60px; background: #fff; color: var(--navy); padding: 10px 16px; border-radius: 12px; font-weight: 800; z-index: 300; }
     .skip:focus { top: 12px; }
 
-    /* ── 사이드바 ── */
-    .sidebar { width: 232px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
-    .sidebar-header { padding: 18px 22px; font-size: 18px; font-weight: 800; color: var(--brand); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
-    .menu { flex: 1; padding: 16px 0; }
-    .menu-item { width: 100%; border: none; background: none; text-align: left; padding: 10px 22px; min-height: 44px; display: flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 500; color: var(--text-sub); cursor: pointer; border-right: 4px solid transparent; text-decoration: none; }
-    .menu-item:hover, .menu-item[aria-current="page"] { background: var(--brand-light); color: var(--brand); font-weight: 700; border-right-color: var(--brand); }
-    .menu-badge { margin-left: auto; background: var(--stage-3-solid); color: #fff; font-size: 14px; font-weight: 700; min-width: 24px; height: 24px; border-radius: 12px; display: none; align-items: center; justify-content: center; padding: 0 7px; }
-    .brand-logo { width: 34px; height: 34px; flex: none; }
+    /* ── 사이드바: 앱 상단바와 같은 navy ── */
+    .sidebar { width: 252px; flex-shrink: 0; background: linear-gradient(180deg, var(--navy) 0%, var(--navy-dark) 100%); color: #fff; display: flex; flex-direction: column; }
+    .sidebar-header { padding: 26px 22px 18px; font-size: 19px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 12px; letter-spacing: -.01em; }
+    .brand-logo { width: 42px; height: 42px; flex: none; border-radius: 13px; }
+    .menu { flex: 1; padding: 10px 14px; display: grid; gap: 6px; align-content: start; }
+    .menu-item { width: 100%; border: none; background: none; text-align: left; padding: 10px 16px; min-height: 50px; display: flex; align-items: center; gap: 12px; font-size: 16px; font-weight: 600; color: #D5DAF0; cursor: pointer; text-decoration: none; border-radius: 16px; }
+    .menu-item:hover { background: rgba(255, 255, 255, .12); color: #fff; }
+    .menu-item[aria-current="page"] { background: #fff; color: var(--navy); font-weight: 800; }   /* 지금 보는 메뉴는 흰 알약 */
+    .menu-badge { margin-left: auto; background: var(--stage-3-solid); color: #fff; font-size: 14px; font-weight: 800; min-width: 26px; height: 26px; border-radius: 13px; display: none; align-items: center; justify-content: center; padding: 0 8px; }
     /* 왼쪽 아래 프로필: 누르면 내 정보(#profile) */
-    .sidebar-user { display: flex; align-items: center; gap: 10px; padding: 12px 16px 12px 22px; border-top: 1px solid var(--border); font-size: 14px; line-height: 1.4; min-width: 0; color: inherit; text-decoration: none; border-right: 4px solid transparent; }
+    .sidebar-user { display: flex; align-items: center; gap: 12px; margin: 0 14px 8px; padding: 12px 14px; border-radius: 18px; background: rgba(255, 255, 255, .10); font-size: 14px; line-height: 1.4; min-width: 0; color: #fff; text-decoration: none; }
     .sidebar-user[hidden] { display: none; }
-    .sidebar-user:hover, .sidebar-user[aria-current="page"] { background: var(--brand-light); }
-    .sidebar-user[aria-current="page"] { border-right-color: var(--brand); }
-    .sidebar-user .avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--brand-light); color: var(--brand); display: flex; align-items: center; justify-content: center; flex: none; }
-    .sidebar-user:hover .avatar, .sidebar-user[aria-current="page"] .avatar { background: var(--brand); color: #fff; }
+    .sidebar-user:hover { background: rgba(255, 255, 255, .18); }
+    .sidebar-user[aria-current="page"] { background: #fff; color: var(--navy); }
+    .sidebar-user .avatar { width: 38px; height: 38px; border-radius: 50%; background: rgba(255, 255, 255, .20); color: #fff; display: flex; align-items: center; justify-content: center; flex: none; }
+    .sidebar-user[aria-current="page"] .avatar { background: var(--brand-light); color: var(--navy); }
     .sidebar-user .who { display: grid; min-width: 0; flex: 1; }
-    .sidebar-user b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .sidebar-user small { color: var(--text-sub); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .sidebar-user .chev { font-size: 20px; }
-    .sidebar-footer { width: 100%; text-align: left; background: none; border: none; border-top: 1px solid var(--border); padding: 12px 22px; min-height: 48px; cursor: pointer; color: var(--text-sub); font-weight: 500; font-size: 15px; display: flex; align-items: center; gap: 12px; }
-    .sidebar-footer:hover { color: var(--text-main); background: var(--bg); }
+    .sidebar-user b { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sidebar-user small { color: #CBD1EB; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sidebar-user[aria-current="page"] small { color: var(--text-sub); }
+    .sidebar-user .chev { font-size: 20px; color: inherit; }
+    .sidebar-footer { width: calc(100% - 28px); margin: 0 14px 18px; text-align: left; background: none; border: none; border-radius: 16px; padding: 10px 16px; min-height: 48px; cursor: pointer; color: #D5DAF0; font-weight: 600; font-size: 15px; display: flex; align-items: center; gap: 12px; }
+    .sidebar-footer:hover { color: #fff; background: rgba(255, 255, 255, .12); }
 
     /* ── 본문 ── */
-    .main-content { flex: 1; overflow-y: auto; padding: 28px 40px 48px; min-width: 0; }
+    .main-content { flex: 1; overflow-y: auto; padding: 26px 44px 56px; min-width: 0; }
     .main-content:focus { outline: none; }
-    .topbar { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 8px; font-size: 14px; color: var(--text-sub); }
-    .topbar button { white-space: nowrap; border: 1px solid var(--control-border); background: var(--surface); border-radius: 8px; min-height: 34px; padding: 0 14px; font-weight: 700; color: var(--text-sub); cursor: pointer; }
-    .topbar button:hover { border-color: var(--brand); color: var(--brand); }
+    .topbar { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 6px; font-size: 14px; color: var(--text-sub); }
+    .topbar button { white-space: nowrap; border: 1.5px solid var(--control-border); background: var(--surface); border-radius: 999px; min-height: 38px; padding: 0 18px; font-weight: 700; color: var(--navy); cursor: pointer; }
+    .topbar button:hover { border-color: var(--navy); background: var(--brand-light); }
     /* 긴급 알림 배너: 새 3단계 · 음성 응답 없음이 생기면 위에 붙어서 보인다 */
-    .urgent-banner { position: sticky; top: 0; z-index: 60; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--stage-3-solid); color: #fff; padding: 12px 16px; border-radius: 12px; margin-bottom: 12px; font-size: 15px; font-weight: 700; box-shadow: 0 4px 14px rgba(198,40,40,.35); }
+    .urgent-banner { position: sticky; top: 0; z-index: 60; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: var(--stage-3-solid); color: #fff; padding: 14px 20px; border-radius: 22px; margin-bottom: 14px; font-size: 15px; font-weight: 700; box-shadow: 0 8px 20px rgba(198, 40, 40, .30); }
     .urgent-banner[hidden] { display: none; }
     .banners { position: sticky; top: 0; z-index: 60; }            /* 긴급 · 연결 배너가 겹치지 않게 함께 붙음 */
     .banners .urgent-banner { position: static; }
-    .urgent-banner.warn { background: #8A4500; }
+    .urgent-banner.warn { background: #8A4500; box-shadow: 0 8px 20px rgba(138, 69, 0, .28); }
     .urgent-banner .ub-text { flex: 1 1 240px; line-height: 1.5; }
     .urgent-banner .ub-text small { display: block; font-weight: 500; opacity: .92; }
-    .urgent-banner button { min-height: 40px; padding: 0 16px; border-radius: 20px; border: 2px solid #fff; background: transparent; color: #fff; font-weight: 700; cursor: pointer; }
+    .urgent-banner button { min-height: 42px; padding: 0 20px; border-radius: 999px; border: 2px solid #fff; background: transparent; color: #fff; font-weight: 700; cursor: pointer; }
     .urgent-banner button.primary { background: #fff; color: var(--stage-3-text); }
     .urgent-banner button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
     .view { display: none; max-width: 1320px; margin: 0 auto; }
     .view.active { display: block; }
-    .page-title { font-size: 24px; font-weight: 800; margin-bottom: 18px; }
+    .page-title { font-size: 30px; font-weight: 800; margin-bottom: 20px; letter-spacing: -.02em; line-height: 1.3; }
     .page-title:focus { outline: none; }
-    .page-title:focus-visible { outline: 3px solid #2563EB; outline-offset: 4px; }
+    .page-title:focus-visible { outline: 3px solid #3B57D9; outline-offset: 4px; border-radius: 6px; }
 
-    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
-    .stat-card { background: var(--surface); padding: 16px 20px; border-radius: 10px; border: 1px solid var(--border); display: flex; flex-direction: column; text-align: left; cursor: pointer; text-decoration: none; color: inherit; transition: border-color .15s; }
-    .stat-card:hover { border-color: var(--brand); }
-    .stat-card.alert { background: var(--alert-bg); border-color: var(--alert-border); }
-    .stat-card.alert .stat-title, .stat-card.alert .stat-value { color: var(--stage-3-text); }
-    .stat-title { font-size: 15px; font-weight: 700; color: var(--text-sub); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
-    .stat-sub { margin-top: 4px; font-size: 14px; color: var(--text-sub); }
-    .stat-card.alert .stat-sub { color: var(--stage-3-text); }
-    .dash-block { margin-bottom: 16px; }
-    .dash-two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-    .todo-list { display: grid; margin-top: 10px; }
-    .todo-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 16px; padding: 12px 20px; border-top: 1px solid var(--border); color: inherit; text-decoration: none; }
-    .todo-row:hover { background: #F1F5F9; }
-    .todo-row.urgent { background: var(--alert-bg); box-shadow: inset 5px 0 0 var(--stage-3); }
+    /* ── 대시보드 맨 위 '지금 긴급' 영역 (11/12): 미처리 긴급을 전부, 줄마다 전화 · 상세 · 조치완료. 없으면 초록 한 줄 ── */
+    .urgent-zone { margin-bottom: 20px; padding: 24px 26px 26px; border-radius: 28px; color: #fff; background: linear-gradient(160deg, #B84740 0%, #962F2B 100%); box-shadow: 0 12px 30px rgba(150, 47, 43, .28); }
+    .urgent-zone.ok { display: flex; align-items: center; gap: 14px; padding: 18px 26px; background: linear-gradient(160deg, #247A4D 0%, #19593A 100%); box-shadow: 0 8px 20px rgba(25, 89, 58, .20); }
+    .uz-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+    .uz-head .hico { width: 52px; height: 52px; border-radius: 50%; background: rgba(255, 255, 255, .22); border: 1px solid rgba(255, 255, 255, .55); display: flex; align-items: center; justify-content: center; flex: none; }
+    .uz-title { font-size: 30px; line-height: 1.3; font-weight: 800; letter-spacing: -.02em; }
+    .urgent-zone.ok .uz-title { font-size: 20px; }
+    .uz-sub { flex: 1 1 280px; font-size: 15px; font-weight: 600; line-height: 1.5; }
+    .u-list { list-style: none; display: grid; gap: 12px; }
+    /* 줄마다 [정보 묶음 | 버튼 묶음]. 영역이 넓으면(1100px 이상) 정보가 진짜 한 줄 — 기사(이름 · 차량번호) | 단계 · 몇 분 전 | 주소 | 전화번호 —
+       좁으면 윗줄(기사 | 단계 · 몇 분 전 | 전화번호) + 아랫줄(주소) 두 줄. 화면 폭이 아니라 이 영역의 폭(container query)으로 접는다 */
+    .urgent-zone { container: uz / inline-size; }
+    .u-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 20px; align-items: center; padding: 14px 20px; border-radius: 20px; background: #fff; color: var(--text-main); box-shadow: 0 4px 12px rgba(0, 0, 0, .12); }
+    .u-info { display: grid; grid-template-columns: 150px 170px minmax(0, 1fr); gap: 6px 16px; align-items: center; min-width: 0; }
+    .u-who { display: grid; min-width: 0; line-height: 1.4; }
+    .u-who b { font-size: 17px; font-weight: 800; overflow-wrap: anywhere; }
+    .u-who span, .u-ago { font-size: 14px; color: var(--text-sub); }
+    .u-kind { display: grid; justify-items: start; gap: 4px; }
+    .u-ago { font-weight: 700; color: var(--stage-3-text); }
+    .u-phone { font-size: 15px; font-weight: 700; white-space: nowrap; }
+    .u-where { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 6px; font-size: 15px; line-height: 1.45; min-width: 0; }
+    .u-where svg { margin-top: 2px; color: var(--text-sub); }
+    .u-actions { display: flex; gap: 8px; }
+    @container uz (min-width: 1100px) {
+      .u-info { grid-template-columns: 150px 170px minmax(0, 1fr) 125px; }
+      .u-where { grid-column: auto; order: 3; }
+      .u-phone { order: 4; }
+    }
+    @container uz (max-width: 760px) {
+      .u-row { grid-template-columns: minmax(0, 1fr); }
+      .u-info { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+      .u-phone { grid-column: 1 / -1; }
+      .u-actions { flex-wrap: wrap; }
+    }
+    @media (max-width: 560px) { .uz-title { font-size: 26px; } }
+
+    /* KPI 카드: 앱 '부엉이 색의 뜻' 카드처럼 파스텔 (긴급 빨강 · 긴급 없음 초록 · 휴게 미준수 주황). 긴급 영역 아래라서 작게 (11/12) */
+    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+    .stat-card { background: var(--surface); padding: 14px 18px; border-radius: 20px; border: 1px solid var(--border); box-shadow: var(--shadow); display: flex; flex-direction: column; text-align: left; cursor: pointer; text-decoration: none; color: inherit; transition: transform .15s, box-shadow .15s; }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(31, 42, 92, .13); }
+    .stat-card.tone-urgent { background: var(--p-3); border-color: transparent; --ink: var(--ink-3); }
+    .stat-card.tone-ok { background: var(--p-0); border-color: transparent; --ink: var(--ink-0); }
+    .stat-card.tone-rest { background: var(--p-2); border-color: transparent; --ink: var(--ink-2); }
+    .stat-card[class*="tone-"]:not(.tone-plain) .stat-title, .stat-card[class*="tone-"]:not(.tone-plain) .stat-value, .stat-card[class*="tone-"]:not(.tone-plain) .stat-value small { color: var(--ink); }
+    .stat-card[class*="tone-"]:not(.tone-plain) .stat-sub { color: var(--text-main); }
+    .stat-card[class*="tone-"]:not(.tone-plain) .stat-title > svg:first-child { background: rgba(255, 255, 255, .55); color: var(--ink); }
+    .stat-title { font-size: 14px; font-weight: 700; color: var(--text-sub); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+    .stat-card .stat-title > svg:first-child { padding: 5px; border-radius: 10px; }
+    .stat-sub { margin-top: 2px; font-size: 14px; color: var(--text-sub); line-height: 1.4; }
+    .stat-value { font-size: 28px; font-weight: 800; line-height: 1.2; letter-spacing: -.02em; }
+    .stat-value small { font-size: 15px; font-weight: 600; color: var(--text-sub); margin-left: 3px; letter-spacing: 0; }
+    .dash-block { margin-bottom: 20px; }
+    .todo-list { display: grid; margin-top: 12px; }
+    .todo-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 16px; padding: 14px 24px; border-top: 1px solid var(--border); color: inherit; text-decoration: none; }
+    .todo-row:hover { background: #F6F7FC; }
     .todo-main { display: grid; min-width: 0; line-height: 1.4; }
     .todo-main span { font-size: 14px; color: var(--text-sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .todo-time { font-size: 14px; color: var(--text-sub); white-space: nowrap; }
-    .chev { font-size: 22px; color: #94A3B8; }
+    .chev { font-size: 22px; color: #8A90A5; }
     .empty-note { color: var(--text-sub); font-size: 15px; padding: 4px 0 8px; }
-    .card.flush .empty-note { padding: 14px 20px 20px; }
-    .rank-list { list-style: none; display: grid; gap: 12px; }
-    .rank-list li { display: grid; grid-template-columns: 26px minmax(0, 1fr) 90px auto; align-items: center; gap: 12px; font-size: 15px; }
-    .rank-list a, .name-list a { color: var(--brand); font-weight: 700; text-decoration: none; }
-    .rank-list a:hover, .name-list a:hover { text-decoration: underline; }
-    .rank-no { width: 26px; height: 26px; border-radius: 50%; background: var(--brand-light); color: var(--brand); font-weight: 800; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; }
-    .rank-bar { height: 8px; border-radius: 4px; background: #E2E8F0; overflow: hidden; }
-    .rank-bar i { display: block; height: 100%; background: var(--stage-2); border-radius: 4px; }
-    .name-list { list-style: none; display: flex; gap: 8px 16px; flex-wrap: wrap; margin-top: 10px; font-size: 15px; }
-    .stat-value { font-size: 30px; font-weight: 800; line-height: 1.2; }
-    .stat-value small { font-size: 17px; font-weight: 500; color: var(--text-sub); margin-left: 2px; }
-    .stat-card.alert .stat-value small { color: var(--stage-3-text); }
+    .card.flush .empty-note { padding: 16px 24px 24px; }
+    .rank-list { list-style: none; display: grid; gap: 14px; }
+    .rank-list li { display: grid; grid-template-columns: 30px minmax(0, 220px) minmax(0, 1fr) auto; align-items: center; gap: 16px; font-size: 15px; }
+    .rank-list a { color: var(--navy); font-weight: 700; text-decoration: none; }
+    .rank-list a:hover { text-decoration: underline; }
+    .rank-no { width: 30px; height: 30px; border-radius: 50%; background: var(--navy); color: #fff; font-weight: 800; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; }   /* 앱 안내 화면의 번호 동그라미 */
+    .rank-bar { height: 10px; border-radius: 5px; background: #E1E5F0; overflow: hidden; }
+    .rank-bar i { display: block; height: 100%; background: var(--stage-2); border-radius: 5px; }
 
-    .chart-section { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .chart-card { background: var(--surface); padding: 20px 22px; border-radius: 10px; border: 1px solid var(--border); }
-    .chart-card h3 { font-size: 17px; margin-bottom: 4px; }
-    .chart-card .hint { font-size: 14px; color: var(--text-sub); margin-bottom: 14px; }
+    .chart-section { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .chart-card { background: var(--surface); padding: 24px 26px; border-radius: 24px; border: 1px solid var(--border); box-shadow: var(--shadow); }
+    .chart-card h3 { font-size: 18px; font-weight: 800; margin-bottom: 4px; }
+    .chart-card .hint { font-size: 14px; color: var(--text-sub); margin-bottom: 16px; }
     .bars { display: flex; align-items: flex-end; justify-content: space-around; gap: 14px; height: 200px; padding: 22px 8px 0; border-bottom: 2px solid var(--border); }
     .bcol { flex: 1; max-width: 90px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
     .bcol .v { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
-    .bcol .b { width: 100%; border-radius: 8px 8px 0 0; min-height: 4px; }
+    .bcol .b { width: 100%; border-radius: 14px 14px 0 0; min-height: 4px; }
     .blabels { display: flex; justify-content: space-around; gap: 14px; padding: 8px 8px 0; font-size: 14px; font-weight: 700; color: var(--text-sub); text-align: center; }
     .blabels span { flex: 1; max-width: 90px; }
     .linechart { width: 100%; height: auto; }
@@ -175,91 +242,100 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     .linechart .val { font-size: 14px; font-weight: 800; fill: var(--text-main); }
 
     /* ── 표 ── */
-    .table-section { background: var(--surface); border-radius: 10px; border: 1px solid var(--border); overflow: hidden; }
-    /* 탭: 제목 바로 아래에서 보고 싶은 것만 골라 봄 */
-    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; overflow-x: auto; overflow-y: hidden; padding-bottom: 1px; }
-    .tab { background: none; border: none; padding: 10px 14px; font-size: 15px; font-weight: 600; color: var(--text-sub); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; }
-    .tab:hover { color: var(--brand); }
-    .tab[aria-selected="true"] { color: var(--brand); border-bottom-color: var(--brand); font-weight: 800; }
-    .tab-count { min-width: 22px; height: 22px; padding: 0 7px; border-radius: 11px; background: #E2E8F0; color: var(--text-sub); font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
-    .tab[aria-selected="true"] .tab-count { background: var(--brand); color: #fff; }
+    .table-section { background: var(--surface); border-radius: 24px; border: 1px solid var(--border); box-shadow: var(--shadow); overflow: hidden; }
+    /* 탭: 앱의 둥근 버튼처럼 알약 모양, 고른 탭은 navy */
+    .tabs { display: flex; gap: 8px; margin-bottom: 18px; overflow-x: auto; overflow-y: hidden; padding: 4px 4px 8px; margin-left: -4px; }
+    .tab { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 0 18px; min-height: 46px; font-size: 15px; font-weight: 700; color: var(--text-sub); cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 10px; }
+    .tab:hover { color: var(--navy); border-color: var(--navy); }
+    .tab[aria-selected="true"] { background: var(--navy); border-color: var(--navy); color: #fff; font-weight: 800; box-shadow: 0 4px 10px rgba(31, 42, 92, .25); }
+    .tab-count { min-width: 24px; height: 24px; padding: 0 8px; border-radius: 12px; background: #EDF0F9; color: var(--text-sub); font-size: 13px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+    .tab[aria-selected="true"] .tab-count { background: rgba(255, 255, 255, .22); color: #fff; }
     .tab-count.alert { background: var(--stage-3-solid); color: #fff; }
-    .table-toolbar { padding: 12px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-    .result-count { font-size: 14px; color: var(--text-sub); }
-    .search-box { padding: 0 14px; min-height: 36px; border: 1px solid var(--control-border); border-radius: 8px; font-size: 15px; width: 280px; max-width: 100%; }
+    .table-toolbar { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .result-count { font-size: 14px; font-weight: 600; color: var(--text-sub); }
+    .search-box { padding: 0 18px; min-height: 44px; border: 1.5px solid var(--control-border); border-radius: 999px; font-size: 15px; width: 300px; max-width: 100%; background: #fff; }
     .table-wrap { overflow-x: auto; }
     table { width: 100%; min-width: 900px; border-collapse: collapse; text-align: left; }   /* 좁은 화면은 표만 가로로 스크롤 */
     td.loc { min-width: 200px; }
     td.kind { white-space: nowrap; }
-    th { padding: 10px 14px; font-size: 14px; font-weight: 700; color: var(--text-sub); background: var(--bg); border-bottom: 1px solid var(--border); white-space: nowrap; }
+    th { padding: 12px 16px; font-size: 14px; font-weight: 700; color: var(--text-sub); background: #F6F7FC; border-bottom: 1px solid var(--border); white-space: nowrap; }
     td, .stat-value, #updated { font-variant-numeric: tabular-nums; }
-    td { padding: 11px 14px; font-size: 15px; font-weight: 500; border-bottom: 1px solid var(--border); vertical-align: middle; }
-    tbody tr:hover { background: #F1F5F9; }
+    td { padding: 14px 16px; font-size: 15px; font-weight: 500; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: #F6F7FC; }
     tr.row-link { cursor: pointer; }
     /* 버튼 대신 줄 전체가 링크: 마우스를 올리면(키보드는 번호에 포커스) 줄이 밝아지고 번호 · 이름에 밑줄 */
     tr.row-link:hover a.row-id, tr.row-link:focus-within a.row-id { text-decoration: underline; }
-    tr.row-link:focus-within { background: #F1F5F9; }
-    a.row-id { color: var(--brand); font-weight: 700; text-decoration: none; }
+    tr.row-link:focus-within { background: #F6F7FC; }
+    a.row-id { color: var(--navy); font-weight: 800; text-decoration: none; }
     a.row-id:hover { text-decoration: underline; }
-    tr.row-alert, tr.row-alert:focus-within { background: var(--alert-bg); }
-    tr.row-alert:hover { background: #FDE6E4; }
-    tr.row-alert td:first-child { box-shadow: inset 5px 0 0 var(--stage-3); }
-    .empty-row td { text-align: center; color: var(--text-sub); padding: 40px; }
+    tr.row-alert, tr.row-alert:focus-within { background: var(--alert-row); }
+    tr.row-alert:hover { background: #F8D9D6; }
+    .empty-row td { text-align: center; color: var(--text-sub); padding: 44px; }
     td .sub { display: block; font-size: 14px; color: var(--text-sub); font-weight: 400; }
     .nowrap { white-space: nowrap; }
     .unset { color: var(--text-sub); font-weight: 400; }
 
-    .badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px 4px 8px; border-radius: 8px; font-size: 14px; font-weight: 700; white-space: nowrap; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 13px 5px 10px; border-radius: 999px; font-size: 14px; font-weight: 800; white-space: nowrap; }
     .b-1 { background: var(--stage-1); color: var(--text-main); }
     .b-2 { background: var(--stage-2); color: var(--text-main); }
     .b-3 { background: var(--stage-3-solid); color: #fff; }
     .b-0 { background: var(--stage-0-solid); color: #fff; }
     .b-gray { background: var(--text-sub); color: #fff; }
-    .st { font-weight: 800; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-    .st-urgent { color: var(--stage-3-text); } .st-wait { color: #8A4500; } .st-ok { color: var(--stage-0-solid); } .st-info { color: var(--brand); }
-    .tag { display: inline-block; padding: 1px 8px; border-radius: 6px; font-size: 14px; font-weight: 700; margin-left: 6px; vertical-align: middle; }
+    .st { font-weight: 800; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .st-urgent { color: var(--stage-3-text); } .st-wait { color: #8A4500; } .st-ok { color: #0B6B4D; } .st-info { color: var(--navy); }
+    .tag { display: inline-block; padding: 1px 10px; border-radius: 999px; font-size: 14px; font-weight: 700; margin-left: 6px; vertical-align: middle; }
     .tag.noreply { background: #fff; color: var(--stage-3-text); border: 1px solid var(--stage-3-text); }
     .tag.mock { background: #FFE8C9; color: #8A4500; border: 1px solid #E0A35A; }
 
 
     /* ── 상세 페이지 (경고 · 기사): 모달이 아니라 주소(#event/3 · #driver/2)가 있는 페이지 ── */
-    .crumbs { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-sub); margin-bottom: 12px; flex-wrap: wrap; }
-    .crumbs a { color: var(--brand); font-weight: 600; text-decoration: none; }
+    .crumbs { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-sub); margin-bottom: 14px; flex-wrap: wrap; }
+    .crumbs a { color: var(--navy); font-weight: 700; text-decoration: none; }
     .crumbs a:hover { text-decoration: underline; }
-    .crumbs [aria-hidden] { color: #94A3B8; }
-    .page-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; padding: 16px 20px; margin-bottom: 20px; background: var(--hb, var(--brand-light)); border: 1px solid var(--border); border-left: 6px solid var(--hc, var(--brand)); border-radius: 10px; }
-    .page-head.s1 { --hc: var(--stage-1); --hb: #FFF4D6; --hi: var(--text-main); }
-    .page-head.s2 { --hc: var(--stage-2); --hb: #FFE8C9; --hi: var(--text-main); }
-    .page-head.s3 { --hc: var(--stage-3-solid); --hb: #FDE6E4; --hi: #fff; }
-    .page-head.s0 { --hc: var(--stage-0-solid); --hb: #E3F4EA; --hi: #fff; }
-    .page-head.brand { --hc: var(--brand); --hb: var(--brand-light); --hi: #fff; }
-    .ph-main { display: flex; align-items: center; gap: 14px; min-width: 0; }
-    .page-head .hico { width: 44px; height: 44px; border-radius: 50%; background: var(--hc); color: var(--hi, #fff); display: flex; align-items: center; justify-content: center; flex: none; }
-    .page-head .page-title { margin: 0; font-size: 22px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-    .page-title small { font-size: 15px; font-weight: 500; color: var(--text-sub); }
-    .ph-meta { margin-top: 2px; font-size: 15px; color: var(--text-sub); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .crumbs [aria-hidden] { color: #8A90A5; }
+    /* 상세 머리: 앱의 단계 색 화면과 같은 큰 둥근 카드 (경고 = 단계 색, 기사 = navy) */
+    .page-head { display: flex; justify-content: space-between; align-items: center; gap: 16px 24px; flex-wrap: wrap; padding: 30px 34px; margin-bottom: 22px; background: var(--hero, linear-gradient(160deg, #2B3A82 0%, #1F2A5C 100%)); color: #fff; border-radius: 28px; box-shadow: 0 12px 30px rgba(31, 42, 92, .16); }
+    .page-head.s0 { --hero: linear-gradient(160deg, #247A4D 0%, #19593A 100%); }
+    .page-head.s1 { --hero: linear-gradient(160deg, #F9CB55 0%, #EBAA1E 100%); color: var(--text-main); }
+    .page-head.s2 { --hero: linear-gradient(160deg, #B85420 0%, #9A3F16 100%); }
+    .page-head.s3 { --hero: linear-gradient(160deg, #B84740 0%, #962F2B 100%); }
+    .page-head.brand { --hero: linear-gradient(160deg, #2B3A82 0%, #1F2A5C 100%); }
+    .ph-main { display: flex; align-items: center; gap: 18px; min-width: 0; }
+    .page-head .hico { width: 60px; height: 60px; border-radius: 50%; background: rgba(255, 255, 255, .22); border: 1px solid rgba(255, 255, 255, .55); color: inherit; display: flex; align-items: center; justify-content: center; flex: none; }
+    .page-head .page-title { margin: 0; font-size: 30px; color: inherit; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    .page-title small { font-size: 15px; font-weight: 600; color: var(--text-sub); letter-spacing: 0; }
+    .page-head .page-title small { color: inherit; }
+    .ph-meta { margin-top: 6px; font-size: 15px; color: inherit; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .page-head .st { color: inherit; }
+    .page-head .btn.brand { min-height: 54px; padding: 0 28px; border-radius: 999px; background: #fff; border-color: #fff; color: var(--navy); font-size: 16px; font-weight: 800; box-shadow: 0 6px 14px rgba(0, 0, 0, .14); }
+    .page-head .btn.brand:hover { background: var(--brand-light); }
+    .page-head.s1 .btn.brand { background: var(--navy); border-color: var(--navy); color: #fff; }
     .ph-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-    .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
-    .detail-main, .detail-side { display: grid; gap: 20px; min-width: 0; }
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
-    .card h3 { font-size: 16px; font-weight: 800; display: flex; align-items: center; gap: 8px; margin-bottom: 14px; color: var(--brand); }
+    .detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 22px; align-items: start; }
+    .detail-main, .detail-side { display: grid; gap: 22px; min-width: 0; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 24px; box-shadow: var(--shadow); padding: 24px; }
+    .card h3 { font-size: 18px; font-weight: 800; display: flex; align-items: center; gap: 12px; margin-bottom: 16px; color: var(--text-main); }
     .card h3 small { font-size: 14px; font-weight: 500; color: var(--text-sub); margin-left: auto; }
-    .card h3 small a { color: var(--brand); font-weight: 600; text-decoration: none; }
+    .card h3 small a { color: var(--navy); font-weight: 700; text-decoration: none; }
     .card h3 small a:hover { text-decoration: underline; }
+    /* 앱 안내 화면의 둥근 네모 아이콘 칸 */
+    .card h3 > svg:first-child, .stat-title > svg:first-child { box-sizing: content-box; padding: 8px; background: var(--brand-light); color: var(--navy); border-radius: 12px; }
     .card.flush { padding: 0; overflow: hidden; }
-    .card.flush h3 { padding: 16px 20px 0; }
-    .empty-page { text-align: center; padding: 48px 20px; display: grid; gap: 12px; justify-items: center; }
+    .card.flush h3 { padding: 22px 24px 0; }
+    .empty-page { text-align: center; padding: 56px 20px; display: grid; gap: 14px; justify-items: center; }
     .empty-page .page-title { margin: 0; }
 
-    /* 지금 할 일 */
-    .r-todo { border: 2px solid var(--brand); background: var(--brand-light); border-radius: 10px; padding: 14px 18px; }
-    .r-todo.urgent { border-color: var(--stage-3-text); background: var(--alert-bg); }
-    .r-todo .k { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 800; color: var(--brand); margin-bottom: 4px; }
+    /* 지금 할 일: 앱의 크림색 '지금 상태' 카드 (아이콘 · 이름 | 내용) */
+    .r-todo { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 22px; align-items: center; padding: 22px 26px; background: var(--cream); border: 1px solid #F0E3C8; border-radius: 24px; box-shadow: var(--shadow); }
+    .r-todo.urgent { background: #FFF1EE; border-color: var(--p-3); }
+    .r-todo .k { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 800; color: var(--navy); white-space: nowrap; }
     .r-todo.urgent .k { color: var(--stage-3-text); }
-    .r-todo .v { display: block; font-size: 18px; font-weight: 800; line-height: 1.5; }
+    .r-todo .v { display: block; padding-left: 22px; border-left: 1px solid #E5D9BF; font-size: 18px; font-weight: 700; line-height: 1.6; }
+    .r-todo.urgent .v { border-left-color: var(--p-3); }
 
     /* AI 분석 결과: 2단 격자로 한 화면에 */
-    .r-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 32px; }
+    .r-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 32px; }
     .r-item { min-width: 0; }
     .r-item.wide { grid-column: 1 / -1; }
     .r-label { font-size: 14px; font-weight: 700; color: var(--text-sub); margin-bottom: 2px; display: block; }
@@ -267,97 +343,106 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     .r-list { list-style: none; display: grid; gap: 6px; }
     .q-ok { color: var(--stage-0-solid); font-weight: 800; } .q-fail { color: var(--stage-3-text); font-weight: 800; }
     .r-note { font-weight: 400; color: var(--text-sub); font-size: 14px; display: block; margin-top: 6px; }
-    .r-mock { grid-column: 1 / -1; font-size: 14px; color: #8A4500; background: #FFE8C9; border-radius: 8px; padding: 8px 12px; line-height: 1.5; }
+    .r-mock { grid-column: 1 / -1; font-size: 14px; color: #8A4500; background: #FFE8C9; border-radius: 14px; padding: 10px 14px; line-height: 1.5; }
 
     /* 오른쪽 칸: 사진 · 위치 · 기사 연락처 */
-    .photo { background: #E2E8F0; aspect-ratio: 16 / 10; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .photo { background: #E1E5F0; aspect-ratio: 16 / 10; display: flex; align-items: center; justify-content: center; overflow: hidden; }
     .photo img { width: 100%; height: 100%; object-fit: cover; }
-    .photo.empty { aspect-ratio: auto; min-height: 110px; flex-direction: column; gap: 6px; color: var(--text-sub); font-weight: 700; text-align: center; padding: 16px; }
-    .place { padding: 14px 20px; display: grid; gap: 2px; line-height: 1.5; }
+    .photo.empty { aspect-ratio: auto; min-height: 120px; flex-direction: column; gap: 6px; color: var(--text-sub); font-weight: 700; text-align: center; padding: 18px; }
+    .place { padding: 16px 24px 20px; display: grid; gap: 2px; line-height: 1.5; }
     .place b { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--text-sub); }
-    .kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 16px; font-size: 15px; }
+    .place a { color: var(--navy); font-weight: 700; }
+    .kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px 18px; font-size: 15px; }
     .kv dt { color: var(--text-sub); }
     .kv dd { font-weight: 600; word-break: break-all; }
-    .kv a { color: var(--brand); text-decoration: none; }
+    .kv a { color: var(--navy); text-decoration: none; }
     .kv a:hover { text-decoration: underline; }
     /* 누르면 복사되는 번호 · 이메일 (따로 [복사] 버튼 없이) */
-    .copyable { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; border: none; background: none; padding: 2px 6px; margin: -2px -6px; border-radius: 6px; color: var(--brand); font-weight: 600; text-align: left; cursor: copy; word-break: break-all; }
+    .copyable { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; border: none; background: none; padding: 2px 8px; margin: -2px -8px; border-radius: 8px; color: var(--navy); font-weight: 700; text-align: left; cursor: copy; word-break: break-all; }
     .copyable svg { opacity: .55; }
     .copyable:hover { background: var(--brand-light); }
     .copyable:hover svg { opacity: 1; }
-    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
 
-    .btn { min-height: 38px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--control-border); background: #fff; font-weight: 700; cursor: pointer; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; color: var(--text-main); }
-    .btn:hover { background: #F1F5F9; }
-    .btn.brand { background: var(--brand); border-color: var(--brand); color: #fff; }
-    .btn.brand:hover { background: var(--brand-dark); }
+    /* 버튼: 앱의 큰 둥근 버튼 (기본 = navy 채움, 보조 = 흰 바탕 + navy 테두리) */
+    .btn { min-height: 48px; padding: 0 22px; border-radius: 16px; border: 1.5px solid var(--navy); background: #fff; font-weight: 800; cursor: pointer; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; color: var(--navy); }
+    .btn:hover { background: var(--brand-light); }
+    .btn.brand { background: var(--navy); border-color: var(--navy); color: #fff; box-shadow: 0 4px 12px rgba(31, 42, 92, .25); }
+    .btn.brand:hover { background: var(--navy-dark); border-color: var(--navy-dark); }
+    /* [조치완료]: 초록 채움 (흰 글자 5:1 이상). 표 안에서는 .sm 으로 작게 */
+    .btn.resolve { background: var(--stage-0-solid); border-color: var(--stage-0-solid); color: #fff; box-shadow: 0 4px 12px rgba(15, 123, 90, .28); }
+    .btn.resolve:hover { background: #0A5F45; border-color: #0A5F45; }
+    .btn.sm { min-height: 40px; padding: 0 14px; border-radius: 12px; font-size: 14px; box-shadow: none; }
 
     /* 기사 상세 */
-    .d-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
-    .d-stat { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; background: var(--bg); }
-    .d-stat .k { display: block; font-size: 14px; color: var(--text-sub); }
-    .d-stat .v { font-size: 24px; font-weight: 800; }
-    .d-stat .v small { font-size: 14px; font-weight: 500; color: var(--text-sub); margin-left: 2px; }
-    .d-stat.alert { border-color: var(--stage-3-text); background: var(--alert-bg); }
-    .d-stat.alert .v, .d-stat.alert .k { color: var(--stage-3-text); }
-    /* 단계별 경고: 색은 앱 · 배지와 같은 단계 색 3개만 (그 밖은 회색) */
-    .d-sub { font-size: 14px; font-weight: 700; color: var(--text-sub); margin: 18px 0 8px; }
-    .stage-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-    .stage-tile { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px 12px; padding: 12px 14px; border: 1px solid var(--border); border-left: 6px solid var(--sc); border-radius: 8px; background: var(--surface); }
-    .stage-tile.s1 { --sc: var(--stage-1); --si: var(--text-main); }
-    .stage-tile.s2 { --sc: var(--stage-2); --si: var(--text-main); }
-    .stage-tile.s3 { --sc: var(--stage-3-solid); --si: #fff; }
-    .stage-tile .ic { grid-row: span 2; width: 36px; height: 36px; border-radius: 50%; background: var(--sc); color: var(--si); display: flex; align-items: center; justify-content: center; }
-    .stage-tile .k { font-size: 14px; font-weight: 700; color: var(--text-sub); }
-    .stage-tile .v { font-size: 26px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
-    .stage-tile .v small { font-size: 14px; font-weight: 500; color: var(--text-sub); margin-left: 2px; }
-    .stage-tile.zero { border-left-color: #CBD5E1; }
-    .stage-tile.zero .ic { background: #E2E8F0; color: var(--text-sub); }
-    .stage-tile.zero .v { color: var(--text-sub); }
-    .stage-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: #E2E8F0; margin-top: 12px; }
+    .d-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+    .d-stat { border-radius: 18px; padding: 14px 18px; background: var(--brand-light); }
+    .d-stat .k { display: block; font-size: 14px; font-weight: 600; color: var(--text-sub); }
+    .d-stat .v { font-size: 28px; font-weight: 800; letter-spacing: -.02em; }
+    .d-stat .v small { font-size: 14px; font-weight: 600; color: var(--text-sub); margin-left: 2px; letter-spacing: 0; }
+    .d-stat.alert { background: var(--p-3); }
+    .d-stat.alert .v, .d-stat.alert .k, .d-stat.alert .v small { color: var(--ink-3); }
+    /* 단계별 경고: 앱 '부엉이 색의 뜻' 카드와 같은 파스텔 (0건이면 흰 칸) */
+    .d-sub { font-size: 14px; font-weight: 700; color: var(--text-sub); margin: 22px 0 10px; }
+    .stage-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .stage-tile { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px 14px; padding: 16px 18px; border-radius: 20px; background: var(--pt); color: var(--ink-t); }
+    .stage-tile.s1 { --pt: var(--p-1); --ink-t: var(--ink-1); --sc: var(--stage-1); --si: var(--text-main); }
+    .stage-tile.s2 { --pt: var(--p-2); --ink-t: var(--ink-2); --sc: var(--stage-2); --si: var(--text-main); }
+    .stage-tile.s3 { --pt: var(--p-3); --ink-t: var(--ink-3); --sc: var(--stage-3-solid); --si: #fff; }
+    .stage-tile .ic { grid-row: span 2; width: 40px; height: 40px; border-radius: 50%; background: var(--sc); color: var(--si); display: flex; align-items: center; justify-content: center; }
+    .stage-tile .k { font-size: 14px; font-weight: 700; color: var(--ink-t); }
+    .stage-tile .v { font-size: 28px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--ink-t); }
+    .stage-tile .v small { font-size: 14px; font-weight: 600; color: var(--ink-t); margin-left: 2px; }
+    .stage-tile.zero { background: #F6F7FC; border: 1px solid var(--border); --ink-t: var(--text-sub); }
+    .stage-tile.zero .ic { background: #E1E5F0; color: var(--text-sub); }
+    .stage-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: #E1E5F0; margin-top: 16px; }
     .stage-bar i { display: block; height: 100%; }
     .stage-bar i + i { box-shadow: inset 2px 0 0 #fff; }
     .stage-bar.mini { width: 72px; height: 8px; margin: 4px 0 0; }
     .sb-1 { background: var(--stage-1); } .sb-2 { background: var(--stage-2); } .sb-3 { background: var(--stage-3-solid); }
-    .d-etc { margin-top: 10px; font-size: 14px; color: var(--text-sub); }
+    .d-etc { margin-top: 12px; font-size: 14px; color: var(--text-sub); }
     .d-etc b { color: var(--text-main); }
     .card.flush table { min-width: 560px; }
-    .d-more { padding: 10px 20px 14px; font-size: 14px; color: var(--text-sub); }
+    .d-more { padding: 12px 24px 18px; font-size: 14px; color: var(--text-sub); }
 
     /* 내 정보 */
-    .profile-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; max-width: 960px; }
-    .field { display: grid; gap: 6px; margin-bottom: 14px; }
+    .profile-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; align-items: start; max-width: 960px; }
+    .field { display: grid; gap: 6px; margin-bottom: 16px; }
     .field label { font-size: 14px; font-weight: 700; }
-    .field input { min-height: 40px; padding: 0 12px; border: 1px solid var(--control-border); border-radius: 8px; font-size: 15px; background: #fff; width: 100%; }
-    .field input:disabled { background: var(--bg); color: var(--text-sub); border-color: var(--border); }
+    .field input { min-height: 48px; padding: 0 16px; border: 1.5px solid var(--control-border); border-radius: 14px; font-size: 15px; background: #fff; width: 100%; }
+    .field input:disabled { background: #F6F7FC; color: var(--text-sub); border-color: var(--border); }
     .field .hint { font-size: 14px; color: var(--text-sub); }
-    .form-msg { min-height: 22px; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
+    .form-msg { min-height: 22px; margin-bottom: 10px; font-size: 14px; font-weight: 600; }
     .form-msg.err { color: var(--stage-3-text); }
     .form-msg.ok { color: var(--stage-0-solid); }
 
     /* ── 알림 ── */
-    #toast { position: fixed; top: 20px; right: 24px; transform: translateY(-12px); background: rgba(15,23,42,.96); color: #fff; padding: 14px 22px; border-radius: 12px; font-size: 15px; font-weight: 700; max-width: min(420px, 90vw); text-align: left; line-height: 1.5; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; z-index: 200; }
+    #toast { position: fixed; top: 22px; right: 26px; transform: translateY(-12px); background: rgba(20, 28, 66, .96); color: #fff; padding: 16px 24px; border-radius: 20px; font-size: 15px; font-weight: 700; max-width: min(440px, 90vw); text-align: left; line-height: 1.5; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; z-index: 200; box-shadow: 0 12px 28px rgba(20, 28, 66, .3); }
     #toast.show { opacity: 1; transform: translateY(0); }
     #toast.error { background: var(--stage-3-solid); pointer-events: auto; display: flex; align-items: center; gap: 12px; }
-    #toast.error button { flex: none; min-height: 36px; padding: 0 14px; border-radius: 8px; border: 2px solid #fff; background: transparent; color: #fff; font-weight: 700; cursor: pointer; }
+    #toast.error button { flex: none; min-height: 38px; padding: 0 16px; border-radius: 999px; border: 2px solid #fff; background: transparent; color: #fff; font-weight: 700; cursor: pointer; }
     /* 확인 창: 브라우저 <dialog> (포커스 가두기 · Esc · 뒤 화면 막기를 브라우저가 해 줌) */
-    #confirmDlg { margin: auto; border: 0; border-radius: 14px; padding: 0; width: min(440px, 92vw); color: var(--text-main); box-shadow: 0 24px 48px rgba(0,0,0,.25); }
-    #confirmDlg::backdrop { background: rgba(15, 23, 42, .55); }
-    #confirmDlg h2 { padding: 18px 22px 0; font-size: 19px; font-weight: 800; }
-    #confirmDlg p { padding: 10px 22px 20px; font-size: 16px; line-height: 1.6; }
-    #confirmDlg form { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--border); background: var(--bg); }
-    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+    #confirmDlg { margin: auto; border: 0; border-radius: 28px; padding: 0; width: min(460px, 92vw); color: var(--text-main); box-shadow: 0 24px 56px rgba(20, 28, 66, .3); overflow: hidden; }
+    #confirmDlg::backdrop { background: rgba(20, 28, 66, .55); }
+    #confirmDlg h2 { padding: 24px 28px 0; font-size: 20px; font-weight: 800; }
+    #confirmDlg p { padding: 12px 28px 24px; font-size: 16px; line-height: 1.6; }
+    #confirmDlg form { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 28px; border-top: 1px solid var(--border); background: #F6F7FC; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } .stat-card:hover { transform: none; } }
 
     @media (max-width: 900px) { .profile-grid { grid-template-columns: 1fr; } }
     @media (max-width: 1100px) { .stage-tiles { grid-template-columns: 1fr; } }
-    @media (max-width: 1100px) { .dash-two { grid-template-columns: 1fr; } .summary-grid { grid-template-columns: repeat(2, 1fr); } .chart-section { grid-template-columns: 1fr; } .detail-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 1100px) { .summary-grid { grid-template-columns: repeat(2, 1fr); } .chart-section { grid-template-columns: 1fr; } .detail-grid { grid-template-columns: 1fr; } }
     @media (max-width: 900px) {
       .r-grid { grid-template-columns: 1fr; }
-      .sidebar { width: 76px; }
+      .sidebar { width: 80px; }
       .sidebar-header span.t, .menu-item span.t, .sidebar-footer span.t, .sidebar-user .who, .sidebar-user .chev { display: none; }
       .sidebar-header, .menu-item, .sidebar-footer, .sidebar-user { justify-content: center; padding-left: 0; padding-right: 0; position: relative; }
-      .menu-badge { position: absolute; top: 6px; right: 8px; margin: 0; }
+      .sidebar-user { background: none; }
+      .menu-badge { position: absolute; top: 4px; right: 4px; margin: 0; }
       .main-content { padding: 20px 16px 40px; }
+      .page-head { padding: 24px; }
+      .r-todo { grid-template-columns: 1fr; gap: 10px; }
+      .r-todo .v { padding-left: 0; border-left: 0; }
     }
     @media (max-width: 600px) { .summary-grid { grid-template-columns: 1fr; } .search-box { width: 100%; } }
   </style>
@@ -388,7 +473,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       <span data-icon="warning" data-size="26" aria-hidden="true"></span>
       <span class="ub-text" id="ubText"></span>
       <button type="button" class="primary" id="ubView">바로 보기</button>
-      <button type="button" id="ubClose">닫기</button>
+      <button type="button" id="ubClose" title="알림음과 탭 깜빡임만 꺼요. 배너는 미처리 긴급이 모두 처리될 때까지 남아요.">닫기</button>
     </div>
     </div>
     <div class="topbar"><span id="updated">불러오는 중…</span><button type="button" id="soundBtn" aria-pressed="true" title="새 긴급 경고(3단계 · 음성 응답 없음)가 오면 삐 소리">알림음 켜짐</button></div>
@@ -396,12 +481,10 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     <!-- 대시보드 -->
     <section class="view" id="view-dashboard" aria-labelledby="t-dashboard">
       <h1 class="page-title" id="t-dashboard" tabindex="-1">통계 대시보드</h1>
+      <section class="urgent-zone" id="urgentZone" aria-labelledby="uzTitle"></section>
       <div class="summary-grid" id="summary"></div>
       <section class="card flush dash-block" id="todoCard" aria-label="지금 처리할 일"></section>
-      <div class="dash-two">
-        <section class="card" id="topCard" aria-label="이번 주 졸음 경고가 많은 기사"></section>
-        <section class="card" id="contactCard" aria-label="전화번호가 없는 기사"></section>
-      </div>
+      <section class="card dash-block" id="topCard" aria-label="이번 주 졸음 경고가 많은 기사"></section>
       <div class="chart-section">
         <div class="chart-card"><h3>단계별 경고 발생</h3><p class="hint">지금까지 쌓인 경고 수예요.</p><div id="stageChart"></div></div>
         <div class="chart-card"><h3>시간대별 졸음 발생</h3><p class="hint">3시간 단위로 묶은 경고 수예요.</p><div id="timeChart"></div></div>
@@ -421,7 +504,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
         <div class="table-wrap" role="region" aria-label="졸음 경고 표, 가로로 스크롤할 수 있어요" tabindex="0">
           <table>
             <caption class="visually-hidden">졸음 경고</caption>
-            <thead><tr><th scope="col">ID</th><th scope="col">기사</th><th scope="col">단계</th><th scope="col">종류</th><th scope="col">위치</th><th scope="col">시각</th><th scope="col">상태</th></tr></thead>
+            <thead><tr><th scope="col">ID</th><th scope="col">기사</th><th scope="col">단계</th><th scope="col">종류</th><th scope="col">위치</th><th scope="col">시각</th><th scope="col">상태</th><th scope="col">조치</th></tr></thead>
             <tbody id="hazardBody"></tbody>
           </table>
         </div>
@@ -441,7 +524,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
         <div class="table-wrap" role="region" aria-label="기사 표, 가로로 스크롤할 수 있어요" tabindex="0">
           <table>
             <caption class="visually-hidden">기사</caption>
-            <thead><tr><th scope="col">이름</th><th scope="col">차량번호</th><th scope="col">전화번호</th><th scope="col">상태</th><th scope="col">오늘 경고</th><th scope="col">누적 경고</th><th scope="col">마지막 경고</th></tr></thead>
+            <thead><tr><th scope="col">이름</th><th scope="col">차량번호</th><th scope="col">전화번호</th><th scope="col">상태</th><th scope="col">오늘 경고</th><th scope="col">누적 경고</th><th scope="col">마지막 경고</th><th scope="col">연락</th></tr></thead>
             <tbody id="driverBody"></tbody>
           </table>
         </div>
@@ -483,9 +566,9 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       ['all', '전체', () => true],
       ['unchecked', '미확인', (e) => e.status === '미확인'],
       ['urgent', '긴급', (e) => isOpenUrgent(e)],
-      ['s3', '3단계', (e) => e.stage === 3],
       ['rest', '휴게 미준수', (e) => e.reason === 'rest_overdue'],
       ['noreply', '음성 응답 없음', (e) => e.reason === 'no_response'],
+      ['s3', '3단계', (e) => e.stage === 3],       // '긴급' 과 겹치므로 맨 뒤 (조치완료된 옛 3단계까지 보려고 남겨 둠)
     ];
     const VIEWS = ['dashboard', 'hazards', 'drivers', 'profile', 'event', 'driver'];
     const NAV_OF = { event: 'hazards', driver: 'drivers' };      // 상세 페이지일 때 왼쪽 메뉴에서 밝힐 항목
@@ -578,6 +661,18 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     const stageNum = (s) => { const n = Number(s); return n >= 0 && n <= 3 ? n : 0; };
     const isOpenUrgent = (e) => !!e.urgent && e.status !== '조치완료';
     const isToday = (iso) => new Date(iso).toDateString() === new Date().toDateString();
+    // '3분 전' · '1시간 5분 전' · '2일 전'. 서버 시각이 이 PC 보다 한참 앞서면(시간대 차이) 틀린 값을 보여 주지 않고 빈칸 (옆의 날짜 · 시각은 그대로 나옴)
+    function ago(iso) {
+      const t = new Date(iso).getTime();
+      if (isNaN(t)) return '';
+      const min = Math.floor((Date.now() - t) / 60000);
+      if (min < -5) return '';
+      if (min < 1) return '방금 전';
+      if (min < 60) return min + '분 전';
+      const hr = Math.floor(min / 60);
+      if (hr < 24) return hr + '시간' + (min % 60 ? ' ' + (min % 60) + '분' : '') + ' 전';
+      return Math.floor(hr / 24) + '일 전';
+    }
     // 도로명 주소가 먼저. 주소를 못 찾으면 좌표라도 보여 줌 — 긴급 때 기사 위치를 잃으면 안 됨 (카카오 주소 변환 실패 · 키 없음)
     const hasCoord = (e) => e.latitude != null && e.longitude != null;
     const where = (e) => e.address || (hasCoord(e) ? '주소 확인 실패 · ' + Number(e.latitude).toFixed(4) + ', ' + Number(e.longitude).toFixed(4) : '위치 정보 없음');
@@ -588,6 +683,11 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     let connLost = false, lastOkAt = null, refreshing = false;
     let view = 'dashboard', routeId = null, filter = 'all', driverFilter = 'all', driverQuery = '', hazardQuery = '';
     let busy = false, lastUrgent = null, loaded = false;
+    // 졸음 경고 화면의 기본 탭: 링크가 탭을 골라 주면(nextFilter) 그 탭, 아니면 미처리 긴급이 있을 때 '긴급', 없으면 '전체'.
+    // filterAuto = 지금 탭이 기본값(사람이 고른 게 아님)이라는 뜻 → 처음 불러오기가 끝난 뒤 한 번 더 기본값을 맞춘다
+    let nextFilter = null, filterAuto = true;
+    const pickFilter = (f) => { nextFilter = f; };
+    const defaultFilter = () => (events.some(isOpenUrgent) ? 'urgent' : 'all');
     const sig = {};
 
     const $ = (id) => document.getElementById(id);
@@ -625,7 +725,13 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     }
     function showView(focusTitle) {
       const route = parseHash();
+      const prevView = view;
       view = route.name; routeId = route.id;
+      if (view === 'hazards') {                                   // 졸음 경고 화면으로 들어올 때만 탭을 정함 (10초 갱신이 사람이 고른 탭을 바꾸지 않게)
+        if (nextFilter) { filter = nextFilter; filterAuto = false; }
+        else if (prevView !== 'hazards') { filter = defaultFilter(); filterAuto = true; }
+      }
+      nextFilter = null;
       document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + view));
       const nav = NAV_OF[view] || view;
       document.querySelectorAll('.menu-item').forEach((b) => { if (b.dataset.view === nav) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
@@ -638,7 +744,6 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     }
     function go(name) { if (location.hash === '#' + name) showView(true); else location.hash = name; }
     window.addEventListener('hashchange', () => showView(true));
-    function goHazards(f) { filter = f; go('hazards'); }
 
     // 호칭: 이름이 있으면 '이정자 기사님', 없으면 '기사님' ('기사 3' 같은 번호 호칭은 쓰지 않는다)
     const honor = (n) => (n && String(n).trim() ? String(n).trim() + ' 기사님' : '기사님');
@@ -659,32 +764,70 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       const vsYesterday = diff > 0 ? '어제(' + yesterday + '건)보다 ' + diff + '건 늘었어요' : diff < 0 ? '어제(' + yesterday + '건)보다 ' + (-diff) + '건 줄었어요' : '어제(' + yesterday + '건)와 같아요';
       const states = { '조치 필요': 0, '확인 필요': 0, '이상 없음': 0 };
       drivers().forEach((u) => { states[driverState(u)[2]]++; });
+      const rest = events.filter((e) => e.reason === 'rest_overdue' && isToday(e.created_at)).length;
+      // [제목, 값, 단위, 색, 아이콘, 주소, 필터, 설명] — 색: 긴급이 있으면 빨강 · 없으면 초록 · 휴게 미준수가 있으면 주황 (앱 '부엉이 색의 뜻' 카드와 같은 파스텔)
       const cards = [
-        ['오늘 전체 경고', today, '건', false, null, '#hazards', 'all', vsYesterday],
-        ['긴급 (조치 필요)', urgent, '건', urgent > 0, 'alert', '#hazards', 'urgent', urgent > 0 ? '지금 바로 확인이 필요해요' : '처리할 긴급 경고가 없어요'],
-        ['등록된 기사', drivers().length, '명', false, null, '#drivers', null, '조치 필요 ' + states['조치 필요'] + ' · 확인 필요 ' + states['확인 필요'] + ' · 이상 없음 ' + states['이상 없음']],
-        ['휴게 미준수 (오늘)', events.filter((e) => e.reason === 'rest_overdue' && isToday(e.created_at)).length, '건', false, null, '#hazards', 'rest', '쉬지 않고 계속 운전한 경우예요'],
+        ['오늘 전체 경고', today, '건', 'plain', 'eye', '#hazards', 'all', vsYesterday],
+        ['긴급 (조치 필요)', urgent, '건', urgent > 0 ? 'urgent' : 'ok', urgent > 0 ? 'warning' : 'check', '#hazards', 'urgent', urgent > 0 ? '지금 바로 확인이 필요해요' : '처리할 긴급 경고가 없어요'],
+        ['등록된 기사', drivers().length, '명', 'plain', 'people', '#drivers', null, '조치 필요 ' + states['조치 필요'] + ' · 확인 필요 ' + states['확인 필요'] + ' · 이상 없음 ' + states['이상 없음']],
+        ['휴게 미준수 (오늘)', rest, '건', rest > 0 ? 'rest' : 'plain', 'coffee', '#hazards', 'rest', '쉬지 않고 계속 운전한 경우예요'],
       ];
-      fill($('summary'), ...cards.map(([title, value, unit, alert, ic, href, f, sub]) =>
-        h('a', { class: 'stat-card' + (alert ? ' alert' : ''), href, onclick: () => { if (f) filter = f; } },     // 진짜 링크 (새 탭으로도 열림)
-          h('span', { class: 'stat-title' }, ic ? icon(ic, 18) : null, title),
+      fill($('summary'), ...cards.map(([title, value, unit, tone, ic, href, f, sub]) =>
+        h('a', { class: 'stat-card tone-' + tone, href, onclick: () => { pickFilter(f); } },     // 진짜 링크 (새 탭으로도 열림). f 가 없으면(기사 카드) 탭을 고르지 않음
+          h('span', { class: 'stat-title' }, icon(ic, 16), title),
           h('span', { class: 'stat-value' }, String(value), h('small', null, unit)),
           h('span', { class: 'stat-sub' }, sub))));
     }
 
-    // 대시보드 아래쪽 목록 셋: 지금 처리할 일 · 이번 주 졸음이 잦은 기사 · 연락처 미등록 기사
+    // 대시보드 맨 위 '지금 긴급' 영역 (11/12): 미처리 긴급(isOpenUrgent)을 건수 제한 없이 전부.
+    // 한 줄에 기사 이름 · 차량번호 · 단계 · 몇 분 전 · 주소 · 전화번호 + [전화 걸기] [상세 보기] [조치완료]. 0건이면 초록 한 줄
+    // 전화번호는 9~11자리일 때만 tel: 로 건다 (아니면 '미등록' 이고 [전화 걸기] 는 없음. 상세 페이지에서 이메일로 연락)
+    const validPhoneDigits = (phone) => { const d = digitsOf(phone); return d.length >= 9 && d.length <= 11 ? d : ''; };
+    function urgentRow(e) {
+      const n = stageNum(e.stage), who = honor(e.user_name), digits = validPhoneDigits(e.user_phone);
+      const kind = e.reason === 'no_response' ? '음성 응답 없음' : n ? n + '단계 ' + (e.stage_label || STAGE_NAME[n]) : '긴급';
+      return h('li', { class: 'u-row' },
+        h('div', { class: 'u-info' },
+          h('div', { class: 'u-who' }, h('b', null, e.user_name || '이름 없음'), h('span', null, e.user_vehicle_no || '차량번호 미등록')),
+          h('div', { class: 'u-kind' },
+            h('span', { class: 'badge b-3' }, icon('warning', 16), kind),
+            h('span', { class: 'u-ago', title: fmtTime(e.created_at) }, ago(e.created_at) || fmtTime(e.created_at))),
+          h('div', { class: 'u-phone' }, digits ? e.user_phone : h('span', { class: 'unset' }, '전화번호 미등록')),
+          h('div', { class: 'u-where' }, icon('pin', 16), h('span', null, where(e)))),
+        h('div', { class: 'u-actions' },
+          digits ? h('a', { class: 'btn brand sm', href: 'tel:' + digits, 'data-key': 'ucall' + e.id, 'aria-label': who + ' 전화 걸기' }, icon('phone', 16), '전화 걸기') : null,
+          h('a', { class: 'btn sm', href: '#event/' + e.id, 'data-key': 'uview' + e.id, 'aria-label': who + ' 경고 #' + e.id + ' 상세 보기' }, '상세 보기'),
+          h('button', { class: 'btn resolve sm', type: 'button', 'data-key': 'ures' + e.id, 'aria-label': who + ' 경고 #' + e.id + ' 조치완료', onclick: () => changeStatus(e, '조치완료') }, icon('check', 16), '조치완료')));
+    }
+    function renderUrgentZone() {
+      const open = events.filter(isOpenUrgent).sort(byPriority);
+      const box = $('urgentZone');
+      box.className = 'urgent-zone' + (open.length ? '' : ' ok');
+      if (!open.length) {
+        fill(box, icon('check', 28), h('h2', { class: 'uz-title', id: 'uzTitle' }, '처리할 긴급 경고가 없어요'));
+        return;
+      }
+      fill(box,
+        h('div', { class: 'uz-head' },
+          h('span', { class: 'hico', 'aria-hidden': 'true' }, icon('warning', 28)),
+          h('h2', { class: 'uz-title', id: 'uzTitle' }, '지금 긴급 ' + open.length + '건'),
+          h('p', { class: 'uz-sub' }, '기사님께 전화로 확인한 뒤 [조치완료]를 눌러 주세요. 3단계는 조치완료를 눌러야 기사 앱에서 풀려요.')),
+        h('ul', { class: 'u-list', 'aria-label': '미처리 긴급 경고' }, open.map(urgentRow)));
+    }
+
+    // 대시보드 아래쪽 목록 둘: 지금 처리할 일 · 이번 주 졸음이 잦은 기사 (전화번호가 없는 기사 칸은 11/12 에 뺌. 기사 관리의 [전화번호 미등록] 탭은 그대로)
     function renderDashLists() {
-      // ① 지금 처리할 일: 긴급(미처리) 먼저, 그다음 미확인. 최근 5건
-      const todo = events.filter((e) => isOpenUrgent(e) || e.status === '미확인').sort(byPriority);
+      // ① 지금 처리할 일: 아직 열어 보지 않은(미확인) 1 · 2단계 경고만, 최근 5건. 긴급(미처리)은 맨 위 '지금 긴급' 영역에서 (11/12)
+      const todo = events.filter((e) => e.status === '미확인' && !isOpenUrgent(e)).sort(byPriority);
       fill($('todoCard'),
-        h('h3', null, icon('warning', 20), '지금 처리할 일', h('small', null, h('a', { href: '#hazards', onclick: () => { filter = 'unchecked'; } }, todo.length > 5 ? '미확인 ' + todo.length + '건 모두 보기 ›' : '경고 전체 보기 ›'))),
+        h('h3', null, icon('eye', 20), '지금 처리할 일', h('small', null, h('a', { href: '#hazards', onclick: () => { pickFilter('unchecked'); } }, todo.length > 5 ? '미확인 경고 모두 보기 ›' : '경고 전체 보기 ›'))),
         todo.length ? h('div', { class: 'todo-list' }, todo.slice(0, 5).map((e) =>
-          h('a', { class: 'todo-row' + (isOpenUrgent(e) ? ' urgent' : ''), href: '#event/' + e.id },
+          h('a', { class: 'todo-row', href: '#event/' + e.id },
             stageBadge(e),
             h('span', { class: 'todo-main' }, h('b', null, honor(e.user_name)), h('span', null, (REASON_PLAIN[e.reason] || REASON_LABEL[e.reason] || '졸음') + ' · ' + where(e))),
             h('span', { class: 'todo-time' }, fmtTime(e.created_at)),
             h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'))))
-          : h('p', { class: 'empty-note' }, '지금 처리할 경고가 없어요.'));
+          : h('p', { class: 'empty-note' }, '아직 열어 보지 않은 경고가 없어요.'));
 
       // ② 최근 7일 졸음 경고가 많은 기사 TOP 3
       const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000, count = new Map();
@@ -699,16 +842,6 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
             h('span', { class: 'rank-bar', 'aria-hidden': 'true' }, h('i', { style: 'width:' + Math.round((c / max) * 100) + '%' })),
             h('b', null, c + '건'));
         })) : h('p', { class: 'empty-note' }, '최근 7일 동안 들어온 경고가 없어요.'));
-
-      // ③ 연락처(전화번호) 미등록 기사: 경고가 나도 전화할 수 없다
-      const nophone = drivers().filter((u) => !u.phone);
-      fill($('contactCard'),
-        h('h3', null, icon('phone', 20), '전화번호가 없는 기사', h('small', null, h('a', { href: '#drivers', onclick: () => { driverFilter = 'nophone'; } }, '기사 관리에서 보기 ›'))),
-        nophone.length ? h('div', null,
-          h('p', { class: 'r-value' }, h('b', null, nophone.length + '명'), '은 경고가 나도 전화할 수 없어요. 기사가 앱의 내 정보에서 전화번호를 적어야 해요.'),
-          h('ul', { class: 'name-list' }, nophone.slice(0, 5).map((u) => h('li', null, h('a', { href: '#driver/' + u.id }, honor(u.name))))),
-          nophone.length > 5 ? h('p', { class: 'r-note' }, '외 ' + (nophone.length - 5) + '명') : null)
-          : h('p', { class: 'empty-note' }, '모든 기사가 전화번호를 등록했어요.'));
     }
 
     function renderStageChart() {
@@ -726,21 +859,21 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       const buckets = Array.from({ length: 8 }, (_, i) => hourStats.filter((x) => x.hour >= i * 3 && x.hour < i * 3 + 3).reduce((a, x) => a + x.count, 0));
       const peak = Math.max(...buckets);
       const top = Math.max(2, Math.ceil(peak / 2) * 2);                  // 세로 눈금은 짝수로
-      const W = 420, H = 230, L = 34, R = 14, T = 16, B = 34;
+      const W = 420, H = 242, L = 34, R = 14, T = 28, B = 34;
       const x = (i) => L + (i * (W - L - R)) / 7, y = (v) => T + (1 - v / top) * (H - T - B);
       const svg = document.createElementNS(SVG_NS, 'svg');
       svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H); svg.setAttribute('class', 'linechart'); svg.setAttribute('role', 'img');
       svg.setAttribute('aria-label', '시간대별 경고 수: ' + buckets.map((v, i) => String(i * 3).padStart(2, '0') + '시대 ' + v + '건').join(', '));
       const add = (name, attrs, text) => { const n = document.createElementNS(SVG_NS, name); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); if (text != null) n.textContent = text; svg.appendChild(n); return n; };
       [0, top / 2, top].forEach((v) => {
-        add('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: '#E2E8F0', 'stroke-width': 1 });
+        add('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: '#E1E5F0', 'stroke-width': 1 });
         add('text', { x: L - 8, y: y(v) + 4, 'text-anchor': 'end' }, String(v));
       });
       const pts = buckets.map((v, i) => x(i) + ',' + y(v)).join(' ');
-      add('polygon', { points: L + ',' + y(0) + ' ' + pts + ' ' + x(7) + ',' + y(0), fill: 'rgba(30, 64, 175, .12)' });
-      add('polyline', { points: pts, fill: 'none', stroke: '#1E40AF', 'stroke-width': 3, 'stroke-linejoin': 'round' });
+      add('polygon', { points: L + ',' + y(0) + ' ' + pts + ' ' + x(7) + ',' + y(0), fill: 'rgba(31, 42, 92, .10)' });
+      add('polyline', { points: pts, fill: 'none', stroke: '#1F2A5C', 'stroke-width': 3, 'stroke-linejoin': 'round' });
       buckets.forEach((v, i) => {
-        add('circle', { cx: x(i), cy: y(v), r: 4.5, fill: '#fff', stroke: '#1E40AF', 'stroke-width': 3 });
+        add('circle', { cx: x(i), cy: y(v), r: 4.5, fill: '#fff', stroke: '#1F2A5C', 'stroke-width': 3 });
         if (v > 0) add('text', { x: x(i), y: y(v) - 10, 'text-anchor': 'middle', class: 'val' }, String(v));
         add('text', { x: x(i), y: H - 10, 'text-anchor': 'middle' }, String(i * 3).padStart(2, '0'));
       });
@@ -777,10 +910,12 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
           h('td', { class: 'nowrap' }, h('a', { class: 'row-id', href: '#event/' + e.id, 'data-key': 'ev' + e.id, 'aria-label': '경고 #' + e.id + ' 상세 보기' }, '#' + e.id)),
           h('td', { class: 'nowrap' }, h('strong', null, e.user_name || '이름 없음')),
           h('td', null, stageBadge(e)), kind, h('td', { class: 'loc' }, where(e)),
-          h('td', { class: 'nowrap' }, fmtTime(e.created_at)), h('td', null, statusCell(e)));
-      }) : [h('tr', { class: 'empty-row' }, h('td', { colspan: 7 }, events.length ? (hq ? '검색 결과가 없어요' : '해당하는 경고가 없어요') : '아직 들어온 경고가 없어요'))]));
+          h('td', { class: 'nowrap' }, fmtTime(e.created_at)), h('td', null, statusCell(e)),
+          // 미처리 긴급 줄에서 바로 [조치완료] (11/12). 확인 창 → changeStatus 는 경고 상세 머리의 버튼과 같은 것
+          h('td', { class: 'nowrap' }, alert ? h('button', { class: 'btn resolve sm', type: 'button', 'data-key': 'res' + e.id, 'aria-label': honor(e.user_name) + ' 경고 #' + e.id + ' 조치완료', onclick: () => changeStatus(e, '조치완료') }, icon('check', 16), '조치완료') : null));
+      }) : [h('tr', { class: 'empty-row' }, h('td', { colspan: 8 }, events.length ? (hq ? '검색 결과가 없어요' : filter === 'urgent' ? '처리할 긴급 경고가 없어요' : '해당하는 경고가 없어요') : '아직 들어온 경고가 없어요'))]));
       $('hazardCount').textContent = list.length + '건' + (hq ? ' (검색 결과)' : '');
-      renderTabs($('hazardTabs'), 'hazardPanel', FILTERS.map(([key, label, fn]) => [key, label, events.filter(fn).length, key === 'urgent']), filter, (key) => { filter = key; renderAll(true); });
+      renderTabs($('hazardTabs'), 'hazardPanel', FILTERS.map(([key, label, fn]) => [key, label, events.filter(fn).length, key === 'urgent']), filter, (key) => { filter = key; filterAuto = false; renderAll(true); });
       if (keepKey) { const again = document.querySelector('[data-key="' + keepKey + '"]'); if (again) again.focus({ preventScroll: true }); }
     }
 
@@ -815,19 +950,25 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       const dtest = DRIVER_FILTERS.find((f) => f[0] === driverFilter)[2];
       const list = drivers().filter(dtest).filter((u) => !q || (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q)
         || (u.vehicle_no || '').replace(/\s/g, '').toLowerCase().includes(q.replace(/\s/g, '')) || (qDigits.length >= 3 && digitsOf(u.phone).includes(qDigits)));
+      // 조치 필요 기사는 맨 위 (나머지 순서는 서버가 준 그대로 — sort 는 순서를 유지함)
+      const needsAction = (u) => driverState(u)[2] === '조치 필요';
+      list.sort((a, b) => needsAction(b) - needsAction(a));
       fill($('driverBody'), ...(list.length ? list.map((u) => {
         const [cls, ic, text] = driverState(u);
+        const alert = text === '조치 필요', callDigits = validPhoneDigits(u.phone);
         const mine = events.filter((e) => e.user_id === u.id);
         const today = mine.filter((e) => isToday(e.created_at)).length;
         const unset = (v) => v ? v : h('span', { class: 'unset' }, '미등록');
         // 줄을 누르면 기사 상세 ([상세 · 연락처] 버튼은 두지 않음). 누적 경고 아래에 1 · 2 · 3단계 비율 막대
-        return h('tr', { class: 'row-link', onclick: (ev) => { if (!ev.target.closest('a, button')) location.hash = 'driver/' + u.id; } },
+        return h('tr', { class: 'row-link' + (alert ? ' row-alert' : ''), onclick: (ev) => { if (!ev.target.closest('a, button')) location.hash = 'driver/' + u.id; } },
           h('td', { class: 'nowrap' }, h('a', { class: 'row-id', href: '#driver/' + u.id, 'data-key': 'drv' + u.id, 'aria-label': honor(u.name) + ' 상세 보기와 연락처' }, u.name)), h('td', { class: 'nowrap' }, unset(u.vehicle_no)), h('td', { class: 'nowrap' }, unset(u.phone)),
           h('td', null, h('span', { class: 'st ' + cls }, icon(ic, 16), text)),
           h('td', { class: 'nowrap' }, today + '건'),
           h('td', { class: 'nowrap' }, (u.event_count || 0) + '건', stageBar(stageCounts(mine), true)),
-          h('td', { class: 'nowrap' }, u.last_event_at ? fmtTime(u.last_event_at) : '없음'));
-      }) : [h('tr', { class: 'empty-row' }, h('td', { colspan: 7 }, q ? '검색 결과가 없어요' : drivers().length ? '해당하는 기사가 없어요' : '등록된 기사가 없어요'))]));
+          h('td', { class: 'nowrap' }, u.last_event_at ? fmtTime(u.last_event_at) : '없음'),
+          // 조치 필요 기사 줄에서 바로 전화 (11/12). 전화번호가 없으면 비워 둠 (위 전화번호 칸에 '미등록')
+          h('td', { class: 'nowrap' }, alert && callDigits ? h('a', { class: 'btn brand sm', href: 'tel:' + callDigits, 'data-key': 'dcall' + u.id, 'aria-label': honor(u.name) + ' 전화 걸기' }, icon('phone', 16), '전화 걸기') : null));
+      }) : [h('tr', { class: 'empty-row' }, h('td', { colspan: 8 }, q ? '검색 결과가 없어요' : drivers().length ? '해당하는 기사가 없어요' : '등록된 기사가 없어요'))]));
       $('driverCount').textContent = list.length + '명' + (q ? ' (검색 결과)' : '');
       renderTabs($('driverTabs'), 'driverPanel', DRIVER_FILTERS.map(([key, label, fn]) => [key, label, drivers().filter(fn).length, key === 'urgent']), driverFilter, (key) => { driverFilter = key; renderAll(true); });
       if (keepKey) { const again = document.querySelector('[data-key="' + keepKey + '"]'); if (again) again.focus({ preventScroll: true }); }
@@ -843,10 +984,11 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       badge.setAttribute('aria-label', '긴급 ' + urgent + '건');
       lastUrgent = urgent;
       updateTitle();
-      // 새로 생긴 긴급 경고(번호로 구분)만 알린다. 첫 불러오기 전에는 비교하지 않음 (처음 열자마자 '새 경고' 알림이 뜨지 않게)
+      // 새로 생긴 긴급 경고(번호로 구분)만 소리 · 깜빡임으로 알린다. 첫 불러오기 전에는 비교하지 않음 (처음 열자마자 '새 경고' 알림이 뜨지 않게)
       const fresh = loaded ? openUrgent.filter((e) => !seenUrgent.has(e.id)) : [];
       openUrgent.forEach((e) => seenUrgent.add(e.id));
-      if (fresh.length) raiseAlert(fresh, urgent);
+      if (fresh.length) raiseAlert(fresh);
+      renderUrgentBanner(openUrgent);
     }
 
     // ── 긴급 알림: 새 3단계 · "음성 응답 없음" → 알림음 · 탭 제목 깜빡임 · 빨간 배너 ──────
@@ -856,7 +998,32 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     function updateTitle() { document.title = blinkOn ? '🚨 새 긴급 경고! · 졸음 가드' : (connLost ? '⚠️ 연결 끊김 · ' : '') + (lastUrgent ? '(' + lastUrgent + ') ' : '') + (view === 'event' ? '경고 #' + routeId + ' · ' : view === 'driver' ? '기사 상세 · ' : view === 'profile' ? '내 정보 · ' : '') + '졸음 가드 관리자'; }
     function stopBlink() { clearInterval(blinkTimer); blinkTimer = null; blinkOn = false; updateTitle(); }
     function startBlink() { if (blinkTimer) return; blinkOn = true; updateTitle(); blinkTimer = setInterval(() => { blinkOn = !blinkOn; updateTitle(); }, 1000); }
-    function dismissAlert() { $('urgentBanner').hidden = true; stopBlink(); }
+    // 빨간 배너 (11/12): 미처리 긴급이 1건이라도 있는 동안 계속 보인다. 전부 조치완료되면 사라짐.
+    //   alerting = 새 긴급이 막 와서 알림음 · 깜빡임 중 (배너에 "새 긴급 경고 …" 와 [닫기]). [닫기] 는 알림음 · 깜빡임만 끄고 "미처리 긴급 N건 [바로 보기]" 로 남는다
+    let alerting = false, alertMsg = '', alertAudible = true, bannerKey = '';
+    function renderUrgentBanner(open) {
+      const box = $('urgentBanner');
+      if (!open.length) {                                              // 모두 처리됨 → 배너 · 깜빡임 끝
+        if (!box.hidden) box.hidden = true;
+        alerting = false; alertMsg = ''; bannerKey = '';
+        stopBlink();
+        return;
+      }
+      const names = [...new Set(open.map((e) => honor(e.user_name)))];
+      const namesText = names.slice(0, 3).join(' · ') + (names.length > 3 ? ' 외 ' + (names.length - 3) + '명' : '');
+      const sub = alerting
+        ? (alertAudible ? '' : '소리가 나려면 화면을 한 번 눌러 주세요. ') + '지금 처리할 긴급 경고는 모두 ' + open.length + '건이에요.'
+        : namesText;
+      const key = [alerting, alertMsg, sub, open.length].join('|');
+      if (key !== bannerKey) {                                         // 같은 글을 10초마다 다시 읽지 않게
+        bannerKey = key;
+        fill($('ubText'), alerting ? alertMsg : '미처리 긴급 ' + open.length + '건', h('small', null, sub));
+      }
+      $('ubClose').hidden = !alerting;
+      box.hidden = false;
+    }
+    // 알림음 · 깜빡임만 끈다 (배너는 그대로)
+    function silenceAlert() { alerting = false; stopBlink(); renderUrgentBanner(events.filter(isOpenUrgent)); }
     // 브라우저는 화면을 한 번 누르기 전에는 소리를 막는다 → 첫 클릭 · 키 입력 때 소리를 열어 둔다
     function unlockAudio() {
       if (!audioCtx) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) audioCtx = new AC(); }
@@ -875,17 +1042,14 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       });
       return true;
     }
-    function raiseAlert(fresh, total) {
+    function raiseAlert(fresh) {                       // 배너는 renderUrgentBanner 가 그린다. 여기서는 알림음 · 깜빡임 · 안내 글만
       const s3 = fresh.filter((e) => e.stage === 3).length, nr = fresh.filter((e) => e.reason === 'no_response').length;
       const names = [...new Set(fresh.map((e) => honor(e.user_name)))].slice(0, 3).join(' · ');
       const kinds = [s3 ? '3단계 ' + s3 + '건' : '', nr ? '음성 응답 없음 ' + nr + '건' : ''].filter(Boolean).join(' · ');
-      const audible = beep();
-      const msg = '새 긴급 경고 ' + fresh.length + '건 — ' + names + ' (' + kinds + ')';
-      const box = $('ubText'); box.textContent = msg;
-      if (!audible) box.append(h('small', null, '소리가 나려면 화면을 한 번 눌러 주세요. 지금 처리할 긴급 경고는 모두 ' + total + '건이에요.'));
-      else box.append(h('small', null, '지금 처리할 긴급 경고는 모두 ' + total + '건이에요.'));
-      $('urgentBanner').hidden = false;
-      sayLive(msg);
+      alertAudible = beep();
+      alertMsg = '새 긴급 경고 ' + fresh.length + '건 — ' + names + ' (' + kinds + ')';
+      alerting = true;
+      sayLive(alertMsg);
       startBlink();
     }
     document.addEventListener('visibilitychange', () => { if (!document.hidden) stopBlink(); }); // 탭으로 돌아오면 깜빡임은 멈춘다 (배너는 남음)
@@ -894,10 +1058,11 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     // 바뀐 것만 다시 그림 (10초마다 불러와도 포커스 · 스크롤 유지)
     function renderAll(force) {
       renderChrome();
-      const data = JSON.stringify([events, users, stageStats, hourStats, view, routeId, filter, driverQuery, hazardQuery]);
+      // 대시보드는 '몇 분 전' 이 시간이 지나면 바뀌어야 해서 분 단위 값도 비교에 넣는다 (데이터가 그대로여도 1분마다 다시 그림)
+      const data = JSON.stringify([events, users, stageStats, hourStats, view, routeId, filter, driverQuery, hazardQuery, view === 'dashboard' ? Math.floor(Date.now() / 60000) : 0]);
       if (!force && data === sig.all) return;
       sig.all = data;
-      if (view === 'dashboard') { renderSummary(); renderDashLists(); renderStageChart(); renderTimeChart(); }
+      if (view === 'dashboard') { keepFocus(renderUrgentZone); renderSummary(); renderDashLists(); renderStageChart(); renderTimeChart(); }
       else if (view === 'hazards') renderHazards();
       else if (view === 'drivers') renderDrivers();
       else if (view === 'profile') { /* 내 정보는 showView 에서만 그린다 (입력 중 칸 보존) */ }
@@ -966,8 +1131,8 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     // 연락처: 번호 · 이메일을 바로 보여 주고, 누르면 복사 (따로 [번호 복사] 버튼 없음, 11/09). 아래에 전화 · 문자 (번호가 없으면 이메일 보내기)
     // 전화번호는 기사가 앱 '내 정보'에서 적은 값, 안 적었으면 '미등록'
     function contactBox(ctx) {
-      const digits = digitsOf(ctx.phone);
-      const validPhone = digits.length >= 9 && digits.length <= 11;      // tel: · sms: 링크에는 숫자만 넣는다
+      const digits = validPhoneDigits(ctx.phone);                        // tel: · sms: 링크에는 숫자만 넣는다 (9~11자리가 아니면 빈 값)
+      const validPhone = !!digits;
       const validMail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ctx.email || '');
       const kv = (k, v) => [h('dt', null, k), h('dd', null, v)];
       return h('div', null,
@@ -1124,22 +1289,31 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       return new Promise((resolve) => {
         dlg.addEventListener('close', () => {
           // 10초 갱신으로 누른 버튼이 다시 그려졌으면 포커스가 사라지므로 제목으로
-          if (document.activeElement === document.body) { const t = $('pageTitle'); if (t) t.focus({ preventScroll: true }); }
+          if (document.activeElement === document.body) focusTitle();
           resolve(dlg.returnValue === 'yes');
         }, { once: true });
       });
     }
+    // 지금 보는 화면의 제목(h1)으로 포커스 (경고 상세는 #pageTitle, 대시보드 · 목록은 화면 제목)
+    function focusTitle() { const t = $('pageTitle') || document.querySelector('.view.active h1'); if (t) t.focus({ preventScroll: true }); }
+    // 경고 상세 머리 · 대시보드 '지금 긴급' 영역 · 경고 표의 긴급 줄이 모두 이 함수를 쓴다 (서버: PATCH /events/{id}/status)
     async function changeStatus(e, status) {
       if (busy || $('confirmDlg').open) return;
+      const who = honor(e.user_name);
       if (status === '조치완료' && !(await askConfirm('#' + e.id + ' 경고 조치완료',
-        e.stage === 3 ? '조치완료로 바꾸면 기사 앱의 3단계가 해제됩니다.' : '이 경고를 조치완료로 바꿀까요?', '조치완료'))) return;
+        who + ' — ' + (e.stage === 3 ? '조치완료로 바꾸면 기사 앱의 3단계가 해제됩니다.' : '이 경고를 조치완료로 바꿀까요?'), '조치완료'))) return;
       closeToastError();
       busy = true;
       try {
         const res = await updateEventStatus(e.id, status);
+        // 서버가 받아 줬으면 그 줄은 바로 긴급 목록에서 뺀다 (10초 갱신을 기다리지 않고). 이어서 서버 값으로 다시 맞춤
+        const now = events.find((x) => x.id === e.id); if (now) now.status = status;
+        renderAll(true);
         await refreshAll(true);
-        const t = $('pageTitle'); if (t) t.focus({ preventScroll: true });   // 누른 버튼은 사라졌을 수 있어서 제목으로
-        toast(status === '확인' ? '확인한 경고로 표시했어요.' : res.stage_reset ? '조치완료로 바꿨어요. 3단계가 해제되며 기사 앱은 다음 갱신(약 30초 안)에 정상 화면이 돼요.' : '조치완료로 바꿨어요.');
+        focusTitle();                                     // 누른 버튼은 사라졌을 수 있어서 제목으로
+        toast(status === '확인' ? '확인한 경고로 표시했어요.'
+          : res.stage_reset ? who + ' ' + (stageNum(e.stage) ? e.stage + '단계' : '경고') + ' 해제됨 · 기사 앱은 약 30초 안에 정상 화면이 돼요'
+          : '조치완료로 바꿨어요.');
       } catch (err) { toastError(status + ' 실패: ' + err.message + (status === '조치완료' ? ' — 기사 앱의 단계가 풀리지 않았을 수 있어요.' : '')); }
       finally { busy = false; }
     }
@@ -1243,8 +1417,9 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       $('connAgo').textContent = !eventsFailed ? '' : sec === null ? '아직 받은 데이터가 없어요.' : '화면은 ' + sec + '초 전 데이터예요.';
       banner.hidden = false;
     }
+    let refreshAgain = false;
     async function refreshAll(force) {
-      if (refreshing) return;
+      if (refreshing) { if (force) refreshAgain = true; return; }       // 불러오는 중에 '지금 새로' 가 오면 끝난 뒤 한 번 더 (조치완료 직후 옛 값이 남지 않게)
       refreshing = true;
       try {
         const [ev, us, st, hr] = await Promise.allSettled([fetchAdminEvents({}), fetchAdminUsers(), fetchStageStats(), fetchHourlyStats()]);
@@ -1261,10 +1436,12 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
         lastOkAt = Date.now();
         showConn(false, partial);
         $('updated').textContent = (partial.length ? '일부 갱신 ' : '마지막 갱신 ') + new Date().toLocaleTimeString('ko-KR');
+        if (!loaded && view === 'hazards' && filterAuto) filter = defaultFilter();   // 경고 화면으로 바로 열렸으면 첫 불러오기 뒤에 기본 탭('긴급')을 맞춤
         renderAll(!!force);
         loaded = true;
       } finally {
         refreshing = false;
+        if (refreshAgain) { refreshAgain = false; refreshAll(true); }
       }
     }
 
@@ -1275,10 +1452,12 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     $('connRetry').addEventListener('click', () => refreshAll(true));
     document.querySelectorAll('.menu-item').forEach((b) => b.addEventListener('click', (ev) => {
       if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button) return;       // 새 탭으로 열기는 브라우저에 맡김
+      nextFilter = null;                                                       // 메뉴로 들어올 때는 기본 탭
       ev.preventDefault(); go(b.dataset.view);
     }));
-    $('ubView').addEventListener('click', () => { dismissAlert(); goHazards('urgent'); });
-    $('ubClose').addEventListener('click', dismissAlert);
+    // 배너 [바로 보기] = 맨 위 '지금 긴급' 영역으로 (이미 대시보드면 맨 위로 올라감). 보러 갔으니 알림음 · 깜빡임은 끈다
+    $('ubView').addEventListener('click', () => { silenceAlert(); go('dashboard'); });
+    $('ubClose').addEventListener('click', () => { silenceAlert(); $('ubView').focus(); });   // [닫기] 가 사라지므로 포커스는 [바로 보기] 로
     $('soundBtn').addEventListener('click', () => {
       soundOn = !soundOn;
       try { localStorage.setItem('adminSound', soundOn ? 'on' : 'off'); } catch (e) { /* 저장 못 해도 이번 화면에서는 적용 */ }
