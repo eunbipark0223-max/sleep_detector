@@ -19,7 +19,8 @@ import 'owl_says.dart';
 class HomeStateCard extends StatelessWidget {
   final int stage;
   final VoidCallback onStart;
-  const HomeStateCard({super.key, required this.stage, required this.onStart});
+  final String startLabel; // 진행 중인 운행이 있으면 '새로 운행 시작' ([이어서 운행]과 헷갈리지 않게, 11/12)
+  const HomeStateCard({super.key, required this.stage, required this.onStart, this.startLabel = '운행 시작'});
 
   @override
   Widget build(BuildContext context) {
@@ -146,7 +147,7 @@ class HomeStateCard extends StatelessWidget {
                   child: ElevatedButton.icon(
                     onPressed: onStart,
                     icon: const Icon(Icons.photo_camera_outlined, size: 22),
-                    label: const Text('운행 시작', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                    label: Text(startLabel, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size.fromHeight(56),
                       backgroundColor: Colors.white,

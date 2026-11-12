@@ -197,6 +197,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       MaterialPageRoute(builder: (_) => (widget.calibrationBuilder ?? () => const CalibrationScreen())()),
     );
     if (t == null || !mounted) return;
+    // 서버에 새 운행 시작을 알린다 — 연속 운전 시간 · 퀴즈 실패 수 · 반쯤 감은 눈 기록을 새로 세고, 0 · 1단계는 정상으로 (2 · 3단계는 서버가 유지).
+    //   (11/12 팀장) 지금까지 앱이 /drive/start 를 한 번도 안 불러서 지난 운행의 1단계 · 기록이 이어졌음. 실패해도 운행은 시작 (ping 이 대신 시작함)
+    if (widget.driveBuilder == null) {
+      try {
+        await ApiService.startDrive().timeout(const Duration(seconds: 5));
+      } catch (_) {}
+      if (!mounted) return;
+    }
     AuthService.saveEyeThreshold(t).ignore(); // 앱을 껐다 켜고 [이어서 운행]으로 들어올 때 같은 기준을 쓰도록 폰에 저장
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => (widget.driveBuilder ?? (t) => DriveScreen(threshold: t))(t)),
@@ -237,11 +245,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             },
           ),
           // 지금 상태 카드 (남색) + [운행 시작]
-          FutureBuilder<List<SleepEvent>?>(
-            future: _recent,
-            builder: (context, snapshot) => HomeStateCard(
-              stage: currentStage(snapshot.data),
-              onStart: _startDrive,
+          FutureBuilder<DriveState?>(
+            future: _driveState,
+            builder: (context, drive) => FutureBuilder<List<SleepEvent>?>(
+              future: _recent,
+              builder: (context, snapshot) => HomeStateCard(
+                stage: currentStage(snapshot.data),
+                onStart: _startDrive,
+                startLabel: (drive.data?.active ?? false) ? '새로 운행 시작' : '운행 시작', // 위 [이어서 운행]과 구분 (11/12)
+              ),
             ),
           ),
           const SizedBox(height: 18),

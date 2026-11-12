@@ -296,6 +296,39 @@ class CameraBanner extends StatelessWidget {
   }
 }
 
+/// 남색 띠 "졸음인지 확인하고 있어요…" — 졸음 의심을 서버에 보내고 답을 기다리는 동안 (운행 · 경고 화면 같이, 11/12 팀장 UX)
+///   서버가 4 ~ 6초 걸리는 동안 화면에 아무 변화가 없어 "안 되나?" 싶던 것을 보여 준다
+class CheckingBanner extends StatelessWidget {
+  final ValueListenable<bool> checking;
+
+  const CheckingBanner({super.key, required this.checking});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: checking,
+      builder: (_, on, _) => !on
+          ? const SizedBox.shrink()
+          : Container(
+              margin: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(color: AppColors.navy, borderRadius: BorderRadius.circular(14)),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white)),
+                  SizedBox(width: 12),
+                  Flexible(
+                    child: Text('졸음인지 확인하고 있어요…',
+                        style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800)),
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
 /// 흰 글자 "서버 확인: 취소" — 서버가 실제로 취소했을 때만 뜬다. 얼굴을 놓쳤다가 다시 잡히면 1초 뒤, 얼굴이 계속 보이면 5초 뒤 사라진다
 ///   운행 · 경고 화면 맨 아래에 고정 (Scaffold.bottomNavigationBar) — 내용이 길어도 스크롤 없이 보이게, 자리는 비워 둔다
 class ServerCancelText extends StatelessWidget {
@@ -343,6 +376,9 @@ class WarningScreen extends StatefulWidget {
   final ValueListenable<bool>? faceLost;
   final ValueListenable<bool>? serverCancelled;
 
+  /// 운행 화면이 서버 답을 기다리는 중 — "졸음인지 확인하고 있어요…" 띠 (운행 중이 아니면 null, 11/12)
+  final ValueListenable<bool>? checking;
+
   /// 운행 화면이 알려 주는 얼굴 위치 — 카메라 칸이 얼굴을 따라가게
   final ValueListenable<Rect?>? faceBox;
 
@@ -364,6 +400,7 @@ class WarningScreen extends StatefulWidget {
       this.camera,
       this.faceLost,
       this.serverCancelled,
+      this.checking,
       this.faceBox,
       this.silent = false,
       this.resumeRest = false,
@@ -640,14 +677,28 @@ class _WarningScreenState extends State<WarningScreen> {
         ),
         body: SafeArea(
           child: OnePageLayout(
-            banner: widget.faceLost == null ? null : CameraBanner(faceLost: widget.faceLost!),
+            banner: (widget.faceLost == null && widget.checking == null)
+                ? null
+                : Column(mainAxisSize: MainAxisSize.min, children: [
+                    if (widget.faceLost != null) CameraBanner(faceLost: widget.faceLost!),
+                    if (widget.checking != null) CheckingBanner(checking: widget.checking!),
+                  ]),
             camera: _topVisual(bg, fg),
             below: [
               const SizedBox(height: 12),
               // 큰 글씨 한 줄 — 단계별 부엉이가 말풍선으로 (11/11 초안)
               // 글은 줄 수를 정해 둔다 (maxLines) — AI 문장이 길어도 화면이 넘치거나 글자가 너무 작아지지 않게
-              OwlSays(owl: OwlSays.body(_stage), text: _headline, owlSize: 112, fontSize: 25, maxLines: 4), // 3줄까지 (2줄이면 "이동…"처럼 잘림)
-              const SizedBox(height: 10),
+              // 부엉이를 조금 줄이고 글을 5줄까지 — 2단계 "가까운 졸음쉼터에서 …" 잘림 (11/12 팀장)
+              OwlSays(owl: OwlSays.body(_stage), text: _headline, owlSize: 88, fontSize: 23, maxLines: 5),
+              const SizedBox(height: 8),
+              // 지금 졸음을 지켜보는지 — 알람 · 음성 · 퀴즈 동안은 판정을 쉬어서, 눈을 감아도 반응이 없던 것을 알려 줌 (11/12 팀장 UX)
+              if (widget.liveStage != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(_voiceDone ? '👀 계속 지켜보고 있어요' : '🔊 안내가 끝나면 다시 지켜봐요',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: fg)),
+                ),
               // 요약
               if (stageChanged && _restMessage.isNotEmpty)
                 Text(_restMessage,

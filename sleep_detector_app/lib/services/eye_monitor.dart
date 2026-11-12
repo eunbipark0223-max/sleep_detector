@@ -114,6 +114,7 @@ class EyeMonitor {
 
   // 상태 추적용 변수
   DateTime? _closedStartTime;
+  DateTime? _openSince; // 감는 중 '뜸'으로 읽히기 시작한 시각 — openBlipSec 안이면 감김을 이어서 셈 (11/12)
   DateTime? _unknownStartTime;
   bool _microsleepTriggered = false;
   bool _perclosTriggered = false;
@@ -493,6 +494,7 @@ class EyeMonitor {
   ///   개인 기준(threshold) 은 그대로
   void reset() {
     _closedStartTime = null;
+    _openSince = null;
     _unknownStartTime = null;
     _microsleepTriggered = false;
     _perclosTriggered = false;
@@ -583,6 +585,7 @@ class EyeMonitor {
     // 3. 연속 감김 (미세수면: 1.5초 이상) 체크
     double currentClosedSec = 0.0;
     if (isClosed) {
+      _openSince = null; // 잠깐 '뜸'이었어도 다시 감김 → 이어서 셈
       _closedStartTime ??= now;
       currentClosedSec =
           now.difference(_closedStartTime!).inMilliseconds / 1000.0;
@@ -626,9 +629,16 @@ class EyeMonitor {
     } else {
       // 눈을 다시 뜨면 미세수면 플래그 및 타이머 리셋
       //   (_lastClosedFrame 은 PERCLOS 사진용으로 남김 — PERCLOS 15% 면 최근 30초 안의 감긴 프레임이라 오래된 사진이 아님)
-      _closedStartTime = null;
-      _streakShots.clear();
-      _microsleepTriggered = false;
+      //   (11/12 팀장) 감는 중 openBlipSec 이하로 잠깐 '뜸'은 깜빡 오판으로 보고 타이머를 유지 — 그보다 길게 떠야 리셋
+      _openSince ??= now;
+      final blip = _closedStartTime != null &&
+          now.difference(_openSince!).inMilliseconds < (AppConfig.openBlipSec * 1000).round();
+      if (!blip) {
+        _closedStartTime = null;
+        _openSince = null;
+        _streakShots.clear();
+        _microsleepTriggered = false;
+      }
     }
 
     // 4. 피로 누적 (PERCLOS: 30초 중 15% 이상) 체크

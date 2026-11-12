@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../theme.dart';
+import '../widgets/contact_dialog.dart';
 import 'chat_screen.dart';
 import 'history_screen.dart';
 import 'home_screen.dart';
@@ -44,6 +45,39 @@ class _MainScreenState extends State<MainScreen> {
   static const int _mapTab = 2; // 지도 화면은 제목줄이 따로 있음 → 이 탭에서는 위 제목줄을 숨김
 
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _requireContact());
+  }
+
+  // (11/12 팀장 · D 요청) 기사 계정인데 전화번호 · 차량번호가 비어 있으면 입력 창 — 저장해야 진행, 막히면 [로그아웃]만.
+  //   이메일 · Google · 자동 로그인 모두 이 화면으로 들어오므로 여기 한 곳에서 확인한다. '가입 첫날'이 아니라 '값이 비었는지'로 판단
+  //   (입력 전에 앱을 꺼도 다음에 다시 뜸). 서버 연결이 안 되면 묻지 않고 넘어감 (운행은 막지 않음)
+  Future<void> _requireContact() async {
+    Map<String, dynamic>? user;
+    try {
+      user = await AuthService.me();
+    } catch (_) {
+      return;
+    }
+    if (!mounted || !ContactRules.missing(user)) return;
+    String text(String k) => (user![k] ?? '').toString().trim();
+    final result = await showDialog<Object>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ContactDialog(phone: text('phone'), vehicleNo: text('vehicle_no'), required: true),
+    );
+    if (!mounted) return;
+    if (result == ContactDialog.logout) {
+      await AuthService.logout();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('연락처를 저장했어요')));
+  }
 
   Widget _page(int index) {
     switch (index) {

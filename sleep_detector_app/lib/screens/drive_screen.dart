@@ -61,7 +61,7 @@ class DriveScreen extends StatefulWidget {
   State<DriveScreen> createState() => _DriveScreenState();
 }
 
-class _DriveScreenState extends State<DriveScreen> {
+class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   late final EyeMonitor _eye; // 눈 감시 도구 (A)
   CameraController? _controller; // 앞 카메라
 
@@ -94,6 +94,7 @@ class _DriveScreenState extends State<DriveScreen> {
   final ValueNotifier<bool> _preWarnNote = ValueNotifier<bool>(false); // 예비 경고 노란 띠 (11/12 팀장)
   Timer? _preWarnClear;
   final ValueNotifier<bool> _cancelNote = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _checkingNote = ValueNotifier<bool>(false); // 서버 답을 기다리는 중 → "확인하고 있어요" 띠 (11/12 팀장 UX)
   // 얼굴 위치 (카메라 칸이 따라감) — 세워서 거울처럼 본 화면 기준 0~1 비율
   final ValueNotifier<Rect?> _faceBoxNote = ValueNotifier<Rect?>(null);  static const int _cancelKeepSec = 5; // 얼굴이 계속 보이는 중에 취소되면 이 시간 뒤 글자를 지운다
   DateTime? _cancelledAt;
@@ -118,6 +119,7 @@ class _DriveScreenState extends State<DriveScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // 앱이 뒤로 가거나 화면이 잠기는 것을 알기 위해 (11/12)
 
     // 눈 감시 도구를 만들고, 알림이 오면 받을 함수를 연결한다
     _eye = EyeMonitor(
@@ -423,6 +425,7 @@ class _DriveScreenState extends State<DriveScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     VoiceService.stop(); // 말하기 멈춤
     WakelockPlus.disable(); // 운행이 끝나면 화면 꺼짐을 원래대로
     _pingTimer?.cancel(); // ping 끄기
@@ -437,6 +440,7 @@ class _DriveScreenState extends State<DriveScreen> {
     _cancelClear?.cancel();
     _faceLostNote.dispose();
     _cancelNote.dispose();
+    _checkingNote.dispose();
     _faceBoxNote.dispose();
     _controller?.dispose(); // 카메라 끄기
     _eye.close(); // 눈 감시 도구 끄기
@@ -448,6 +452,7 @@ class _DriveScreenState extends State<DriveScreen> {
       double eyeOpenProb, Uint8List? frame) async {
     if (!mounted || _sending || _pauseDetect.value) return;
     _sending = true;
+    _checkingNote.value = true; // 답이 올 때까지 "졸음인지 확인하고 있어요…" (11/12)
     // 보내기 전 단계 — 서버 답을 기다리는 몇 초 사이에 ping 이 새 단계를 먼저 받아 와 _stage 가 바뀌면,
     //   "단계 그대로"로 잘못 보고 알람 · 경고를 건너뛸 수 있어서 보내기 전 값과 비교한다 (11/09 팀장)
     final stageBefore = _stage;
@@ -477,6 +482,7 @@ class _DriveScreenState extends State<DriveScreen> {
       );
       slowAlarm.cancel();
       if (!mounted) return;
+      _checkingNote.value = false;
       _markOnline();
       // (11/12 팀장) 예비 경고 — 운행 중 첫 졸음. 단계 · 경고 화면 · 퀴즈 없이 알람 + 음성 + 노란 띠 10초
       //   계속 감고 있으면 눈 감시 도구가 한 번 더 보내고 → 그때는 주의(1단계)
@@ -517,6 +523,7 @@ class _DriveScreenState extends State<DriveScreen> {
     } finally {
       slowAlarm.cancel();
       _sending = false;
+      if (mounted) _checkingNote.value = false;
     }
   }
 
@@ -561,6 +568,7 @@ class _DriveScreenState extends State<DriveScreen> {
         camera: _cameraNote,
         faceLost: _faceLostNote,
         serverCancelled: _cancelNote,
+        checking: _checkingNote,
         faceBox: _faceBoxNote,
         silent: silent,
         resumeRest: resumeRest,
@@ -676,12 +684,78 @@ class _DriveScreenState extends State<DriveScreen> {
     }
   }
 
+  // 운행 중 앱이 뒤로 가거나(다른 앱 · 홈 버튼) 화면이 잠기면 카메라가 멈춰 졸음을 못 본다 → 한 번 말해 준다 (11/12 팀장)
+  //   안드로이드는 화면 밖 앱의 카메라를 막아서 계속 지켜볼 수는 없음 (발표 한계). 돌아오면 카메라 지킴이가 다시 켬
+  bool _pausedSpoken = false;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      if (!_pausedSpoken) {
+        _pausedSpoken = true;
+        VoiceService.speak('졸음 감지가 멈췄어요. 졸음 가드 앱으로 돌아와 주세요.');
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      _pausedSpoken = false;
+    }
+  }
+
+  // [운행 종료] · 뒤로 가기 — 운전 중 잘못 눌러 감지가 꺼지지 않게 한 번 묻는다 (11/12 팀장)
+  Future<void> _confirmEnd() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('운행을 끝낼까요?', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
+        content: const Text('운행을 끝내면 졸음 감지가 멈춰요.', style: TextStyle(fontSize: 18, height: 1.45, color: AppColors.textPrimary)),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.navy,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(58),
+                    textStyle: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
+                  ),
+                  child: const Text('계속 운행'),
+                ),
+              ),
+              const SizedBox(width: 28),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.textPrimary,
+                    side: const BorderSide(color: AppColors.cardBorder, width: 2),
+                    minimumSize: const Size.fromHeight(58),
+                    textStyle: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
+                  ),
+                  child: const Text('운행 종료'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+    ApiService.endDrive().ignore(); // 서버에 운행이 끝났다고 알림 (홈 배너가 안 뜨게, 2 · 3단계는 그대로)
+    Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final bg = stageTint(_stage); // PPT 색 가이드 + 투명도 (경고 화면과 같게, 11/11)
     const fg = AppColors.textPrimary;
 
-    return Scaffold(
+    return PopScope(
+      canPop: false, // 뒤로 가기도 [운행 종료]처럼 한 번 묻는다 (11/12)
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmEnd();
+      },
+      child: Scaffold(
       backgroundColor: bg,
       bottomNavigationBar: ServerCancelText(cancelled: _cancelNote),
       appBar: AppBar(
@@ -696,6 +770,7 @@ class _DriveScreenState extends State<DriveScreen> {
           banner: Column(mainAxisSize: MainAxisSize.min, children: [
             CameraBanner(faceLost: _faceLostNote),
             _PreWarnBanner(show: _preWarnNote),
+            CheckingBanner(checking: _checkingNote),
           ]),
           belowMax: 0.3,
           above: [
@@ -768,10 +843,7 @@ class _DriveScreenState extends State<DriveScreen> {
             ],
             const SizedBox(height: 12),
             OutlinedButton(
-              onPressed: () {
-                ApiService.endDrive().ignore(); // 서버에 운행이 끝났다고 알림 (홈 배너가 안 뜨게, 2 · 3단계는 그대로)
-                Navigator.of(context).pop();
-              },
+              onPressed: _confirmEnd, // 한 번 묻고 끝냄 (11/12)
               style: OutlinedButton.styleFrom(
                 foregroundColor: fg,
                 side: BorderSide(color: fg),
@@ -782,6 +854,7 @@ class _DriveScreenState extends State<DriveScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 

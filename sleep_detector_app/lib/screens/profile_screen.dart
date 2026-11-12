@@ -30,6 +30,7 @@ import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../theme.dart';
+import '../widgets/contact_dialog.dart';
 import 'login_screen.dart';
 
 /// 고른 사진 한 장 (바이트 + 파일 이름 — 서버는 이름의 확장자를 검사한다)
@@ -259,7 +260,7 @@ class _BodyState extends State<_Body> {
   Future<void> _editContact() async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) => _ContactDialog(
+      builder: (_) => ContactDialog( // 빈 칸 저장은 막음 (11/12 — 긴급 때 관리자가 연락할 수 있게)
         phone: _text('phone'),
         vehicleNo: _text('vehicle_no'),
         save: widget.saveContact ?? AuthService.updateProfile,
@@ -427,102 +428,6 @@ class _Section extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// 전화번호 · 차량번호 입력 창. 저장에 성공하면 바뀐 내 정보(Map)를 돌려주고, 취소하면 null.
-/// 서버가 형식을 검사해서 틀리면 그 문구를 창 안에 그대로 보여 준다 (창은 닫지 않음).
-class _ContactDialog extends StatefulWidget {
-  final String phone;
-  final String vehicleNo;
-  final Future<Map<String, dynamic>> Function({String? phone, String? vehicleNo}) save;
-  const _ContactDialog({required this.phone, required this.vehicleNo, required this.save});
-
-  @override
-  State<_ContactDialog> createState() => _ContactDialogState();
-}
-
-class _ContactDialogState extends State<_ContactDialog> {
-  late final TextEditingController _phone = TextEditingController(text: widget.phone);
-  late final TextEditingController _vehicle = TextEditingController(text: widget.vehicleNo);
-  bool _saving = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _phone.dispose();
-    _vehicle.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (_saving) return;
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    try {
-      // 칸을 비웠으면 ''(빈 글자)를 보내 서버가 지우게 한다
-      final result = await widget.save(phone: _phone.text.trim(), vehicleNo: _vehicle.text.trim());
-      if (!mounted) return;
-      Navigator.of(context).pop(result);
-    } on AuthException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _saving = false;
-        _error = e.message;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _saving = false;
-        _error = '저장하지 못했어요. 잠시 뒤 다시 시도해 주세요';
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('연락처 · 차량번호'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _phone,
-              enabled: !_saving,
-              keyboardType: TextInputType.phone,
-              textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(labelText: '전화번호', hintText: '010-1234-5678'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _vehicle,
-              enabled: !_saving,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _submit(),
-              decoration: const InputDecoration(labelText: '차량번호', hintText: '12가 3456'),
-            ),
-            const SizedBox(height: 8),
-            const Text('비워 두고 저장하면 지워져요.', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(_error!, style: const TextStyle(fontSize: 13, color: AppColors.danger)),
-              ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: _saving ? null : () => Navigator.of(context).pop(), child: const Text('취소')),
-        TextButton(
-          onPressed: _saving ? null : _submit,
-          child: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('저장'),
-        ),
-      ],
     );
   }
 }
