@@ -786,7 +786,8 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
 
     // 대시보드 맨 위 '지금 긴급' 영역 (11/12): 미처리 긴급(isOpenUrgent)을 건수 제한 없이 전부.
     // 한 줄에 기사 이름 · 차량번호 · 단계 · 몇 분 전 · 주소 · 전화번호 + [전화 걸기] [상세 보기] [조치완료]. 0건이면 초록 한 줄
-    // 전화번호는 9~11자리일 때만 tel: 로 건다 (아니면 '미등록' 이고 [전화 걸기] 는 없음. 상세 페이지에서 이메일로 연락)
+    // 전화번호는 9~11자리일 때만 보여 주고 tel: 로 건다 (아니면 전화번호 칸을 비우고 [전화 걸기] 도 없음. 상세 페이지에서 이메일로 연락)
+    // '전화번호 미등록' 글자는 긴급 줄에서 뺌 (11/12 결정 — 기사 가입 때 전화번호를 받으므로). 기사 관리 · 기사 상세의 '미등록' 표시는 그대로
     const validPhoneDigits = (phone) => { const d = digitsOf(phone); return d.length >= 9 && d.length <= 11 ? d : ''; };
     function urgentRow(e) {
       const n = stageNum(e.stage), who = honor(e.user_name), digits = validPhoneDigits(e.user_phone);
@@ -797,7 +798,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
           h('div', { class: 'u-kind' },
             h('span', { class: 'badge b-3' }, icon('warning', 16), kind),
             h('span', { class: 'u-ago', title: fmtTime(e.created_at) }, ago(e.created_at) || fmtTime(e.created_at))),
-          h('div', { class: 'u-phone' }, digits ? e.user_phone : h('span', { class: 'unset' }, '전화번호 미등록')),
+          h('div', { class: 'u-phone' }, digits ? e.user_phone : null),     // 전화번호가 없으면 칸을 비워 둠 ('미등록' 글자 없음, 11/12)
           h('div', { class: 'u-where' }, icon('pin', 16), h('span', null, where(e)))),
         h('div', { class: 'u-actions' },
           digits ? h('a', { class: 'btn brand sm', href: 'tel:' + digits, 'data-key': 'ucall' + e.id, 'aria-label': who + ' 전화 걸기' }, icon('phone', 16), '전화 걸기') : null,
