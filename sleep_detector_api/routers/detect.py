@@ -66,6 +66,7 @@ from services import (agent_service, drive_timer, face_service, llm_service, rag
 router = APIRouter(tags=["운행 · 감지"])
 
 ACTIVE_PING_SEC = 5 * 60   # 앱이 꺼진 지 이 시간 안이면 홈 화면이 '진행 중인 운행' 으로 봄 (2 · 3단계 · 휴식 중은 시간과 상관없이)
+PRE_WARN_VOICE = "졸음이 느껴지면 창문을 열고 환기해 주세요. 다시 졸면 주의 단계로 경고해요."   # 예비 경고 음성 (mock_server 와 같은 문장, 11/12)
 ALLOWED_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
@@ -380,6 +381,20 @@ async def detect_handler(
         stage = int(sleep_state.get_stage(user.id))
         return {**base, "is_sleep": False, "reason": "", "stage": stage, "status": _label(stage),
                 "summary": "", "guidance": "", "driver_voice": "",
+                "sleep_count_10min": int(sleep_state.facts(user.id)["sleep_count_10min"]),
+                "voice_quiz": None, "regulations": [], "event_id": None}
+
+    # ②-1 (11/12 팀장 결정 · A sleep_state.try_pre_warn) 운행 중 첫 졸음 = 예비 경고
+    #   0단계 · 이번 운행 처음이면 단계 · 10분 졸음 횟수를 건드리지 않고 알림만 (AI 안 부름 → 빠르게, 퀴즈 없음)
+    #   반쯤 감은 눈 확정(half)은 건너뜀 — 이미 약 30초를 모은 확정이라 바로 1단계 (try_pre_warn 이 False)
+    #   DB 에 남기지 않음 (운행 기록 · 관리자 경고 목록 · 통계에 0단계가 섞임) → 사진도 지움. 서버 로그 한 줄만
+    #   계속 감고 있으면 앱 eye_monitor 가 6초에 다시 보냄 → 그때는 아래 ③ 으로 1단계. 사진 1장 테스트(reason 없음)는 예비 경고 없음
+    if reason and sleep_state.try_pre_warn(user.id, "half" if half is not None else reason):
+        _remove(tmp_path)
+        stage = int(sleep_state.get_stage(user.id))
+        print(f"[detect]   → 예비 경고 (운행 중 첫 졸음 · 단계 {stage} 그대로 · 기록 안 남김) · 합계 {time.perf_counter() - t_start:.1f}초")
+        return {**base, "is_sleep": False, "pre_warning": True, "reason": "pre_warning", "stage": stage, "status": _label(stage),
+                "summary": "", "guidance": "", "driver_voice": PRE_WARN_VOICE,
                 "sleep_count_10min": int(sleep_state.facts(user.id)["sleep_count_10min"]),
                 "voice_quiz": None, "regulations": [], "event_id": None}
 
