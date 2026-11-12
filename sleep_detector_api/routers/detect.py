@@ -231,7 +231,7 @@ def drive_state_handler(session: Session = Depends(get_session), user: User = De
             summary, guidance = event.summary or "", event.guidance or ""
     return {"active": bool(stage >= 2 or resting or recent), "stage": stage, "status": _label(stage),
             "resting": resting,
-            "rest_left_sec": max(0, int(round(config.REST_MIN * 60 - elapsed * 60))) if resting else 0,
+            "rest_left_sec": max(0, int(round(config.REST_WAIT_SEC - elapsed * 60))) if resting else 0,
             "drive_min": int(drive_timer.drive_min(user.id)), "summary": summary, "guidance": guidance}
 
 
@@ -262,8 +262,8 @@ def drive_rest_handler(session: Session = Depends(get_session), user: User = Dep
                 event = _open_stage2_event(session, user.id)
                 if event:
                     _rest_event[user.id] = event.id
-    left_sec = max(1, int(round(config.REST_MIN * 60 - elapsed * 60)))
-    return {"success": True, "message": f"{config.REST_MIN}분 쉬고 출발하세요", "rest_sec": left_sec,
+    left_sec = max(1, int(round(config.REST_WAIT_SEC - elapsed * 60)))
+    return {"success": True, "message": f"{config.REST_WAIT_TEXT} 쉬고 출발하세요", "rest_sec": left_sec,
             "started": datetime.now().strftime("%H:%M")}
 
 
@@ -273,8 +273,8 @@ def drive_resume_handler(session: Session = Depends(get_session), user: User = D
     elapsed = sleep_state.rest_elapsed_min(user.id)
     if elapsed is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "정차 기록이 없습니다. [정차했어요] 를 먼저 눌러 주세요")
-    if elapsed < config.REST_MIN:
-        left = max(1, int(round((config.REST_MIN - elapsed) * 60)))
+    if elapsed * 60 < config.REST_WAIT_SEC:
+        left = max(1, int(round(config.REST_WAIT_SEC - elapsed * 60)))
         raise HTTPException(status.HTTP_409_CONFLICT, f"아직 휴식 시간이 지나지 않았습니다 ({left}초 남음)")
 
     stage = int(sleep_state.get_stage(user.id))
@@ -390,8 +390,14 @@ async def detect_handler(
     f = sleep_state.facts(user.id)
     facts = {"sleep_count_10min": int(f["sleep_count_10min"]), "last_closed_sec": float(f["last_closed_sec"] or 0),
              "drive_min": drive_timer.drive_min(user.id)}
+    # (11/12 팀장) 10분 횟수보다 단계가 높으면 = 주의(1단계)에서 다시 졸아 올라감 (휴식 뒤 1단계 등).
+    #   이때 "10분 안 첫 번째 졸음"이라고 하면 2단계와 말이 안 맞아서, 횟수 대신 이 이유를 문장에 쓴다
+    stage_note = "주의 단계에서 다시 졸음" if rule_stage > min(3, facts["sleep_count_10min"]) else ""
+    if stage_note:
+        facts["stage_note"] = stage_note
     eye_info = {"reason": reason, "closed_sec": closed, "perclos": pc, "eye_open_prob": open_prob,
-                "ear": eye.get("ear"), "method": base["method"], "sleep_count_10min": facts["sleep_count_10min"]}
+                "ear": eye.get("ear"), "method": base["method"], "sleep_count_10min": facts["sleep_count_10min"],
+                "stage_note": stage_note}
 
     # ④ LLM 요약  ⑤ RAG 규정  ⑥ Agent (모두 실패하면 가짜로 — 각 서비스가 is_real 로 알려 줌)
     t_ai = time.perf_counter()

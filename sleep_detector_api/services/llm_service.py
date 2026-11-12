@@ -51,7 +51,7 @@ GEMINI_API_KEY = _cfg("GEMINI_API_KEY")
 GEMINI_BASE_URL = _cfg("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
 GEMINI_MODEL = _cfg("GEMINI_MODEL", "gemini-3.5-flash-lite")
 LLM_FALLBACK_MODEL = _cfg("LLM_FALLBACK_MODEL", "gemini-3.1-flash-lite")  # 10.13 정상 응답 확인
-LLM_TIMEOUT_SEC = 15       # 실시간 경고 경로라 오래 기다리지 않는다
+LLM_TIMEOUT_SEC = 5        # 실시간 경고 경로 — 늦으면 기본 문장으로 (11/12 팀장: 15 → 5초, Gemini 가 느릴 때 경고가 30초 늦었음)
 SUMMARY_MAX_CHARS = 120    # 관리자 웹 한 줄 카드
 
 REASON_KO = {"microsleep": "미세수면", "perclos": "피로 누적"}
@@ -66,6 +66,7 @@ SYSTEM_PROMPT = """너는 화물 · 버스 운수회사 졸음운전 관제 시�
 - 주어진 숫자를 바꾸거나 새 숫자를 만들지 않는다. 시간은 "약 2초"처럼 반올림해도 된다.
 - 영어 용어를 쓰지 않는다 (microsleep → 미세수면, PERCLOS → 눈 감은 비율).
 - 사진에서 눈이 잘 안 보이면 숫자만으로 요약한다.
+- 입력에 '단계 이유'가 있으면 몇 번째 졸음이라고 쓰지 말고 그 이유를 쓴다 (예: 주의 단계에서 다시 졸았습니다).
 - 요약 문장만 출력한다. 따옴표 · 머리말 · 사족 금지.
 
 예시)
@@ -96,7 +97,9 @@ def _facts_text(eye):
         parts.append(f"눈 뜸 확률 {v:g}")
     if (v := _num(eye, "ear")) is not None:
         parts.append(f"EAR {v:g}")
-    if (v := _num(eye, "sleep_count_10min")) is not None:
+    if eye.get("stage_note"):              # 주의 단계에서 다시 졸아 올라간 단계 → 횟수 대신 이유 (11/12)
+        parts.append(f"단계 이유 {eye['stage_note']}")
+    elif (v := _num(eye, "sleep_count_10min")) is not None:
         parts.append(f"10분 안 {int(v)}번째 졸음")
     return ", ".join(parts) or "판정 숫자 없음"
 
@@ -110,6 +113,8 @@ def _template(eye):
         first = f"운전자가 약 {max(1, round(closed))}초간 눈을 감은 미세수면 상태로 보입니다."
     else:
         first = "운전자의 졸음이 감지되었습니다."
+    if eye.get("stage_note"):              # (11/12) 횟수 대신 단계 이유
+        return first + " 주의 단계에서 다시 졸았습니다."
     if count:
         n = int(count)
         first += f" 10분 안에 {ORDINAL_KO[n]} 번째 졸음입니다." if n in ORDINAL_KO else f" 10분 안에 {n}번째 졸음입니다."
@@ -168,6 +173,9 @@ def _real_interpret(image_path, eye):
             return r.choices[0].message.content, model
         except Exception as e:
             errors.append(f"{model}: {type(e).__name__} {str(e)[:120]}")
+            # 시간 초과면 예비 모델로 또 기다리지 않는다 — 경고가 늦어지는 게 더 위험 (11/12 팀장). 다른 오류(한도 등)만 예비 모델로
+            if "Timeout" in type(e).__name__:
+                break
     raise RuntimeError(" / ".join(errors))
 
 

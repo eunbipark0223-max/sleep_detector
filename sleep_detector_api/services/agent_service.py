@@ -37,7 +37,7 @@ from services import rag_service, sleep_state
 
 USE_REAL_AI = config.USE_REAL_AI
 FALLBACK_ON_ERROR = config.FALLBACK_ON_ERROR
-AGENT_TIMEOUT_SEC = 20     # 실시간 경고 경로라 오래 기다리지 않는다
+AGENT_TIMEOUT_SEC = 6      # 실시간 경고 경로 — 늦으면 규칙 단계 · 기본 문장으로 (11/12 팀장: 20 → 6초)
 MAX_TOOL_TURNS = 3         # 도구를 부르는 횟수 제한 (수업 안전장치 ①)
 
 GUIDANCE = {
@@ -79,10 +79,12 @@ def _template_voice(stage, facts, guidance):
         if closed <= 0:   # 피로 누적(PERCLOS) — 한 번에 감은 초가 없음 → 없는 '1초' 를 말하지 않게 (11/02 KPI ⑥)
             return f"졸음이 감지됐습니다. 최근 눈을 자주 감고 있습니다. {guidance}"
         return f"졸음이 감지됐습니다. 약 {max(1, round(closed))}초 동안 눈을 감았습니다. {guidance}"
+    # (11/12 팀장) 주의 단계에서 다시 졸아 올라간 단계면 '10분 동안 1번' 대신 그 이유 (단계와 말이 맞게)
+    head = "주의 단계에서 다시 졸았습니다." if facts.get("stage_note") else f"최근 10분 동안 {n}번 졸았습니다."
     if stage == 2:
         drive = f" 운행 {_drive_text(facts.get('drive_min'))}입니다." if int(facts.get("drive_min") or 0) >= 1 else ""
-        return f"최근 10분 동안 {n}번 졸았습니다.{drive} {guidance}"
-    return f"최근 10분 동안 {n}번 졸았습니다. 관리자에게 알렸습니다. 안전한 곳에 바로 정차해 주세요."
+        return f"{head}{drive} {guidance}"
+    return f"{head} 관리자에게 알렸습니다. 안전한 곳에 바로 정차해 주세요."
 
 
 def _allowed_numbers(facts):
@@ -128,6 +130,8 @@ def _check_voice(text, facts):
         return None
     if any(str(n) not in allowed for n in _korean_numbers(s)):
         return None
+    if facts.get("stage_note") and "번 졸" in s:   # (11/12) 단계 이유가 있는데 횟수로 말하면 단계와 안 맞음 → 템플릿
+        return None
     return s
 
 
@@ -135,7 +139,8 @@ def _base_report(eye, analysis, regulations, rule_stage, location):
     reason = REASON_KO.get(eye.get("reason"), "졸음")
     return {
         "situation": analysis.get("summary") or f"{reason} 감지",
-        "stage_reason": f"10분 안 졸음 횟수 기준 {rule_stage}단계",
+        "stage_reason": (f"주의 단계에서 다시 졸아 {rule_stage}단계" if eye.get("stage_note")
+                         else f"10분 안 졸음 횟수 기준 {rule_stage}단계"),
         "regulation": regulations[0]["title"] if regulations else "",
         "recommended_action": ACTION.get(rule_stage, ACTION[1]),
         "location": location,
@@ -195,6 +200,7 @@ SYSTEM_PROMPT = """너는 화물 · 버스 운수회사 졸음운전 관제 Agen
 - 연속 운전이 {limit}분 미만이면 휴게시간 규정(2시간마다 15분 휴식 등)은 단계 근거로 쓰지 말고 참고로만 언급한다.
 - driver_voice 는 기사가 운전 중에 귀로 듣는 말이다. 2~3문장, {max_chars}자 이내, 존댓말, 영어 금지.
   기사가 자기 상태를 숫자로 듣게 첫 문장에 facts 의 숫자를 꼭 넣는다 (2단계 이상: "최근 10분 동안 N번 졸았습니다", 1단계: "약 N초 동안 눈을 감았습니다").
+  단, facts 에 stage_note 가 있으면 횟수 대신 그 이유로 시작한다 (예: "주의 단계에서 다시 졸았습니다").
 
 반드시 아래 JSON 하나로만 답한다:
 {{"stage": 1~3, "guidance": "기사 안내 한 문장", "driver_voice": "음성 보고",

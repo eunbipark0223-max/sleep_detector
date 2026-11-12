@@ -35,9 +35,8 @@ def _get_window_minutes() -> float:
 
 
 def _get_rest_minutes() -> float:
-    if getattr(config, "DEMO_MODE", False):
-        return 1.0
-    return float(getattr(config, "REST_MIN", 15))
+    # 휴식 인정 시간 (분) — config.REST_WAIT_SEC 를 따른다 (시연 모드 10초, 평소 15분, 11/12)
+    return float(getattr(config, "REST_WAIT_SEC", 15 * 60)) / 60.0
 
 
 def get_state(user_id: int) -> dict:

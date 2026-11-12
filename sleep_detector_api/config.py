@@ -66,6 +66,9 @@ STAGE3_REPEAT_SEC = 30        # 3단계 경고 반복 간격 (앱)
 # ── 운전 · 휴식 (drive_timer, /drive/*) ───────────────
 DRIVE_LIMIT_MIN = 2 if DEMO_MODE else 120   # 연속 운전 휴게 알림
 REST_MIN = 1 if DEMO_MODE else 15           # 휴식 인정 시간
+# [정차했어요] 뒤 기다리는 휴식 시간 (초) — 시연 모드는 10초 (11/12 팀장, 강사님 시연용). 안내 문구 · 연속 운전 계산은 REST_MIN 그대로
+REST_WAIT_SEC = int(os.getenv("REST_WAIT_SEC") or (10 if DEMO_MODE else REST_MIN * 60))  # 환경 변수 REST_WAIT_SEC 로 휴식만 따로 줄일 수 있음 (11/12 시연)
+REST_WAIT_TEXT = f"{REST_WAIT_SEC}초" if REST_WAIT_SEC < 60 else f"{REST_WAIT_SEC // 60}분"
 REST_GRACE_MIN = 1 if DEMO_MODE else 15     # 휴게 알림 후 이 시간 안에 안 쉬면 rest_overdue
 PING_SEC = 30                 # 앱 /drive/ping 간격 (앱 config.dart 와 같은 값)
 
