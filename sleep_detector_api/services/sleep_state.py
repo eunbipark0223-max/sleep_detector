@@ -14,6 +14,8 @@
 #   - 🆕 (11/10 팀장 결정) 반쯤 감은 눈: 평소 뜬 눈 EAR (출발 전 5초 측정 중간값, set_open_ear · get_open_ear) 저장
 #       add_half(user_id, is_half) — 최근 4번 중 3번 반쯤이면 True (확정) → 기록 비움 (실눈이 이어져도 40초마다 단계가 오르지 않게)
 #       반쯤인지는 face_service.check_half 가 정함 (평소 × 0.85 미만). 측정 실패한 사람은 평소 값 None → 반쯤 판정 안 함
+#   - 🆕 (11/12 팀장 결정) 운행 중 첫 졸음 = 예비 경고: try_pre_warn — 0단계 · 이번 운행 처음 · half 아님이면 True (단계 · 10분 횟수 그대로)
+#       start_drive · set_ear_threshold(출발 전 측정 완료) 에서 다시 켬
 #
 # [주의]
 #   - 연속 감김 · PERCLOS · 얼굴 없음 계산은 여기서 하지 않는다 → 앱 eye_monitor.dart
@@ -57,6 +59,7 @@ def get_state(user_id: int) -> dict:
             "reset_count": 0,            # 관리자 [조치완료] 횟수 (/detect 가 AI 처리 중 해제됐는지 확인)
             "open_ear": None,            # 🆕 출발 전 측정 뜬 눈 EAR 중간값 (face_service.calibrate, 실패면 None)
             "half_recent": [],           # 🆕 최근 반쯤 확인 결과 [(시각, 반쯤 여부)]
+            "pre_warned": False,         # 🆕 (11/12) 이번 운행에서 예비 경고를 했는지 (try_pre_warn)
         }
     return _states[user_id]
 
@@ -96,6 +99,7 @@ def start_drive(user_id: int) -> dict:
     state["quiz_fails"] = 0
     state["last_ping_at"] = now
     state["half_recent"] = []   # 반쯤 확인은 이번 운행부터 다시 셈 (평소 뜬 눈 EAR 은 출발 전 측정이 새로 덮어씀)
+    state["pre_warned"] = False  # 새 운행의 첫 졸음은 다시 예비 경고 (11/12)
     return state
 
 
@@ -346,8 +350,28 @@ def get_ear_threshold(user_id: int) -> float | None:
 
 
 def set_ear_threshold(user_id: int, ear: float) -> None:
-    """/drive/calibrate 가 5장으로 만든 개인 기준 EAR 저장"""
+    """/drive/calibrate 가 5장으로 만든 개인 기준 EAR 저장 + 새 운행으로 보고 예비 경고 다시 켬 (11/12)"""
     set_personal_ear(user_id, ear)
+    get_state(user_id)["pre_warned"] = False
+
+
+# ── 🆕 (11/12 팀장 결정) 운행 중 첫 졸음 = 예비 경고 ───────────────
+#   서버가 졸음을 확정했는데 이번 운행에서 처음이고 지금 0단계면 → 단계 · 10분 졸음 횟수를 건드리지 않고 알림만
+#   계속 감고 있으면 앱 eye_monitor 가 6초에 다시 보냄 → 그때 add_sleep → 1단계
+#   reason == "half" 는 건너뜀: 반쯤 확인은 이미 최근 4번 중 3번(약 30초)을 모은 확정이라 바로 1단계,
+#     pre_warned 도 그대로 둬서 다음 눈 감김 졸음 때 예비 경고가 정상으로 나옴
+#   관리자 조치완료(reset) · 1단계 자동 해제로 0단계가 돼도 pre_warned 는 그대로 (같은 운행에서 또 졸면 바로 1단계)
+#   DB 에는 남기지 않음 (팀장 결정 — 운행 기록 · 경고 목록 · 통계에 0단계가 섞임), detect.py 가 서버 로그 한 줄
+def try_pre_warn(user_id: int, reason: str | None = None) -> bool:
+    """예비 경고를 할 차례면 True (pre_warned 를 켬). detect.py 가 눈 확정 뒤 add_sleep 앞에서 부름"""
+    if reason == "half":
+        return False
+    state = get_state(user_id)
+    _prune_old_sleeps(state, datetime.now())   # 1단계 자동 해제를 먼저 반영
+    if state.get("pre_warned") or state["stage"] != 0:
+        return False
+    state["pre_warned"] = True
+    return True
 
 
 # ── 🆕 (11/10) 반쯤 감은 눈 ──────────────────────────────────
