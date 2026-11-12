@@ -41,7 +41,8 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
   - AI 처리 표시: 보고서의 report.is_real(llm · rag · agent)로 '모의'로 대체된 단계가 있으면 카드 아래에 한 줄로 알려 줌
 
 [기사 연락 (전화번호 · 차량번호)]
-  - 팀장 결정(10/29)으로 users 에 phone · vehicle_no 추가 → 기사가 앱 '내 정보'에서 직접 적음. 안 적었으면 '미등록'
+  - 팀장 결정(10/29)으로 users 에 phone · vehicle_no 추가 → 기사가 앱에서 직접 적음. 11/12 부터 앱이 가입 · 로그인 직후(이메일 · Google · 자동 로그인) 비어 있으면 입력 창을 띄워 필수로 받음
+    (비우기도 앱에서 막음). 그래서 '미등록'은 그 전에 만든 예전 계정에만 남고, 다시 로그인하면 채워짐. 긴급 줄에서는 '전화번호 미등록' 글자를 뺌
   - 연락처 칸(경고 상세 · 기사 상세 오른쪽): 번호 · 이메일을 바로 보여 주고, 번호 · 이메일을 누르면 복사 (11/09). 아래에 [전화 걸기](tel:) · [문자](sms:) (번호가 없으면 [이메일 보내기])
 
 [확정본과 다른 점 — 서버(DB)에 없는 값은 만들지 않았다]
@@ -1141,7 +1142,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     }
 
     // 연락처: 번호 · 이메일을 바로 보여 주고, 누르면 복사 (따로 [번호 복사] 버튼 없음, 11/09). 아래에 전화 · 문자 (번호가 없으면 이메일 보내기)
-    // 전화번호는 기사가 앱 '내 정보'에서 적은 값, 안 적었으면 '미등록'
+    // 전화번호 · 차량번호는 앱이 가입 · 로그인 직후 필수로 받는다 (팀장 11/12). 비어 있는 건 그 전에 만든 예전 계정뿐이라 '미등록' + 안내문(다시 로그인하면 입력 창이 뜸)
     function contactBox(ctx) {
       const digits = validPhoneDigits(ctx.phone);                        // tel: · sms: 링크에는 숫자만 넣는다 (9~11자리가 아니면 빈 값)
       const validPhone = !!digits;
@@ -1156,7 +1157,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
           validPhone ? h('a', { class: 'btn brand', href: 'tel:' + digits }, icon('phone', 18), '전화 걸기') : null,
           validPhone ? h('a', { class: 'btn', href: 'sms:' + digits }, icon('mail', 18), '문자') : null,
           !validPhone && validMail ? h('a', { class: 'btn brand', href: 'mailto:' + ctx.email }, icon('mail', 18), '이메일 보내기') : null),
-        validPhone ? null : h('p', { class: 'r-note' }, '전화번호가 아직 등록되지 않았어요. ' + honor(ctx.name) + '이 앱의 내 정보에서 적으면 여기에 나와요.'));
+        validPhone ? null : h('p', { class: 'r-note' }, '전화번호가 아직 없는 예전 계정이에요. ' + honor(ctx.name) + '이 앱에 다시 로그인하면 전화번호 입력 창이 떠요. 입력하면 여기에 나와요.'));
     }
 
     // 사진은 로그인 토큰이 있어야 받을 수 있어서 <img src=주소> 대신 api.js 의 fetchPhotoUrl 로 받아 넣는다 (받는 동안 안내 글)
