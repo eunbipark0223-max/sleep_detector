@@ -60,6 +60,7 @@ from schema.request import PasswordChange, ProfileUpdate, format_phone, format_v
 # ── 기준 숫자 (진짜 서버는 config.py 에서 가져옴) ──────────────────
 WINDOW_SEC = int(os.getenv("MOCK_WINDOW_SEC", "60"))          # 1단계 자동 해제 · 졸음 횟수를 세는 구간 (진짜 600)
 REST_SEC = int(os.getenv("MOCK_REST_SEC", "10"))              # 휴식 시간 (진짜 900)
+PRE_WARN_ON = os.getenv("PRE_WARN_ON", "false").lower() in ("1", "true", "yes")  # (11/15) 예비 경고 기본 꺼짐
 QUIZ_GAP_SEC = int(os.getenv("MOCK_QUIZ_GAP_SEC", "20"))      # 음성 퀴즈 최소 간격 (진짜 120)
 DRIVE_LIMIT_MIN = 120                                         # 연속 운전 휴게 알림
 CALIB_FRAMES = 5                                              # 개인 기준 측정 사진 수
@@ -197,7 +198,7 @@ MOCK_REGULATIONS = [
 GUIDANCE = {
     1: "창문을 열고 환기하며 주의해서 운전해 주세요.",
     2: "가까운 졸음쉼터에서 15분 이상 쉬어 주세요.",
-    3: "관리자에게 알렸습니다. 안전한 곳에 바로 정차해 주세요.",
+    3: "관리자에게 알렸어요. 안전한 곳에 바로 정차해 주세요.",
 }
 STAGE_REASON = {
     1: "10분 안 첫 졸음 감지",
@@ -219,15 +220,16 @@ def make_ai_text(stage: int, reason: str, count: int, closed_sec: float, perclos
     closed = int(round(closed_sec))
     closed_voice = f" 약 {closed}초 동안 눈을 감았습니다." if closed >= 1 else ""
     if reason == "perclos":
-        summary = f"눈 감김 비율(PERCLOS)이 {int(round(perclos * 100))}%로 피로가 누적된 상태입니다. 10분 안에 {count}번째 졸음입니다."
+        summary = f"최근 30초 중 {int(round(perclos * 100))}% 동안 눈을 감아 피로가 쌓인 상태로 보여요. 10분 안에 {count}번째 졸음이에요."
     else:
-        summary = f"눈을 약 {closed}초간 감고 있었습니다. 10분 안에 {count}번째 졸음입니다." if closed >= 1 else f"눈을 감은 졸음이 감지됐습니다. 10분 안에 {count}번째 졸음입니다."
+        summary = f"약 {closed}초간 눈을 감은 미세수면 상태로 보여요. 10분 안에 {count}번째 졸음이에요." if closed >= 1 else f"졸음이 감지됐어요. 10분 안에 {count}번째 졸음이에요."
+    # (11/16 팀장) 음성은 '사실 하나 + 행동 하나' 짧은 한 문장 (진짜 서버 agent_service._template_voice 와 같음, 이름은 응답 때 붙임)
     if stage == 1:
-        voice = f"졸음이 감지됐습니다.{closed_voice} {GUIDANCE[1]}"
+        voice = f"{closed}초 동안 눈을 감았어요. 정신 차려 주세요." if closed >= 1 else "눈을 자주 감고 있어요. 정신 차려 주세요."
     elif stage == 2:
-        voice = f"최근 10분 동안 {count}번 졸았습니다. 운행 {_drive_text(drive_min)}째입니다. {GUIDANCE[2]}"
+        voice = f"10분 새 {count}번 졸았어요. 가까운 쉼터에서 쉬어 가세요."
     else:
-        voice = f"최근 10분 동안 {count}번 졸았습니다. 관리자에게 알렸습니다. 안전한 곳에 바로 정차해 주세요."
+        voice = f"10분 새 {count}번 졸았어요. 지금 바로 정차하세요."
     return {
         "summary": summary, "guidance": GUIDANCE[stage], "driver_voice": voice,
         "report": {
@@ -372,14 +374,14 @@ def seed() -> None:
               "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[1], "location": "37.4021, 127.1088",
               "eye": {"closed_sec": 2.1, "perclos": 0.12, "eye_open_prob": 0.18}, "driving_quiz": quiz_ok,
               "is_real": {"llm": True, "rag": True, "agent": True, "driver_voice": True}},  # 시험용: 전부 진짜인 경고
-              summary="눈을 약 2초간 감고 있었습니다. 10분 안에 1번째 졸음입니다.", guidance=GUIDANCE[1], ear=0.17, method="ear",
+              summary="약 2초간 눈을 감은 미세수면 상태로 보여요. 10분 안에 1번째 졸음이에요.", guidance=GUIDANCE[1], ear=0.17, method="ear",
               perclos=0.12, eye_closed_prob=0.82, lat=37.4021, lng=127.1088, status="확인", created_at=_now_text(now - timedelta(hours=3)))
     add_event(1, 2, "perclos", {"situation": "10분 안 두 번째 졸음, PERCLOS 33%", "stage_reason": STAGE_REASON[2],
               "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[2], "location": "37.4105, 127.1190",
               "eye": {"closed_sec": 0.8, "perclos": 0.33, "eye_open_prob": 0.4}, "driving_quiz": quiz_ok,
               "rest": {"started": "03:20", "resumed": "03:38", "minutes": 18},
               "is_real": {"llm": True, "rag": False, "agent": True, "driver_voice": True}},  # 시험용: 규정 검색만 가짜로 대체된 경고
-              summary="눈 감김 비율(PERCLOS)이 33%로 피로가 누적된 상태입니다. 10분 안에 2번째 졸음입니다.", guidance=GUIDANCE[2],
+              summary="최근 30초 중 33% 동안 눈을 감아 피로가 쌓인 상태로 보여요. 10분 안에 2번째 졸음이에요.", guidance=GUIDANCE[2],
               ear=0.19, method="ear", perclos=0.33, eye_closed_prob=0.6, lat=37.4105, lng=127.1190, status="휴식완료",
               created_at=_now_text(now - timedelta(hours=2)))
     add_event(3, 3, "no_response", {"situation": "운전 중 음성 퀴즈에 2번 답하지 못함", "stage_reason": STAGE_REASON[3],
@@ -557,10 +559,37 @@ def delete_my_photo(user: dict = Depends(current_user)):
 # ═══════════════════════════════════════════════════════════════
 # drive — 운행 시작 · 개인 기준 · ping · 휴식 · 운행 재개
 # ═══════════════════════════════════════════════════════════════
+# ───────────────────────────────────────────────
+# POST /drive/wake — (11/15 팀장) 3단계 [깨어 있어요] 응답 {pressed, sec}
+#   3단계 경고는 들어오는 순간 관리자에게 긴급으로 이미 간다 → 여기서는 그 경고 기록(report.wake)에 응답만 덧붙인다
+#   pressed=True  : 10초 안에(또는 늦게라도) 눌렀음 → 관리자 웹 초록 '깨어 있음 (N초)'
+#   pressed=False : 10초 동안 안 누름 → 관리자 웹 빨간 '응답 없음' · 배너 '바로 전화하세요' (알림음은 다시 울리지 않음)
+#   가장 최근의 미처리 3단계 경고에 붙인다 (없으면 아무것도 안 함)
+# ───────────────────────────────────────────────
+@app.post("/drive/wake")
+async def drive_wake(request: Request, user: dict = Depends(current_user)):
+    body = await read_body(request)
+    pressed = bool(body.get("pressed"))
+    sec = body.get("sec")
+    open3 = [e for e in EVENTS if e["user_id"] == user["id"] and e["stage"] >= 3 and e["status"] != "조치완료"]
+    if not open3:
+        return {"success": True, "event_id": None}
+    event = max(open3, key=lambda e: (e["created_at"], e["id"]))
+    event["report"]["wake"] = {"pressed": pressed, "sec": round(float(sec), 1) if isinstance(sec, (int, float)) else None,
+                               "at": datetime.now().isoformat(timespec="seconds")}
+    return {"success": True, "event_id": event["id"], "pressed": pressed}
+
+
+def _call_name(name) -> str:
+    n = (name or "").strip()
+    return "기사님" if not n else (f"{n}님" if n.endswith("기사") else f"{n} 기사님")
+
+
 @app.post("/drive/start")
 def drive_start(user: dict = Depends(current_user)):
     st = state_of(user["id"])
     reset_state(st)
+    st["session"] = (datetime.now(), _next["event"] - 1)   # (11/16) 운행 종료 리포트: 이 뒤의 경고만
     st.update({"drive_start": time.time(), "drive_offset_min": 0, "rest_due_sent": False, "last_quiz_at": 0.0, "last_ping": time.time(),
                "pre_warned": False})  # (11/12 팀장) 운행마다 첫 졸음은 예비 경고 한 번
     return {"success": True, "message": "운행을 시작합니다", "stage": 0, "status": STAGE_LABELS[0]}
@@ -622,11 +651,40 @@ def drive_state(user: dict = Depends(current_user)):
             "resting": resting, "rest_left_sec": left, "drive_min": drive_min_of(st), "summary": summary, "guidance": guidance}
 
 
+_REASON_TEXT = {"microsleep": "눈 감김", "perclos": "피로 누적", "no_face": "고개 숙임", "half": "눈 반쯤 감김"}
+
+
 @app.post("/drive/end")
 def drive_end(user: dict = Depends(current_user)):
-    """[운행 종료] — 단계는 그대로, 운전 시간 기록도 그대로 ('끝남' 표시만)."""
-    state_of(user["id"])["ended"] = True
-    return {"success": True}
+    """[운행 종료] — 단계는 그대로, 운전 시간 기록도 그대로 ('끝남' 표시만).
+    (11/16 팀장) + 오늘 운행 AI 리포트 (진짜 서버 detect.drive_end_handler 와 같은 모양, 문장은 템플릿)"""
+    st = state_of(user["id"])
+    st["ended"] = True
+    started, last_id = st.pop("session", None) or (None, 0)
+    now = datetime.now()
+    mine = [e for e in EVENTS if e["user_id"] == user["id"] and e["id"] > last_id and e["stage"] >= 1] if started else []
+    sleeps = [e for e in mine if e["reason"] != "rest_overdue"]
+    rests = [e["report"]["rest"] for e in mine if (e.get("report") or {}).get("rest")]
+    timeline = [{"time": e["created_at"][11:16], "stage": e["stage"], "reason": _REASON_TEXT.get(e["reason"], "졸음"),
+                 "event_id": e["id"], **({"rest": e["report"]["rest"]} if e["report"].get("rest") else {}),
+                 **({"wake": e["report"]["wake"]} if e["report"].get("wake") else {})} for e in mine]
+    stats = {"drive_min": int((now - started).total_seconds() // 60) + int(st.get("drive_offset_min") or 0) if started else 0,
+             "sleep_count": len(sleeps), "max_stage": max((e["stage"] for e in sleeps), default=0),
+             "rest_count": len(rests), "rest_min": sum(int(r.get("minutes") or 0) for r in rests), "timeline": timeline}
+    n, top, rc = stats["sleep_count"], stats["max_stage"], stats["rest_count"]
+    drive = _drive_text(stats["drive_min"])
+    if n == 0:
+        summary = f"오늘 {drive} 동안 졸음 없이 운행했어요." if stats["drive_min"] >= 1 else "오늘 졸음 없이 운행했어요."
+        advice = "지금처럼 2시간마다 쉬어 가세요."
+    else:
+        summary = (f"오늘 {drive} 운행 중 " if stats["drive_min"] >= 1 else "오늘 운행 중 ") + f"{n}번 졸음이 감지됐어요." + (
+            " 긴급 단계까지 올라갔어요." if top >= 3 else (" 쉬어 가라는 안내가 있었어요." if top == 2 else ""))
+        advice = "다음 운행 전에는 충분히 자고 출발하세요." if top >= 3 else "졸음이 오면 바로 쉼터에서 15분 쉬어 가세요."
+    if rc:
+        summary += f" 휴식은 {rc}번 했어요."
+    return {"success": True, "report": {**stats, "name": _call_name(user.get("name")),
+            "started": started.strftime("%H:%M") if started else "", "ended": now.strftime("%H:%M"),
+            "summary": summary, "advice": advice, "is_real": False}}
 
 
 @app.post("/drive/rest")
@@ -707,7 +765,7 @@ async def detect(
 
     # ②-1 (11/12 팀장) 예비 경고 — 운행 중 첫 졸음이고 지금 0단계면 단계를 올리지 않고 알림만 (횟수에 안 셈, 퀴즈 없음, 기록은 남김)
     fs = forced_stage()
-    if not fs and not st.get("pre_warned", True) and refresh_stage(st) == 0:
+    if PRE_WARN_ON and not fs and not st.get("pre_warned", True) and refresh_stage(st) == 0:  # 11/15 기본 꺼짐 (진짜 서버와 같게)
         st["pre_warned"] = True
         voice = "졸음이 느껴지면 창문을 열고 환기해 주세요. 다시 졸면 주의 단계로 경고해요."
         event = add_event(user["id"], 0, "pre_warning", {"situation": "운행 중 첫 졸음 — 예비 경고", "trigger": reason,
@@ -748,13 +806,14 @@ async def detect(
 
     # ⑧ 음성 퀴즈 1문제 (최소 간격 안이면 null)
     voice_quiz = None
-    if time.time() - st["last_quiz_at"] >= QUIZ_GAP_SEC:
+    if stage == 2 and time.time() - st["last_quiz_at"] >= QUIZ_GAP_SEC:  # (11/15) 퀴즈는 2단계에서만 (3단계는 [깨어 있어요])
         voice_quiz = make_quiz(user["id"], event_id=event["id"])
         st["last_quiz_at"] = time.time()
         st["quiz_fail"] = 0
 
     return {**base, "is_sleep": True, "reason": reason, "stage": stage, "status": STAGE_LABELS[stage], "summary": ai["summary"],
-            "guidance": ai["guidance"], "driver_voice": ai["driver_voice"], "sleep_count_10min": count, "voice_quiz": voice_quiz,
+            "guidance": ai["guidance"], "driver_voice": f"{_call_name(user.get('name'))}, {ai['driver_voice']}",
+            "sleep_count_10min": count, "voice_quiz": voice_quiz,
             "regulations": MOCK_REGULATIONS, "event_id": event["id"]}
 
 
@@ -796,7 +855,7 @@ def quiz_answer(body: VoiceQuizAnswer, user: dict = Depends(current_user)):
               lat=origin["latitude"] if origin else None, lng=origin["longitude"] if origin else None)
     st["quiz_fail"] = 0
     return {**result, "stage_up": new_stage > stage, "stage": new_stage, "status": STAGE_LABELS[new_stage],
-            "message": "응답이 없어 관리자에게 알렸습니다. 안전한 곳에 정차해 주세요."}
+            "message": "응답이 없어 관리자에게 알렸어요. 안전한 곳에 정차해 주세요."}
 
 
 # ═══════════════════════════════════════════════════════════════

@@ -5,7 +5,7 @@
 // 수업 원본: road_hazard_app/lib/screens/splash_screen.dart (🟢 그대로)
 //
 // [이 파일이 하는 일]
-//   - 첫 실행 때 카메라 · 마이크 · 위치 사용 동의 — 쉬운 말로만 (동의해야 다음으로, 동의 안 하면 앱 종료)
+//   - (11/16 팀장) 첫 실행 사용 동의 창은 뺌 — [운행 시작] 때 권한 안내창 → 휴대폰 권한 창으로 한 번에 받음 (home_screen)
 //   - 저장된 토큰 확인 → 메인 / 로그인으로 이동
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
@@ -13,8 +13,6 @@
 
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
@@ -31,9 +29,6 @@ class SplashScreen extends StatefulWidget {
 const Color _splashNavy = Color(0xFF010972);
 
 class _SplashScreenState extends State<SplashScreen> {
-  static const FlutterSecureStorage _storage = FlutterSecureStorage();
-  static const String _consentKey = 'privacy_consent'; // 한 번 동의하면 다시 묻지 않는다 (로그아웃해도 그대로)
-
   @override
   void initState() {
     super.initState();
@@ -51,7 +46,6 @@ class _SplashScreenState extends State<SplashScreen> {
         );
 
     await Future.delayed(const Duration(seconds: 2));
-    if (!await _checkConsent()) return;
     var loggedIn = await AuthService.isLoggedIn();
     // 토큰이 있어도 만료됐을 수 있다 → 서버에 확인 (만료면 me() 가 토큰을 지우고 null)
     // 서버 연결 오류는 로그아웃시키지 않고 그대로 들어간다 (운행 중 401 이 오면 그때 로그인 화면으로)
@@ -68,42 +62,6 @@ class _SplashScreenState extends State<SplashScreen> {
         builder: (_) => loggedIn ? const MainScreen() : const LoginScreen(),
       ),
     );
-  }
-
-  // 첫 실행 동의 — 이미 동의했으면 바로 true, 동의 안 함을 누르면 앱을 끄고 false
-  Future<bool> _checkConsent() async {
-    if (await _storage.read(key: _consentKey) == 'yes') return true;
-    if (!mounted) return false;
-    final agreed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          title: const Text('사용 동의'),
-          content: const SingleChildScrollView(
-            // 기사님은 일반 사용자 — 서버 · 관리자 · 사진 처리 같은 기술 설명은 빼고 쓰는 기능만 쉬운 말로 (11/09 팀장)
-            child: Text(
-              '졸음운전을 막기 위해 아래 기능을 사용해요.\n\n'
-              '• 카메라: 눈을 감는지 확인해요\n'
-              '• 마이크: 음성 퀴즈 대답을 들어요\n'
-              '• 위치: 졸음 경고가 난 곳을 기록해요',
-              style: TextStyle(fontSize: 15, height: 1.5),
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('동의 안 함')),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('동의하고 시작')),
-          ],
-        ),
-      ),
-    );
-    if (agreed != true) {
-      SystemNavigator.pop();
-      return false;
-    }
-    await _storage.write(key: _consentKey, value: 'yes');
-    return true;
   }
 
   @override

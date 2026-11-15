@@ -141,12 +141,47 @@ def method_counts() -> dict:
 # ───────────────────────────────────────────────
 # 운행 API
 # ───────────────────────────────────────────────
+# ───────────────────────────────────────────────
+# POST /drive/wake — (11/15 팀장) 3단계 [깨어 있어요] 응답 {pressed, sec}
+#   3단계 경고는 들어오는 순간 관리자에게 긴급으로 이미 간다 → 여기서는 그 경고 기록(report.wake)에 응답만 덧붙인다
+#   pressed=True  : 10초 안에(또는 늦게라도) 눌렀음 → 관리자 웹 초록 '깨어 있음 (N초)'
+#   pressed=False : 10초 동안 안 누름 → 관리자 웹 빨간 '응답 없음' · 배너 '바로 전화하세요' (알림음은 다시 울리지 않음)
+#   가장 최근의 미처리 3단계 경고에 붙인다 (없으면 아무것도 안 함)
+# ───────────────────────────────────────────────
+@router.post("/drive/wake")
+def drive_wake_handler(body: dict, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    pressed = bool(body.get("pressed"))
+    sec = body.get("sec")
+    event = session.scalar(
+        select(SleepEvent)
+        .where(SleepEvent.user_id == user.id, SleepEvent.stage >= 3, SleepEvent.status != "조치완료")
+        .order_by(SleepEvent.created_at.desc(), SleepEvent.id.desc())
+    )
+    if event is None:
+        return {"success": True, "event_id": None}
+    try:
+        report = json.loads(event.report) if isinstance(event.report, str) and event.report else dict(event.report or {})
+    except (TypeError, ValueError):
+        report = {}
+    report["wake"] = {"pressed": pressed, "sec": round(float(sec), 1) if isinstance(sec, (int, float)) else None,
+                      "at": datetime.now().isoformat(timespec="seconds")}
+    event.report = json.dumps(report, ensure_ascii=False)
+    session.commit()
+    print(f"[detect] {datetime.now():%H:%M:%S} u{user.id} 3단계 응답 → {'깨어 있음' if pressed else '응답 없음'}"
+          f"{f' ({sec}초)' if sec is not None else ''} · 경고 #{event.id}")
+    return {"success": True, "event_id": event.id, "pressed": pressed}
+
+
 @router.post("/drive/start")
-def drive_start_handler(user: User = Depends(get_current_user)):
+def drive_start_handler(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
     # 2 · 3단계는 유지 — 다시 시작으로 경고를 끌 수 없게 (기획안 8장, 11/03 A start_drive)
     stage = int(sleep_state.start_drive(user.id)["stage"])
     drive_timer.start(user.id)
+    last_id = session.execute(select(SleepEvent.id).where(SleepEvent.user_id == user.id)
+                              .order_by(SleepEvent.id.desc()).limit(1)).scalar() or 0
     with _lock:
+        # (11/16) 운행 종료 리포트는 이 운행부터 센다 — DB 시각(created_at)은 DB 시간대라 시각 대신 마지막 경고 번호로
+        _session_start[user.id] = (datetime.now(), last_id)
         for p in _calib_photos.pop(user.id, []):
             _remove(p)
         _rest_event.pop(user.id, None)
@@ -236,11 +271,60 @@ def drive_state_handler(session: Session = Depends(get_session), user: User = De
             "drive_min": int(drive_timer.drive_min(user.id)), "summary": summary, "guidance": guidance}
 
 
+_session_start: dict[int, tuple] = {}   # user_id → (시작 시각, 그때 마지막 경고 id)
+_REASON_TEXT = {"microsleep": "눈 감김", "perclos": "피로 누적", "no_face": "고개 숙임", "half": "눈 반쯤 감김",
+                "rest_overdue": "휴게 미준수"}
+
+
+def _call_name(name):
+    """'김기사' → '김기사님', '박은비' → '박은비 기사님' (앱 drive_screen 과 같은 규칙)"""
+    n = (name or "").strip()
+    if not n:
+        return "기사님"
+    return f"{n}님" if n.endswith("기사") else f"{n} 기사님"
+
+
 @router.post("/drive/end")
-def drive_end_handler(user: User = Depends(get_current_user)):
-    """[운행 종료] — 단계는 그대로(2 · 3단계는 계속 이어짐), 진행 중인 운행만 끝냄."""
+def drive_end_handler(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    """[운행 종료] — 단계는 그대로(2 · 3단계는 계속 이어짐), 진행 중인 운행만 끝냄.
+    (11/16 팀장) + 오늘 운행 AI 리포트: 운행 시간 · 졸음 횟수 · 최고 단계 · 휴식 · 시간표 · 다음 운행 조언"""
     drive_timer.end(user.id)
-    return {"success": True}
+    with _lock:
+        started, last_id = _session_start.pop(user.id, (None, 0))
+    now = datetime.now()
+    if started is None or (now - started).total_seconds() > 16 * 3600:   # 서버가 다시 켜졌거나 너무 오래된 운행
+        started = None
+    events = []
+    if started is not None:
+        events = session.execute(
+            select(SleepEvent).where(SleepEvent.user_id == user.id, SleepEvent.id > last_id)
+            .order_by(SleepEvent.id)).scalars().all()
+    sleeps = [e for e in events if e.reason != "rest_overdue"]
+    rests = []
+    timeline = []
+    for e in events:
+        rep = json.loads(e.report) if e.report else {}
+        if rep.get("rest"):
+            rests.append(rep["rest"])
+        timeline.append({"time": e.created_at.strftime("%H:%M") if e.created_at else "", "stage": int(e.stage or 0),
+                         "reason": _REASON_TEXT.get(e.reason or "", "졸음"), "event_id": e.id,
+                         **({"rest": rep["rest"]} if rep.get("rest") else {}),
+                         **({"wake": rep["wake"]} if rep.get("wake") else {})})
+    stats = {
+        "drive_min": int((now - started).total_seconds() // 60) if started else 0,
+        "sleep_count": len(sleeps),
+        "max_stage": max([int(e.stage or 0) for e in sleeps], default=0),
+        "rest_count": len(rests),
+        "rest_min": sum(int(r.get("minutes") or 0) for r in rests),
+        "timeline": timeline,
+    }
+    ai = agent_service.drive_report(stats)
+    print(f"[detect] {now:%H:%M:%S} u{user.id} 운행 종료 리포트 · {stats['drive_min']}분 · 졸음 {stats['sleep_count']}번 · "
+          f"최고 {stats['max_stage']}단계 · 휴식 {stats['rest_count']}번 ({'AI' if ai['is_real'] else '템플릿'})")
+    return {"success": True, "report": {
+        **stats, "name": _call_name(user.name),
+        "started": started.strftime("%H:%M") if started else "", "ended": now.strftime("%H:%M"),
+        "summary": ai["summary"], "advice": ai["advice"], "is_real": ai["is_real"]}}
 
 
 @router.post("/drive/rest")
@@ -389,7 +473,7 @@ async def detect_handler(
     #   반쯤 감은 눈 확정(half)은 건너뜀 — 이미 약 30초를 모은 확정이라 바로 1단계 (try_pre_warn 이 False)
     #   DB 에 남기지 않음 (운행 기록 · 관리자 경고 목록 · 통계에 0단계가 섞임) → 사진도 지움. 서버 로그 한 줄만
     #   계속 감고 있으면 앱 eye_monitor 가 6초에 다시 보냄 → 그때는 아래 ③ 으로 1단계. 사진 1장 테스트(reason 없음)는 예비 경고 없음
-    if reason and sleep_state.try_pre_warn(user.id, "half" if half is not None else reason):
+    if config.PRE_WARN_ON and reason and sleep_state.try_pre_warn(user.id, "half" if half is not None else reason):  # 11/15 기본 꺼짐
         _remove(tmp_path)
         stage = int(sleep_state.get_stage(user.id))
         print(f"[detect]   → 예비 경고 (운행 중 첫 졸음 · 단계 {stage} 그대로 · 기록 안 남김) · 합계 {time.perf_counter() - t_start:.1f}초")
@@ -464,7 +548,8 @@ async def detect_handler(
 
     # ⑧ 운전 중 음성 퀴즈 (경고를 저장한 뒤 → event_id 를 함께 기억, 최소 간격 VOICE_QUIZ_GAP_SEC)
     voice_quiz = None
-    if config.QUIZ_MODE == "voice" and not released:
+    # (11/15 팀장) 기사에게는 ① 정신 차리세요(예비 · 1단계) ② 쉬어 가세요(2) ③ 지금 멈추세요(3) — 퀴즈는 2단계부터
+    if config.QUIZ_MODE == "voice" and not released and stage == 2:  # 3단계는 [깨어 있어요] 버튼 (11/15)
         now = time.time()
         with _lock:
             due = now - _last_quiz_at.get(user.id, 0) >= config.VOICE_QUIZ_GAP_SEC
@@ -479,7 +564,9 @@ async def detect_handler(
 
     return {
         **base, "is_sleep": True, "reason": reason, "stage": stage, "status": _label(stage),
-        "summary": event.summary or "", "guidance": agent["guidance"], "driver_voice": agent["driver_voice"],
+        "summary": event.summary or "", "guidance": agent["guidance"],
+        # (11/16 팀장) 음성은 '이름 + 사실 하나 + 행동 하나' 한 문장 (약 4초)
+        "driver_voice": f"{_call_name(user.name)}, {agent['driver_voice']}",
         "sleep_count_10min": facts["sleep_count_10min"], "voice_quiz": voice_quiz,
         "regulations": [{"title": r["title"], "source": r["source"], "content": r["content"]} for r in regulations],
         "event_id": event.id,

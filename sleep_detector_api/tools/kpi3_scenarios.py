@@ -21,6 +21,7 @@
 # 자세한 내용: 「파이널 프로젝트 최종 기획안 10.13」 KPI ③ · 7장 경고 단계 · 8장 음성 퀴즈
 # ═══════════════════════════════════════════════════════════════
 import io
+import json
 import os
 import shutil
 import sys
@@ -202,7 +203,8 @@ def s10():
 
 def s11():
     h, _ = new_driver()
-    q = doze(h)["voice_quiz"]
+    doze(h)                                              # 1단계 (11/15 퀴즈 없음)
+    q = doze(h)["voice_quiz"]                            # 2단계 — 퀴즈는 2단계부터
     r = client.post("/quiz/answer", json={"quiz_id": q["quiz_id"], "answer_text": answer_of(q), "answer_sec": 2.0},
                     headers=h).json()
     return f"{'통과' if r['passed'] else '실패'} · {r['stage']}단계"
@@ -210,7 +212,8 @@ def s11():
 
 def s12():
     h, uid = new_driver()
-    q = doze(h)["voice_quiz"]                           # 1단계
+    doze(h)                                             # 1단계 (11/15 퀴즈 없음)
+    q = doze(h)["voice_quiz"]                           # 2단계
     r1 = client.post("/quiz/answer", json={"quiz_id": q["quiz_id"], "answer_text": "", "answer_sec": None},
                      headers=h).json()
     nq = r1["next_quiz"]
@@ -342,8 +345,8 @@ SCENARIOS = [
     ("⑧ 짧은 깜빡임 (서버: 확실히 뜸) → 취소",     "취소 · 0단계", s8),
     ("⑨ 사진에서 얼굴 못 찾음 → 취소",             "취소 · mlkit · 0단계", s9),
     ("⑩ 연속 2시간 → 휴게 알림 1번",             "True · 다음 ping False", s10),
-    ("⑪ 운전 중 퀴즈 통과 → 단계 그대로",          "통과 · 1단계", s11),
-    ("⑫ 운전 중 퀴즈 2번 실패 → 단계 +1",          "2단계 · no_response 1건", s12),
+    ("⑪ 운전 중 퀴즈 통과 → 단계 그대로",          "통과 · 2단계", s11),
+    ("⑫ 운전 중 퀴즈 2번 실패 → 단계 +1",          "3단계 · no_response 1건", s12),
 ]
 def bonus_photo_access():
     """경고 사진: 로그인 없음 401 · 본인 200 · 다른 기사 404 · 관리자 200 · 예전 공개 주소 404 (11/10 D: /events/{id}/photo)"""
@@ -396,8 +399,9 @@ def bonus_half_check():
 def bonus_quiz_message():
     """통과 음성은 단계마다 다르게 (1단계에 '쉼터' · 3단계에 '운행' 이 나오면 안 됨)"""
     got = []
-    for st in (1, 2, 3):
+    for st in (2, 3):                                    # (11/15) 1단계는 퀴즈 없음
         h, uid = new_driver()
+        doze(h)
         q = doze(h)["voice_quiz"]
         sleep_state.set_stage(uid, st)
         r = client.post("/quiz/answer", json={"quiz_id": q["quiz_id"], "answer_text": answer_of(q), "answer_sec": 2.0},
@@ -418,21 +422,55 @@ def bonus_detect_timing():
 
 def bonus_pre_warning():
     """(11/12) 운행 중 첫 졸음 = 예비 경고 (단계 · 10분 횟수 · DB 기록 그대로) → 다시 졸면 1단계 → 새 운행이면 다시 예비 경고"""
-    h, uid = new_driver()
-    sleep_state.get_state(uid)["pre_warned"] = False      # 이번 운행 첫 졸음
-    with TestSession() as s:
-        before = s.query(SleepEvent).filter(SleepEvent.user_id == uid).count()
-    r1 = doze(h)
-    with TestSession() as s:
-        after = s.query(SleepEvent).filter(SleepEvent.user_id == uid).count()
-    r2 = doze(h)
-    client.post("/drive/start", headers=h)                 # 새 운행 (1단계 → 0단계, 예비 경고 다시 켜짐)
-    r3 = doze(h)
+    old = config.PRE_WARN_ON
+    config.PRE_WARN_ON = True                              # (11/15) 기본은 꺼짐 — 켰을 때 규칙만 확인
+    try:
+        h, uid = new_driver()
+        sleep_state.get_state(uid)["pre_warned"] = False      # 이번 운행 첫 졸음
+        with TestSession() as s:
+            before = s.query(SleepEvent).filter(SleepEvent.user_id == uid).count()
+        r1 = doze(h)
+        with TestSession() as s:
+            after = s.query(SleepEvent).filter(SleepEvent.user_id == uid).count()
+        r2 = doze(h)
+        client.post("/drive/start", headers=h)                 # 새 운행 (1단계 → 0단계, 예비 경고 다시 켜짐)
+        r3 = doze(h)
+    finally:
+        config.PRE_WARN_ON = old
     return (f"{r1.get('pre_warning')} · {r1['stage']}단계 · 기록 {after - before}건 · 다시 {r2['stage']}단계 · "
             f"새 운행 {r3.get('pre_warning')}")
 
 
+def bonus_wake():
+    """(11/15) 3단계 [깨어 있어요] 응답 → 최근 3단계 경고 report.wake 에 붙음 (안 누름 → 늦게 누름이면 덮어씀) · 3단계 퀴즈 없음"""
+    h, uid = new_driver()
+    doze(h); doze(h)
+    r3 = doze(h)                                          # 3단계
+    client.post("/drive/wake", json={"pressed": False, "sec": None}, headers=h)
+    with TestSession() as s:
+        ev = s.query(SleepEvent).filter(SleepEvent.user_id == uid, SleepEvent.stage == 3).order_by(SleepEvent.id.desc()).first()
+        first = json.loads(ev.report)["wake"]["pressed"]
+    client.post("/drive/wake", json={"pressed": True, "sec": 13.2}, headers=h)
+    with TestSession() as s:
+        ev = s.query(SleepEvent).filter(SleepEvent.user_id == uid, SleepEvent.stage == 3).order_by(SleepEvent.id.desc()).first()
+        w = json.loads(ev.report)["wake"]
+    return f"퀴즈 {r3['voice_quiz'] is not None} · 안 누름 {first is False} · 늦게 누름 {w['pressed']} {w['sec']}초"
+
+
+def bonus_drive_report():
+    """(11/16) [운행 종료] → AI 리포트 (졸음 2번 · 최고 2단계 · 시간표 2칸 · 음성에 이름 · 짧은 한 문장)"""
+    h, uid = new_driver()
+    doze(h)
+    r2 = doze(h)
+    rep = client.post("/drive/end", headers=h).json()["report"]
+    voice_ok = r2["driver_voice"].startswith(f"기사{_n} 기사님, ") and len(r2["driver_voice"]) <= 60
+    return (f"졸음 {rep['sleep_count']} · 최고 {rep['max_stage']} · 시간표 {len(rep['timeline'])} · "
+            f"요약 {bool(rep['summary'])} · 조언 {bool(rep['advice'])} · 음성 {voice_ok}")
+
+
 BONUS = [("(보너스) 3단계는 휴식으로 안 풀림 → 3단계", 3, bonus),
+         ("(보너스) 운행 종료 AI 리포트 · 짧은 음성", "졸음 2 · 최고 2 · 시간표 2 · 요약 True · 조언 True · 음성 True", bonus_drive_report),
+         ("(보너스) 3단계 [깨어 있어요] 응답 기록", "퀴즈 False · 안 누름 True · 늦게 누름 True 13.2초", bonus_wake),
          ("(보너스) 사진 없는 졸음 → 앱 판단대로 확정", "확정 · mlkit · 1단계 · 사진 없음 · 사진 테스트 400", bonus_no_photo),
          ("(보너스) 1 · 2 · 3단계에서 운행 다시 시작", "0 · 2 · 3", bonus_restart),
          ("(보너스) 2단계 휴식 중 졸음 의심 → 무시", "무시 · 2단계", bonus_rest_detect),
@@ -441,7 +479,7 @@ BONUS = [("(보너스) 3단계는 휴식으로 안 풀림 → 3단계", 3, bonus
          ("(보너스) 서버 판정 오류 → 앱 판단대로 확정", "확정", bonus_error),
          ("(보너스) AI 처리 중 조치완료 → 단계 안 오름", "단계 0 · ping 0 · 퀴즈 False · 조치완료", bonus_reset_race),
          ("(보너스) 경고 사진 권한", "401 · 200 · 404 · 200 · 404", bonus_photo_access),
-         ("(보너스) 퀴즈 통과 음성: 1 · 2 · 3단계", "안전 운행하세요. / 쉼터까지 조심히 가세요. / 안전한 곳에 정차해 주세요.", bonus_quiz_message),
+         ("(보너스) 퀴즈 통과 음성: 2 · 3단계", "쉼터까지 조심히 가세요. / 안전한 곳에 정차해 주세요.", bonus_quiz_message),
          ("(보너스) [detect] 단계별 시간 기록", "눈판정 · LLM · RAG · Agent · 합계", bonus_detect_timing),
          ("(보너스) 운행 중 첫 졸음 = 예비 경고", "True · 0단계 · 기록 0건 · 다시 1단계 · 새 운행 True", bonus_pre_warning),
          ("(보너스) 반쯤 감은 눈 확인", "기준 저장 True · 조용 True · 3번째 확정 True · 경고 1건 perclos·half · 사진 1 · 기준 없음 확정 False", bonus_half_check)]

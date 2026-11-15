@@ -6,10 +6,10 @@
 //
 // [이 파일이 하는 일]
 //   - 단계별 색 · 내 얼굴(카메라) · 큰 글씨 한 줄 + AI 안내 카드(보라) + [규정 듣기]
-//   - 소리 순서: 🔔 알람 → 고정 문구(1 · 2단계, stage_texts.dart) → driverVoice
+//   - 소리 순서: 🔔 알람 → Agent 한 문장 driverVoice (없으면 stage_texts.dart 고정 문구) → (2단계) 가까운 쉼터 (11/16)
 //   - 운전 중 음성 퀴즈 (부품 A): D 의 quiz_screen 을 띄우고, 돌려받은 단계로 색 갱신 (2번 실패면 한 단계 위 + 알람)
 //   - 같은 단계에서 또 졸면 알람 · 음성 보고 없이 낼 퀴즈만 (silent, 기획안 6-6)
-//   - 3단계: 관리자 조치완료 전까지 30초마다 알람 + '관리자에게 알렸습니다. 정차해 주세요.'
+//   - 3단계: 관리자 조치완료 전까지 30초마다 알람 + '관리자에게 알렸어요. 지금 바로 정차하세요.'
 //   - 졸음쉼터 안내 (B 의 rest_area_service, 11/11 팀장 범위): 2단계는 고정 문구 뒤 · 3단계는 음성 보고 뒤 "가까운 ○○ 졸음쉼터, ○○방향, 약 ○킬로미터" 한 번
 //     + [가까운 졸음쉼터 듣기] → 다시 읽고 지도 화면 (새 창 없음, 3단계는 길안내를 먼저 권하지 않음, 30초 반복은 짧게 그대로)
 //   - 2단계 [정차했어요] → 확인 창 (음성 · 1분 뒤 저절로 취소) → rest_screen → [운행 재개] 뒤 운행 화면으로 복귀
@@ -31,10 +31,12 @@ import 'package:flutter/material.dart';
 
 import '../models/sleep_response.dart';
 import '../services/rest_area_service.dart';
+import '../services/api_service.dart';
 import '../services/voice_service.dart';
 import '../stage_texts.dart';
 import '../theme.dart';
 import '../widgets/owl_says.dart';
+import '../widgets/stage_layout.dart';
 import 'map_screen.dart';
 import 'quiz_screen.dart';
 import 'regulation_screen.dart';
@@ -113,7 +115,6 @@ final ButtonStyle _bigButton = OutlinedButton.styleFrom(
   textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
 );
 const Color _sky = Color(0xFF2FA8E0); // 스피커 아이콘 하늘색
-const Color _americano = Color(0xFF3E2415); // 커피잔 아메리카노 색 (홈 버튼과 같은 색)
 
 /// 단계 바탕색 — 발표 PPT 색 가이드(테마 색 = AppColors 단계 색) 그대로에 투명도 30% 를 앱 바탕(#F3F5FA) 위에 (11/11)
 ///   원색 그대로는 화면이 너무 쨍해서 눈이 아프고, 같은 색 부엉이가 바탕에 묻힘 → 같은 색 계열의 연한 바탕 + 진한 글자
@@ -333,8 +334,9 @@ class CheckingBanner extends StatelessWidget {
 ///   운행 · 경고 화면 맨 아래에 고정 (Scaffold.bottomNavigationBar) — 내용이 길어도 스크롤 없이 보이게, 자리는 비워 둔다
 class ServerCancelText extends StatelessWidget {
   final ValueListenable<bool> cancelled;
+  final Color color; // (11/15) 운행 화면은 남색 배경이라 흰 글자
 
-  const ServerCancelText({super.key, required this.cancelled});
+  const ServerCancelText({super.key, required this.cancelled, this.color = AppColors.textPrimary});
 
   @override
   Widget build(BuildContext context) {
@@ -347,11 +349,11 @@ class ServerCancelText extends StatelessWidget {
           maintainSize: true,
           maintainAnimation: true,
           maintainState: true,
-          child: const Padding(
-            padding: EdgeInsets.only(top: 4, bottom: 8),
+          child: Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 8),
             child: Text('졸음이 아닌 것으로 확인됐어요',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600)), // 연한 바탕 위라 진한 글자 (11/11)
+                style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w600)), // 연한 바탕 위라 진한 글자 (11/11)
           ),
         ),
       ),
@@ -421,6 +423,15 @@ class _WarningScreenState extends State<WarningScreen> {
   bool _keepSpeaking = false; // 닫혀도 말을 끊지 않음 (운행 재개 안내를 끝까지 듣게)
   Future<String?>? _nearRest; // 2 · 3단계 — 가까운 졸음쉼터 안내 문장 (알람이 울리는 동안 미리 찾아 둠, 못 찾으면 null)
 
+  // (11/15 팀장) 3단계 [깨어 있어요] — 10초 안에 누르는지. 결과는 눌러도 · 안 눌러도 서버(관리자 웹)로
+  static const int _wakeSec = 10;
+  bool _wakeStarted = false;
+  bool _wakePressed = false;
+  bool _wakeTimedOut = false;
+  int _wakeLeft = _wakeSec;
+  DateTime? _wakeStartAt;
+  Timer? _wakeTick;
+
   // 운행 중 2 · 3단계 경고는 뒤로 가기로 끌 수 없다 (2단계는 쉬어야, 3단계는 관리자만 해제). 사진 1장 테스트는 나갈 수 있음
   bool get _locked => widget.liveStage != null && _stage >= 2;
 
@@ -447,6 +458,7 @@ class _WarningScreenState extends State<WarningScreen> {
     if (!_keepSpeaking) VoiceService.stop(); // 말하기 멈춤
     _repeat?.cancel(); // 3단계 반복 멈춤
     _repeat = null;
+    _wakeTick?.cancel();
     super.dispose();
   }
 
@@ -467,7 +479,11 @@ class _WarningScreenState extends State<WarningScreen> {
       }
     }
     setState(() => _stage = s);
-    if (s == 3 && _voiceDone) _startRepeat(); // 음성 · 퀴즈 중이면 끝난 뒤에 시작 (퀴즈 듣기를 끊지 않게)
+    if (s == 3 && !_wakeStarted) {
+      _stage3Flow(); // (11/15) 3단계로 올라오면 [깨어 있어요] 확인
+    } else if (s == 3 && _voiceDone && !_wakePressed) {
+      _startRepeat();
+    }
   }
 
   // 3단계 30초 반복 시작 (이미 돌고 있으면 그대로) — 알람 + 고정 문구 (기획안 8-7)
@@ -484,22 +500,21 @@ class _WarningScreenState extends State<WarningScreen> {
   //   silent 면 알람 · 문구 · 음성 보고를 건너뛰고 퀴즈부터 (같은 단계에서 또 졸았을 때)
   //   [정차했어요] 를 누르면 _flowStopped → 뒤 순서를 하지 않는다
   Future<void> _speakWarning() async {
+    if (_stage == 3 && widget.liveStage != null && !widget.silent) {
+      _stage3Flow(); // (11/15) 3단계: 알림음 + 한 문장 + [깨어 있어요] 10초 (퀴즈 · 음성 보고 · 쉼터 읽기 없음)
+      return;
+    }
     if (!widget.silent) {
       await VoiceService.alarm(); // 시작음
       if (!mounted || _flowStopped) return;
-      // 1·2단계 고정 문구 (3단계는 고정 문구 없이 음성 보고만 — 기획안 8-7)
-      if (_stage == 1) await VoiceService.speak(StageTexts.voice(1)); // 문구는 stage_texts.dart 한 곳에서 (11/11)
-      if (_stage == 2) {
-        await VoiceService.speak(StageTexts.voice(2));
-        if (!mounted || _flowStopped) return;
-        await _speakNearRest(); // "가까운 ○○ 졸음쉼터, ○○방향, 약 ○킬로미터" (B 의 rest_area_service, 11/10)
-      }
+      // (11/16 팀장) 음성은 Agent 한 문장 하나만 — "○○ 기사님, 10분 새 2번 졸았어요. 가까운 쉼터에서 쉬어 가세요." (약 4초)
+      //   고정 문구 + 음성 보고를 둘 다 읽던 것을 바꿈 (너무 길었음). 서버 문장이 없으면 고정 문구 (stage_texts.dart)
+      final agentVoice = widget.response.driverVoice;
+      await VoiceService.speak(agentVoice.isNotEmpty ? agentVoice : StageTexts.voice(_stage));
       if (!mounted || _flowStopped) return;
-      final voice = widget.response.driverVoice; // 기사 음성 보고 ("최근 10분 동안 2번 졸았습니다…")
-      if (voice.isNotEmpty) await VoiceService.speak(voice);
-      if (!mounted || _flowStopped) return;
-      // 3단계: 음성 보고("…정차해 주세요") 뒤 쉼터 한 번만 읽기 — 길안내를 먼저 권하지 않음 (3단계는 "바로 정차", 11/11 팀장)
-      if (_stage == 3) {
+      // 2단계: 이어서 가장 가까운 쉼터 한 곳 ("가까운 ○○ 졸음쉼터, ○○방향, 약 ○킬로미터", B 의 rest_area_service)
+      // 3단계: "바로 정차" 뒤 쉼터 한 번만 (길안내를 먼저 권하지 않음, 11/11 팀장)
+      if (_stage >= 2) {
         await _speakNearRest();
         if (!mounted || _flowStopped) return;
       }
@@ -529,11 +544,74 @@ class _WarningScreenState extends State<WarningScreen> {
         if (!mounted || _flowStopped) return;
       }
     }
+    // 퀴즈 2번 실패로 3단계가 됐으면 [깨어 있어요] 확인으로 (11/15)
+    if (_stage == 3 && widget.liveStage != null) {
+      if (!_wakeStarted) _stage3Flow();
+      return;
+    }
     // 알람 · 음성 · 퀴즈가 다 끝났으니 이제부터 졸음 판정 (퀴즈가 없었으면 음성 보고가 끝난 뒤부터)
     widget.pauseDetect?.value = false;
     setState(() => _voiceDone = true);
     // 3단계 30초 반복은 퀴즈가 끝난 뒤에 시작
     if (_stage == 3) _startRepeat();
+  }
+
+  // (11/15 팀장) 3단계: 알림음 → 한 문장 → 누를 때까지 알림음 반복 (10초). 결과는 관리자 웹으로
+  Future<void> _stage3Flow() async {
+    if (_wakeStarted) return;
+    setState(() {
+      _wakeStarted = true;
+      _wakeLeft = _wakeSec;
+    });
+    _wakeStartAt = DateTime.now();
+    _wakeTick = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted || _wakePressed) return t.cancel();
+      setState(() => _wakeLeft--);
+      if (_wakeLeft <= 0) {
+        t.cancel();
+        _onWakeTimeout();
+      }
+    });
+    await VoiceService.alarm();
+    if (!mounted || _wakePressed) return;
+    // (11/16) Agent 한 문장("○○ 기사님, 10분 새 3번 졸았어요. 지금 바로 정차하세요.") + 버튼 안내
+    final agentVoice = widget.response.driverVoice;
+    await VoiceService.speak(agentVoice.isNotEmpty ? '$agentVoice 깨어 계시면 버튼을 눌러 주세요.' : '지금 멈추세요. 깨어 계시면 아래 버튼을 눌러 주세요.');
+    while (mounted && !_wakePressed && !_wakeTimedOut) {
+      await VoiceService.alarm(); // 누를 때까지 강하게 반복
+      await Future.delayed(const Duration(milliseconds: 600));
+    }
+  }
+
+  // 10초 동안 안 누름 → 관리자 웹 '응답 없음' (3단계 긴급은 이미 가 있음). 30초 반복은 계속
+  void _onWakeTimeout() {
+    if (_wakePressed) return;
+    setState(() {
+      _wakeTimedOut = true;
+      _voiceDone = true;
+    });
+    ApiService.sendWake(false, null).ignore();
+    widget.pauseDetect?.value = false;
+    _startRepeat();
+  }
+
+  // [깨어 있어요] — 늦게 눌러도 보냄 (관리자 웹이 '응답 없음' → '깨어 있음 (N초)' 로 바뀜). 반복음은 멈춤
+  Future<void> _onWakePressed() async {
+    if (_wakePressed) return;
+    final start = _wakeStartAt ?? DateTime.now();
+    final sec = DateTime.now().difference(start).inMilliseconds / 1000.0;
+    _wakeTick?.cancel();
+    _repeat?.cancel();
+    _repeat = null;
+    setState(() {
+      _wakePressed = true;
+      _voiceDone = true;
+    });
+    ApiService.sendWake(true, double.parse(sec.toStringAsFixed(1))).ignore();
+    widget.pauseDetect?.value = false;
+    await VoiceService.stop();
+    if (!mounted) return;
+    VoiceService.speak('응답을 보냈어요. 안전한 곳에 바로 정차해 주세요.'); // (11/16) 버튼 글씨와 같은 말
   }
 
   // 2 · 3단계 — 가장 빨리 갈 수 있는 졸음쉼터 1곳 문장 미리 찾기 (알람이 울리는 동안)
@@ -556,7 +634,14 @@ class _WarningScreenState extends State<WarningScreen> {
   }
 
   // 단계별 큰 글씨 — 운행 화면 · 홈 화면 · 음성과 같은 문구 (stage_texts.dart, 11/11)
-  String get _headline => StageTexts.headline(_stage);
+  // (11/16 팀장) 말풍선 = 음성과 같은 Agent 문장 (이름만 빼고 문장마다 줄바꿈)
+  //   "김기사님, 10분 새 2번 졸았어요. 가까운 쉼터에서 쉬어 가세요." → "10분 새 2번 졸았어요.(줄바꿈)가까운 쉼터에서 쉬어 가세요."
+  //   서버 문장이 없거나, 화면을 연 뒤 단계가 바뀌었으면(관리자 해제 등) 고정 문구 (stage_texts.dart)
+  String get _headline {
+    final v = widget.response.driverVoice.trim();
+    if (v.isEmpty || _stage != widget.response.stage || _stage < 2) return StageTexts.headline(_stage);
+    return v.replaceFirst(RegExp(r'^[^,.]{1,20}님,\s*'), '').replaceAll(RegExp(r'\.\s+'), '.\n');
+  }
 
   // 단계별 부엉이 (0 초록 · 1 노랑 · 2 주황 · 3 빨강, 11/09 그림: 장수연님)
   //   큰 그림 = 몸 전체 (카메라가 없을 때), 작은 배지 = 얼굴
@@ -576,12 +661,13 @@ class _WarningScreenState extends State<WarningScreen> {
           fit: StackFit.expand,
           children: [
             Container(
+              padding: const EdgeInsets.all(7),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white, width: 3),
+                color: _stage >= 3 ? Colors.white : AppColors.stage(_stage), // (11/15) 단계 색 테두리 (운행 화면과 같은 두께)
+                borderRadius: BorderRadius.circular(22),
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(17),
+                borderRadius: BorderRadius.circular(15),
                 child: FollowFacePreview(controller: c, face: widget.faceBox),
               ),
             ),
@@ -655,125 +741,136 @@ class _WarningScreenState extends State<WarningScreen> {
     }
   }
 
+  // (11/15 팀장) 단계별 제목 — 기사님이 느끼는 상태로
+  String get _title => switch (_stage) {
+        2 => '쉬어 가세요',
+        3 => '지금 멈추세요',
+        _ => '$_stage단계 경고',
+      };
+
   @override
   Widget build(BuildContext context) {
     final r = widget.response;
-    // (11/11 C) 바탕 = 발표 PPT 색 가이드(테마 색) 그대로 + 투명도 — 원색이면 눈이 아프고 같은 색 부엉이가 묻혀서
-    final bg = stageTint(_stage);
-    const fg = AppColors.textPrimary; // 연한 바탕이라 모든 단계에서 진한 글자
+    // (11/15 팀장) 바탕 = 앱 테마 남색, 3단계만 진한 빨강 (단계는 카메라 테두리 · 부엉이로). 글자는 흰색
+    final bg = _stage >= 3 ? const Color(0xFFB3261E) : AppColors.navy;
+    const fg = Colors.white;
     final stageChanged = _stage != r.stage; // 휴식 뒤 단계가 바뀌었으면 처음 경고의 글은 숨긴다
+    final driving = widget.liveStage != null;
 
     return PopScope(
       canPop: !_locked,
       child: Scaffold(
         backgroundColor: bg,
-        bottomNavigationBar: widget.serverCancelled == null ? null : ServerCancelText(cancelled: widget.serverCancelled!),
+        bottomNavigationBar: widget.serverCancelled == null
+            ? null
+            : ServerCancelText(cancelled: widget.serverCancelled!, color: Colors.white70),
         appBar: AppBar(
           backgroundColor: bg,
           foregroundColor: fg,
           elevation: 0,
+          centerTitle: true,
           automaticallyImplyLeading: !_locked,
-          title: Text('$_stage단계 경고'),
+          title: Text(_title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+          actions: [Padding(padding: const EdgeInsets.only(right: 12), child: StageBadge(stage: _stage))],
         ),
         body: SafeArea(
-          child: OnePageLayout(
-            banner: (widget.faceLost == null && widget.checking == null)
+          // (11/15 팀장) 운행 화면과 같은 틀 — 카메라 크기 · 위치 고정, 부엉이 말풍선, 아래 버튼 자리 고정
+          child: StageLayout(
+            cameraOverlay: (widget.faceLost == null && widget.checking == null)
                 ? null
                 : Column(mainAxisSize: MainAxisSize.min, children: [
                     if (widget.faceLost != null) CameraBanner(faceLost: widget.faceLost!),
                     if (widget.checking != null) CheckingBanner(checking: widget.checking!),
                   ]),
             camera: _topVisual(bg, fg),
-            below: [
-              const SizedBox(height: 12),
-              // 큰 글씨 한 줄 — 단계별 부엉이가 말풍선으로 (11/11 초안)
-              // 글은 줄 수를 정해 둔다 (maxLines) — AI 문장이 길어도 화면이 넘치거나 글자가 너무 작아지지 않게
-              // 부엉이를 조금 줄이고 글을 5줄까지 — 2단계 "가까운 졸음쉼터에서 …" 잘림 (11/12 팀장)
-              OwlSays(owl: OwlSays.body(_stage), text: _headline, owlSize: 88, fontSize: 23, maxLines: 5),
-              const SizedBox(height: 8),
-              // 지금 졸음을 지켜보는지 — 알람 · 음성 · 퀴즈 동안은 판정을 쉬어서, 눈을 감아도 반응이 없던 것을 알려 줌 (11/12 팀장 UX)
-              if (widget.liveStage != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(_voiceDone ? '👀 계속 지켜보고 있어요' : '🔊 안내가 끝나면 다시 지켜봐요',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: fg)),
-                ),
-              // 요약
-              if (stageChanged && _restMessage.isNotEmpty)
+            // 글은 부엉이 말풍선 하나만 — 요약 · 음성 보고 글 · '지켜보고 있어요' 는 뺌 (음성으로 들려줌)
+            message: [
+              OwlSays(owl: OwlSays.face(_stage), text: _headline, owlSize: 84, fontSize: 22, maxLines: 4),
+              if (stageChanged && _restMessage.isNotEmpty) ...[
+                const SizedBox(height: 8),
                 Text(_restMessage,
                     textAlign: TextAlign.center,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: fg))
-              else if (!stageChanged && r.summary.isNotEmpty)
-                Text(r.summary,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 15, color: fg)),
-              const SizedBox(height: 12),
-              // (11/11 C) 흰 안내 칸(guidance)은 뺌 — 부엉이 말풍선과 같은 말이라 겹쳐 보여서
-              const SizedBox(height: 8),
-              // 기사 음성 보고 문장 (보라 카드)
-              if (!stageChanged && r.driverVoice.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: AppColors.aiPurple,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('🔊 지금 상태',
-                          style: TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70)),
-                      const SizedBox(height: 4),
-                      Text(r.driverVoice,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 14, color: Colors.white, height: 1.35)),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: 4),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: fg)),
+              ],
             ],
-            // 버튼들 — 맨 아래 고정, 줄어들지 않음
-            // 버튼들 — 맨 아래 고정. 운전 중 누르기 쉽게 크게 · 굵게, 바탕 투명도 없이 PPT 원래 색 (흰 바탕 + 남색 글자 · 테두리) (11/11)
-            fixedBottom: [
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
-                onPressed: _voiceDone ? _showRegulations : null, // 알람 · 음성 · 퀴즈가 끝난 뒤에 누를 수 있음
-                style: _bigButton,
-                icon: const Icon(Icons.volume_up_rounded, color: _sky, size: 30), // 스피커 = 하늘색
-                label: const Text('규정 듣기'),
-              ),
-              // 어디에 세울지 (2 · 3단계) — 다시 읽어 주고 지도 · 길찾기 (음성 · 퀴즈가 끝난 뒤에 누를 수 있음, [규정 듣기] 와 같게)
-              if (_stage >= 2) ...[
-                const SizedBox(height: 10),
-                OutlinedButton.icon(
-                  onPressed: _voiceDone ? _listenRest : null,
-                  style: _bigButton,
-                  icon: const Icon(Icons.local_cafe, color: _americano, size: 30), // 아메리카노 색으로 채운 커피잔
-                  label: const Text('가까운 졸음쉼터 듣기'),
+            // 버튼 — 아래 자리 고정. 그 단계에서 할 일만
+            actions: [
+              // 3단계: 아주 큰 [깨어 있어요] + 남은 시간
+              if (_stage >= 3 && driving) ...[
+                SizedBox(
+                  height: 186,
+                  child: ElevatedButton(
+                    onPressed: _wakePressed ? null : _onWakePressed,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: const Color(0xFFB3261E),
+                      disabledBackgroundColor: Colors.white.withValues(alpha: 0.85),
+                      disabledForegroundColor: const Color(0xFF2E7D4F),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_wakePressed ? '응답을 보냈어요' : '깨어 있어요',
+                            style: const TextStyle(fontSize: 38, fontWeight: FontWeight.w900)),
+                        const SizedBox(height: 6),
+                        Text(
+                            _wakePressed
+                                ? '안전한 곳에 바로 정차해 주세요'
+                                : _wakeTimedOut
+                                    ? '관리자가 곧 연락드려요 · 깨어 있으면 눌러 주세요'
+                                    : '$_wakeLeft초 안에 눌러 주세요',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                  ),
                 ),
               ],
+              // 2단계: 쉼터 안내 + 정차했어요 + 작은 규정 보기
               if (_stage == 2) ...[
+                OutlinedButton.icon(
+                  onPressed: _voiceDone ? _listenRest : null,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    disabledForegroundColor: Colors.white54,
+                    side: const BorderSide(color: Colors.white70, width: 2),
+                    minimumSize: const Size.fromHeight(60),
+                    textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                  ),
+                  icon: const Icon(Icons.location_on, size: 28), // (11/16) 쉼터 = 위치 마커
+                  label: const Text('가까운 졸음쉼터 안내'),
+                ),
                 const SizedBox(height: 10),
                 FilledButton(
                   onPressed: () async {
                     if (await confirmRest(context) && mounted) _goRest();
                   },
                   style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.navy, // 브랜드 남색 (PPT 가이드 색)
+                    backgroundColor: AppColors.rest, // 주황 — 이 단계에서 가장 중요한 행동
                     foregroundColor: Colors.white,
-                    minimumSize: const Size.fromHeight(60),
-                    textStyle: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+                    minimumSize: const Size.fromHeight(64),
+                    textStyle: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
                   ),
                   child: const Text('정차했어요'),
                 ),
+                TextButton(
+                  onPressed: _voiceDone ? _showRegulations : null,
+                  style: TextButton.styleFrom(foregroundColor: Colors.white70, disabledForegroundColor: Colors.white24),
+                  child: const Text('규정 보기 ›', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                ),
               ],
+              // 1단계 (사진 1장 테스트에서만 이 화면이 뜸) · 운행 중이 아닌 3단계
+              if (_stage <= 1 || (_stage >= 3 && !driving))
+                OutlinedButton.icon(
+                  onPressed: _voiceDone ? _showRegulations : null,
+                  style: _bigButton,
+                  icon: const Icon(Icons.volume_up_rounded, color: _sky, size: 30),
+                  label: const Text('규정 듣기'),
+                ),
             ],
           ),
         ),

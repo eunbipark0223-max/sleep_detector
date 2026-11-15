@@ -31,6 +31,7 @@
 
 import json
 import re
+import time
 
 import config
 from services import rag_service, sleep_state
@@ -39,11 +40,13 @@ USE_REAL_AI = config.USE_REAL_AI
 FALLBACK_ON_ERROR = config.FALLBACK_ON_ERROR
 AGENT_TIMEOUT_SEC = 6      # 실시간 경고 경로 — 늦으면 규칙 단계 · 기본 문장으로 (11/12 팀장: 20 → 6초)
 MAX_TOOL_TURNS = 3         # 도구를 부르는 횟수 제한 (수업 안전장치 ①)
+AGENT_DEADLINE_SEC = 7     # (11/16 팀장) Agent 전체 마감 — 도구를 여러 번 불러도 합쳐서 7초. 넘으면 템플릿 문장으로 바로 경고
+#   (위 6초는 Gemini 한 번 호출 제한이라, 도구 3번 + 답 1번이면 최대 24초까지 늦어질 수 있었음)
 
 GUIDANCE = {
     1: "창문을 열고 환기해 주세요. 졸음이 계속되면 쉬어 가세요.",
     2: f"가까운 졸음쉼터에서 {config.REST_MIN}분 이상 쉬어 주세요.",
-    3: "안전한 곳에 바로 정차해 주세요. 관리자에게 알렸습니다.",
+    3: "안전한 곳에 바로 정차해 주세요. 관리자에게 알렸어요.",
 }
 ACTION = {
     1: "기록만 확인 (졸음이 반복되면 연락)",
@@ -73,18 +76,18 @@ def _drive_text(drive_min):
 
 
 def _template_voice(stage, facts, guidance):
+    """(11/16 팀장) AI 가 못 만들 때 쓰는 짧은 한 문장 — 사실 하나 + 행동 하나 (해요체, 약 4초)"""
     n = int(facts.get("sleep_count_10min") or 1)
     closed = float(facts.get("last_closed_sec") or 0)
     if stage == 1:
         if closed <= 0:   # 피로 누적(PERCLOS) — 한 번에 감은 초가 없음 → 없는 '1초' 를 말하지 않게 (11/02 KPI ⑥)
-            return f"졸음이 감지됐습니다. 최근 눈을 자주 감고 있습니다. {guidance}"
-        return f"졸음이 감지됐습니다. 약 {max(1, round(closed))}초 동안 눈을 감았습니다. {guidance}"
+            return "눈을 자주 감고 있어요. 정신 차려 주세요."
+        return f"{max(1, round(closed))}초 동안 눈을 감았어요. 정신 차려 주세요."
     # (11/12 팀장) 주의 단계에서 다시 졸아 올라간 단계면 '10분 동안 1번' 대신 그 이유 (단계와 말이 맞게)
-    head = "주의 단계에서 다시 졸았습니다." if facts.get("stage_note") else f"최근 10분 동안 {n}번 졸았습니다."
+    head = "주의 단계에서 또 졸았어요." if facts.get("stage_note") else f"10분 새 {n}번 졸았어요."
     if stage == 2:
-        drive = f" 운행 {_drive_text(facts.get('drive_min'))}입니다." if int(facts.get("drive_min") or 0) >= 1 else ""
-        return f"{head}{drive} {guidance}"
-    return f"{head} 관리자에게 알렸습니다. 안전한 곳에 바로 정차해 주세요."
+        return f"{head} 가까운 쉼터에서 쉬어 가세요."
+    return f"{head} 지금 바로 정차하세요."
 
 
 def _allowed_numbers(facts):
@@ -198,9 +201,11 @@ SYSTEM_PROMPT = """너는 화물 · 버스 운수회사 졸음운전 관제 Agen
 - 단계를 올리려면 근거(짧은 간격의 반복 졸음, 높은 PERCLOS, 긴 눈 감김, 긴 운행 시간)가 있어야 한다. 필요하면 도구를 써서 확인한다.
 - 숫자는 facts 에 있는 값만 쓴다. 새 숫자를 만들지 않는다.
 - 연속 운전이 {limit}분 미만이면 휴게시간 규정(2시간마다 15분 휴식 등)은 단계 근거로 쓰지 말고 참고로만 언급한다.
-- driver_voice 는 기사가 운전 중에 귀로 듣는 말이다. 2~3문장, {max_chars}자 이내, 존댓말, 영어 금지.
-  기사가 자기 상태를 숫자로 듣게 첫 문장에 facts 의 숫자를 꼭 넣는다 (2단계 이상: "최근 10분 동안 N번 졸았습니다", 1단계: "약 N초 동안 눈을 감았습니다").
-  단, facts 에 stage_note 가 있으면 횟수 대신 그 이유로 시작한다 (예: "주의 단계에서 다시 졸았습니다").
+- driver_voice 는 기사가 운전 중에 귀로 듣는 말이다. 짧은 두 마디, {max_chars}자 이내, 해요체, 영어 금지.
+  사실 하나 + 행동 하나만 말한다 (이름은 앱이 앞에 붙이니 쓰지 않는다).
+  사실에는 facts 의 숫자를 꼭 넣는다 (2단계 이상: "10분 새 N번 졸았어요", 1단계: "N초 동안 눈을 감았어요").
+  행동은 단계에 맞게 하나만 (1단계: 정신 차리기, 2단계: 쉼터에서 쉬기, 3단계: 바로 정차).
+  단, facts 에 stage_note 가 있으면 횟수 대신 그 이유로 시작한다 (예: "주의 단계에서 또 졸았어요").
 
 반드시 아래 JSON 하나로만 답한다:
 {{"stage": 1~3, "guidance": "기사 안내 한 문장", "driver_voice": "음성 보고",
@@ -254,9 +259,21 @@ def _real_generate(eye, analysis, regulations, facts, rule_stage, location, user
         {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
     ]
     used = []
+    deadline = time.monotonic() + AGENT_DEADLINE_SEC
     for _ in range(MAX_TOOL_TURNS + 1):
-        r = _get_client().chat.completions.create(
-            model=config.GEMINI_MODEL, messages=messages, tools=TOOLS, temperature=0.2)
+        left = deadline - time.monotonic()
+        if left < 1:   # 남은 시간이 1초도 안 되면 더 묻지 않는다 → 빈 답 → 규칙 단계 · 템플릿 문장
+            print(f"[agent_service] 전체 마감 {AGENT_DEADLINE_SEC}초 지남 (도구 {len(used)}번) → 템플릿으로 경고")
+            return {}, used
+        try:
+            r = _get_client().chat.completions.create(
+                model=config.GEMINI_MODEL, messages=messages, tools=TOOLS, temperature=0.2,
+                timeout=min(AGENT_TIMEOUT_SEC, left))   # 이번 호출은 남은 시간까지만 기다림
+        except Exception as e:
+            if time.monotonic() >= deadline - 0.05:   # 마감에 걸려 끊긴 것 → 오류가 아니라 늦은 것: 항상 템플릿
+                print(f"[agent_service] 전체 마감 {AGENT_DEADLINE_SEC}초 지남 ({type(e).__name__}) → 템플릿으로 경고")
+                return {}, used
+            raise
         msg = r.choices[0].message
         if not msg.tool_calls:
             return _extract_json(msg.content), used
@@ -282,7 +299,7 @@ def generate_response(eye, analysis, regulations, facts, rule_stage, location=""
             raw, used = _real_generate(eye, analysis, regulations, facts, rule_stage, location, user_id)
             is_real = bool(raw)
             if not raw:
-                print("[agent_service] JSON 이 아닌 답 → 기본 규칙 사용")
+                print("[agent_service] AI 답 없음 (마감 · JSON 아님) → 기본 규칙 사용")
         except Exception as e:
             if not FALLBACK_ON_ERROR:
                 raise
@@ -295,3 +312,77 @@ def generate_response(eye, analysis, regulations, facts, rule_stage, location=""
     if not is_real:
         out["voice_is_real"] = False
     return out
+
+
+# ───────────────────────────────────────────────
+# (11/16 팀장) 운행 종료 AI 리포트 — [운행 종료] 때 오늘 운행을 짧게 정리 + 다음 운행 조언
+#   숫자는 서버가 센 stats 그대로 (AI 는 문장만). AI 가 없거나 숫자가 틀리면 템플릿 문장.
+# ───────────────────────────────────────────────
+REPORT_PROMPT = """너는 졸음운전 관제 Agent 다. 방금 운행을 마친 기사에게 오늘 운행을 정리해 준다.
+입력 stats 의 숫자만 쓴다 (새 숫자 금지). 해요체, 영어 금지, 부드럽게.
+반드시 아래 JSON 하나로만 답한다:
+{"summary": "오늘 운행 정리 2문장 이내, 80자 이내", "advice": "다음 운행 조언 1~2문장, 70자 이내"}"""
+
+
+def _report_numbers(stats):
+    ok = {str(stats.get(k) or 0) for k in ("drive_min", "sleep_count", "max_stage", "rest_count", "rest_min")}
+    h, m = divmod(int(stats.get("drive_min") or 0), 60)
+    ok |= {str(h), str(m), str(config.REST_MIN), str(config.DRIVE_LIMIT_MIN // 60 or config.DRIVE_LIMIT_MIN)}
+    for t in stats.get("timeline") or []:
+        ok |= set(re.findall(r"\d+", t.get("time", "")))
+    return ok
+
+
+def _check_report_text(text, stats, max_len):
+    if not isinstance(text, str):
+        return None
+    s = " ".join(text.split()).strip("\"'“”‘’ ")
+    if not s or not re.search(r"[가-힣]", s) or len(s) > max_len:
+        return None
+    allowed = _report_numbers(stats)
+    if any(x not in allowed for x in re.findall(r"\d+", s)):
+        return None
+    if any(str(n) not in allowed for n in _korean_numbers(s)):
+        return None
+    return s
+
+
+def _template_report(stats):
+    n, top = int(stats.get("sleep_count") or 0), int(stats.get("max_stage") or 0)
+    drive = _drive_text(stats.get("drive_min")).replace("째", "") if int(stats.get("drive_min") or 0) >= 1 else "짧게"
+    rests = int(stats.get("rest_count") or 0)
+    if n == 0:
+        summary = f"오늘 {drive} 동안 졸음 없이 운행했어요." if drive != "짧게" else "오늘 졸음 없이 운행했어요."
+        advice = "지금처럼 2시간마다 쉬어 가세요."
+    else:
+        summary = (f"오늘 {drive} 운행 중 " if drive != "짧게" else "오늘 운행 중 ") + f"{n}번 졸음이 감지됐어요." + (
+            " 긴급 단계까지 올라갔어요." if top >= 3 else (" 쉬어 가라는 안내가 있었어요." if top == 2 else ""))
+        advice = ("다음 운행 전에는 충분히 자고 출발하세요." if top >= 3 else
+                  f"졸음이 오면 바로 쉼터에서 {config.REST_MIN}분 쉬어 가세요.")
+    if rests:
+        summary += f" 휴식은 {rests}번 했어요."
+    return summary, advice
+
+
+def drive_report(stats):
+    """stats{drive_min, sleep_count, max_stage, rest_count, rest_min, timeline[{time, stage, reason}]}
+    → {summary, advice, is_real}. 항상 문장이 나온다."""
+    stats = stats or {}
+    summary, advice = _template_report(stats)
+    is_real = False
+    if USE_REAL_AI:
+        try:
+            r = _get_client().chat.completions.create(
+                model=config.GEMINI_MODEL, temperature=0.3,
+                messages=[{"role": "system", "content": REPORT_PROMPT},
+                          {"role": "user", "content": json.dumps({"stats": stats}, ensure_ascii=False)}])
+            raw = _extract_json(r.choices[0].message.content)
+            s = _check_report_text(raw.get("summary"), stats, 90)
+            a = _check_report_text(raw.get("advice"), stats, 80)
+            if s and a:
+                summary, advice, is_real = s, a, True
+            else:
+                print("[agent_service] 운행 리포트 문장이 규칙에 안 맞음 → 템플릿")
+        except Exception as e:
+            print(f"[agent_service] 운행 리포트 실패 → 템플릿: {type(e).__name__} {str(e)[:120]}")
+    return {"summary": summary, "advice": advice, "is_real": is_real}

@@ -280,6 +280,11 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     .nowrap { white-space: nowrap; }
     .unset { color: var(--text-sub); font-weight: 400; }
 
+    /* (11/15 팀장) 3단계 [깨어 있어요] 응답 — 깨어 있음 = 차분한 초록, 응답 없음 = 진한 빨강 */
+    .badge.wake-ok { background: #E3F4EA; color: #1E6B3F; }
+    .badge.wake-no { background: #B3261E; color: #fff; }
+    .urgent-banner a.ub-call { min-height: 42px; padding: 0 20px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; background: #fff; color: var(--stage-3-text); font-weight: 800; text-decoration: none; }
+    .urgent-banner a.ub-call[hidden] { display: none; }
     .badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 13px 5px 10px; border-radius: 999px; font-size: 14px; font-weight: 800; white-space: nowrap; }
     .b-1 { background: var(--stage-1); color: var(--text-main); }
     .b-2 { background: var(--stage-2); color: var(--text-main); }
@@ -476,6 +481,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     <div class="urgent-banner" id="urgentBanner" role="alert" hidden>
       <span data-icon="warning" data-size="26" aria-hidden="true"></span>
       <span class="ub-text" id="ubText"></span>
+      <a class="ub-call" id="ubCall" hidden>전화 걸기</a>
       <button type="button" class="primary" id="ubView">바로 보기</button>
       <button type="button" id="ubClose" title="알림음과 탭 깜빡임만 꺼요. 배너는 미처리 긴급이 모두 처리될 때까지 남아요.">닫기</button>
     </div>
@@ -666,6 +672,9 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     }
     const stageNum = (s) => { const n = Number(s); return n >= 0 && n <= 3 ? n : 0; };
     const isOpenUrgent = (e) => !!e.urgent && e.status !== '조치완료';
+    // (11/15 팀장) 3단계 [깨어 있어요] 응답 — 서버가 경고 report.wake 에 {pressed, sec} 로 붙여 줌
+    const wakeOf = (e) => (e.report && e.report.wake) || null;
+    const noWake = (e) => isOpenUrgent(e) && !!wakeOf(e) && wakeOf(e).pressed === false;
     const isToday = (iso) => new Date(iso).toDateString() === new Date().toDateString();
     // '3분 전' · '1시간 5분 전' · '2일 전'. 서버 시각이 이 PC 보다 한참 앞서면(시간대 차이) 틀린 값을 보여 주지 않고 빈칸 (옆의 날짜 · 시각은 그대로 나옴)
     function ago(iso) {
@@ -682,7 +691,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     // 도로명 주소가 먼저. 주소를 못 찾으면 좌표라도 보여 줌 — 긴급 때 기사 위치를 잃으면 안 됨 (카카오 주소 변환 실패 · 키 없음)
     const hasCoord = (e) => e.latitude != null && e.longitude != null;
     const where = (e) => e.address || (hasCoord(e) ? '주소 확인 실패 · ' + Number(e.latitude).toFixed(4) + ', ' + Number(e.longitude).toFixed(4) : '위치 정보 없음');
-    const byPriority = (a, b) => (isOpenUrgent(b) - isOpenUrgent(a)) || (new Date(b.created_at) - new Date(a.created_at));
+    const byPriority = (a, b) => (noWake(b) - noWake(a)) || (isOpenUrgent(b) - isOpenUrgent(a)) || (new Date(b.created_at) - new Date(a.created_at));
 
     // ── 상태 ─────────────────────────────────────────────────
     let events = [], users = [], stageStats = [], hourStats = [];
@@ -790,6 +799,13 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
     // 전화번호는 9~11자리일 때만 보여 주고 tel: 로 건다 (아니면 전화번호 칸을 비우고 [전화 걸기] 도 없음. 상세 페이지에서 이메일로 연락)
     // '전화번호 미등록' 글자는 긴급 줄에서 뺌 (11/12 결정 — 기사 가입 때 전화번호를 받으므로). 기사 관리 · 기사 상세의 '미등록' 표시는 그대로
     const validPhoneDigits = (phone) => { const d = digitsOf(phone); return d.length >= 9 && d.length <= 11 ? d : ''; };
+    // (11/15) 응답 배지 — 응답 없음(빨강) / 깨어 있음 (N초)(초록) / 아직 결과 없음이면 없음
+    function wakeBadge(e) {
+      const w = wakeOf(e);
+      if (!w) return null;
+      if (w.pressed) return h('span', { class: 'badge wake-ok' }, icon('check', 16), '깨어 있음' + (w.sec != null ? ' (' + Math.round(w.sec) + '초)' : ''));
+      return h('span', { class: 'badge wake-no' }, '응답 없음');
+    }
     function urgentRow(e) {
       const n = stageNum(e.stage), who = honor(e.user_name), digits = validPhoneDigits(e.user_phone);
       const kind = e.reason === 'no_response' ? '음성 응답 없음' : n ? n + '단계 ' + (e.stage_label || STAGE_NAME[n]) : '긴급';
@@ -798,6 +814,7 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
           h('div', { class: 'u-who' }, h('b', null, e.user_name || '이름 없음'), h('span', null, e.user_vehicle_no || '차량번호 미등록')),
           h('div', { class: 'u-kind' },
             h('span', { class: 'badge b-3' }, icon('warning', 16), kind),
+            wakeBadge(e),
             h('span', { class: 'u-ago', title: fmtTime(e.created_at) }, ago(e.created_at) || fmtTime(e.created_at))),
           h('div', { class: 'u-phone' }, digits ? e.user_phone : null),     // 전화번호가 없으면 칸을 비워 둠 ('미등록' 글자 없음, 11/12)
           h('div', { class: 'u-where' }, icon('pin', 16), h('span', null, where(e)))),
@@ -1021,10 +1038,20 @@ static/admin.html — 관리자 웹 (대시보드 · 졸음 경고 · 기사 관
       const sub = alerting
         ? (alertAudible ? '' : '소리가 나려면 화면을 한 번 눌러 주세요. ') + '지금 처리할 긴급 경고는 모두 ' + open.length + '건이에요.'
         : namesText;
-      const key = [alerting, alertMsg, sub, open.length].join('|');
+      const quiet = open.filter(noWake).sort(byPriority)[0];          // (11/15) 응답 없는 기사 — 소리 없이 문구 · 전화 버튼으로 강조
+      const qDigits = quiet ? validPhoneDigits(quiet.user_phone) : '';
+      const head = quiet && !alerting ? honor(quiet.user_name) + ' 응답 없음 · 바로 전화하세요'
+        : alerting ? alertMsg : '미처리 긴급 ' + open.length + '건';
+      const key = [alerting, alertMsg, sub, open.length, quiet ? quiet.id : ''].join('|');
       if (key !== bannerKey) {                                         // 같은 글을 10초마다 다시 읽지 않게
         bannerKey = key;
-        fill($('ubText'), alerting ? alertMsg : '미처리 긴급 ' + open.length + '건', h('small', null, sub));
+        fill($('ubText'), head, h('small', null, quiet && !alerting ? (quiet.user_vehicle_no || '') + ' · ' + where(quiet) : sub));
+      }
+      const call = $('ubCall');
+      call.hidden = !(quiet && qDigits);
+      if (quiet && qDigits) {
+        call.href = 'tel:' + qDigits;
+        call.setAttribute('aria-label', honor(quiet.user_name) + ' 전화 걸기');
       }
       $('ubClose').hidden = !alerting;
       box.hidden = false;

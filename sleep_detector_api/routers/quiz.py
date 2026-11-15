@@ -46,7 +46,7 @@ MSG_PASS = {
 }
 MSG_PASS_DEFAULT = MSG_PASS[1]  # 퀴즈 중에 해제되어 0단계인 경우
 MSG_RETRY = "한 번 더 물어볼게요."
-MSG_NO_RESPONSE = "응답이 없어 관리자에게 알렸습니다. 안전한 곳에 정차해 주세요."
+MSG_NO_RESPONSE = "응답이 없어 관리자에게 알렸어요. 안전한 곳에 정차해 주세요."
 
 
 def _label(stage):

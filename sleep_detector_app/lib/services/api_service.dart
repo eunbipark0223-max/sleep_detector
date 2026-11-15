@@ -189,6 +189,20 @@ class ApiService {
   // startDrive (운전 시작했어요)
   static Future<Map<String, dynamic>> startDrive() => _postJson('/drive/start');
 
+  // (11/15) 경고 사진 — GET /events/{id}/photo 는 로그인한 본인만 열림 → 토큰을 붙여 바이트로 받는다. 못 받으면 null
+  static Future<Uint8List?> fetchEventPhoto(String path) async {
+    try {
+      final res = await http.get(_uri(path), headers: await AuthService.authHeaders()).timeout(const Duration(seconds: 15));
+      return res.statusCode == 200 && res.bodyBytes.isNotEmpty ? res.bodyBytes : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // (11/15 팀장) 3단계 [깨어 있어요] 응답 — 눌렀는지 · 몇 초 걸렸는지. 서버가 최근 3단계 경고에 붙여 관리자 웹에 보여 줌
+  static Future<Map<String, dynamic>> sendWake(bool pressed, double? sec) =>
+      _postJson('/drive/wake', {'pressed': pressed, 'sec': sec});
+
   // sendCalibration (눈 뜬 사진으로 "내 눈 기준" 맞추기)
   static Future<Map<String, dynamic>> sendCalibration(Uint8List jpgBytes) async {
     final headers = await AuthService.authHeaders();

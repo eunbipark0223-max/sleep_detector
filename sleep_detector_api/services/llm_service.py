@@ -66,12 +66,13 @@ SYSTEM_PROMPT = """너는 화물 · 버스 운수회사 졸음운전 관제 시�
 - 주어진 숫자를 바꾸거나 새 숫자를 만들지 않는다. 시간은 "약 2초"처럼 반올림해도 된다.
 - 영어 용어를 쓰지 않는다 (microsleep → 미세수면, PERCLOS → 눈 감은 비율).
 - 사진에서 눈이 잘 안 보이면 숫자만으로 요약한다.
-- 입력에 '단계 이유'가 있으면 몇 번째 졸음이라고 쓰지 말고 그 이유를 쓴다 (예: 주의 단계에서 다시 졸았습니다).
+- 입력에 '단계 이유'가 있으면 몇 번째 졸음이라고 쓰지 말고 그 이유를 쓴다 (예: 주의 단계에서 다시 졸았어요).
+- 해요체로 쓴다 (~보여요, ~졸음이에요). 기사 앱 운행 기록과 관리자 웹에 같은 문장이 나온다 (11/16).
 - 요약 문장만 출력한다. 따옴표 · 머리말 · 사족 금지.
 
 예시)
 입력: 졸음 종류 미세수면, 연속 감김 2.1초, 최근 30초 눈 감은 비율 33%, 10분 안 2번째 졸음
-출력: 운전자가 약 2초간 눈을 감은 미세수면 상태로 보입니다. 10분 안에 두 번째 졸음입니다."""
+출력: 약 2초간 눈을 감은 미세수면 상태로 보여요. 10분 안에 두 번째 졸음이에요."""
 
 
 # ───────────────────────────────────────────────
@@ -108,16 +109,16 @@ def _template(eye):
     """AI 없이 숫자로 만드는 기본 문장 (기획안 6-1 출력 예 모양)."""
     closed, perclos, count = _num(eye, "closed_sec"), _num(eye, "perclos"), _num(eye, "sleep_count_10min")
     if eye.get("reason") == "perclos" and perclos is not None:
-        first = f"최근 30초 중 {round(perclos * 100)}% 동안 눈을 감아 피로가 누적된 상태로 보입니다."
+        first = f"최근 30초 중 {round(perclos * 100)}% 동안 눈을 감아 피로가 쌓인 상태로 보여요."
     elif closed is not None:
-        first = f"운전자가 약 {max(1, round(closed))}초간 눈을 감은 미세수면 상태로 보입니다."
+        first = f"약 {max(1, round(closed))}초간 눈을 감은 미세수면 상태로 보여요."
     else:
-        first = "운전자의 졸음이 감지되었습니다."
+        first = "졸음이 감지됐어요."
     if eye.get("stage_note"):              # (11/12) 횟수 대신 단계 이유
-        return first + " 주의 단계에서 다시 졸았습니다."
+        return first + " 주의 단계에서 다시 졸았어요."
     if count:
         n = int(count)
-        first += f" 10분 안에 {ORDINAL_KO[n]} 번째 졸음입니다." if n in ORDINAL_KO else f" 10분 안에 {n}번째 졸음입니다."
+        first += f" 10분 안에 {ORDINAL_KO[n]} 번째 졸음이에요." if n in ORDINAL_KO else f" 10분 안에 {n}번째 졸음이에요."
     return first
 
 

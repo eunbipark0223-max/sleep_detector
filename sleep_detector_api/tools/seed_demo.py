@@ -55,7 +55,7 @@ HOUR_WEIGHTS = {0: 2, 1: 3, 2: 5, 3: 6, 4: 6, 5: 4, 6: 1, 9: 1, 12: 1, 13: 3, 14
 QUIZ_SENTENCES = ["졸리면 쉬어 가겠습니다", "안전 운전이 최우선입니다", "졸음쉼터에서 잠깐 쉬겠습니다", "신호를 잘 지키겠습니다"]
 QUIZ_SUMS = [("23+45", "육십팔"), ("31+52", "팔십삼"), ("14+25", "삼십구"), ("42+36", "칠십팔")]
 
-GUIDANCE = {1: "창문을 열고 환기하며 주의해서 운전해 주세요.", 2: "가까운 졸음쉼터에서 15분 이상 쉬어 주세요.", 3: "관리자에게 알렸습니다. 안전한 곳에 바로 정차해 주세요."}
+GUIDANCE = {1: "창문을 열고 환기하며 주의해서 운전해 주세요.", 2: "가까운 졸음쉼터에서 15분 이상 쉬어 주세요.", 3: "관리자에게 알렸어요. 안전한 곳에 바로 정차해 주세요."}
 STAGE_REASON = {1: "처음 감지된 졸음으로 주의가 필요", 2: "반복된 졸음으로 휴식 필요", 3: "졸음이 계속되어 긴급 조치 필요"}
 RECOMMENDED = {1: "기록 확인", 2: "기사에게 연락해 휴식 여부 확인", 3: "즉시 기사에게 연락하고 정차 여부 확인"}
 REGULATION = "화물자동차 운수사업법 시행규칙 제22조"
@@ -73,9 +73,9 @@ def make_event(rng, driver_idx, when, stage, reason, status, count):
     lat, lng = rng.choice(PLACES)
 
     if reason == "perclos":
-        summary = f"눈 감김 비율(PERCLOS)이 {int(round(perclos * 100))}%로 피로가 누적된 상태입니다. 10분 안에 {count}번째 졸음입니다."
+        summary = f"최근 30초 중 {int(round(perclos * 100))}% 동안 눈을 감아 피로가 쌓인 상태로 보여요. 10분 안에 {count}번째 졸음이에요."
     elif reason == "microsleep":
-        summary = f"눈을 약 {int(round(closed_sec))}초간 감고 있었습니다. 10분 안에 {count}번째 졸음입니다."
+        summary = f"약 {int(round(closed_sec))}초간 눈을 감은 미세수면 상태로 보여요. 10분 안에 {count}번째 졸음이에요."
     elif reason == "rest_overdue":
         summary = "연속 운전 2시간이 지났는데 휴식을 취하지 않았습니다."
     else:

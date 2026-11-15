@@ -23,6 +23,7 @@ import '../models/sleep_event.dart';
 import '../services/api_service.dart';
 import '../theme.dart';
 import '../widgets/owl_says.dart';
+import 'event_detail_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
   /// 경고 목록을 가져오는 함수. 비워 두면 기본(_defaultLoad). null 을 돌려주면 '아직 서버와 연결되지 않음'.
@@ -342,8 +343,8 @@ class _EventCard extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          // TODO(상세 화면): 경고 상세 화면이 생기면 여기서 연다 — 예) Navigator.push(... EventDetailScreen(event: event))
-          onTap: () {},
+          // (11/15) 경고 기록 상세 — 졸음 사진 + AI 분석 결과 (관리자 웹 경고 상세와 같은 내용)
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => EventDetailScreen(event: event))),
           child: Container(
             constraints: const BoxConstraints(minHeight: 95),
             padding: const EdgeInsets.all(12),

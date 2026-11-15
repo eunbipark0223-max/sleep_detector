@@ -38,11 +38,14 @@ import '../config.dart';
 import '../models/drive_status.dart';
 import '../models/sleep_response.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
 import '../services/eye_monitor.dart';
 import '../services/voice_service.dart';
 import '../stage_texts.dart';
 import '../theme.dart';
 import '../widgets/owl_says.dart';
+import '../widgets/stage_layout.dart';
+import 'drive_report_screen.dart';
 import 'rest_screen.dart';
 import 'warning_screen.dart';
 
@@ -91,8 +94,10 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   DateTime? _cameraSpokeAt;
   // 배너 "카메라를 확인하세요" · 글자 "서버 확인: 취소" — 경고 화면도 같이 보여 준다
   final ValueNotifier<bool> _faceLostNote = ValueNotifier<bool>(false);
-  final ValueNotifier<bool> _preWarnNote = ValueNotifier<bool>(false); // 예비 경고 노란 띠 (11/12 팀장)
-  Timer? _preWarnClear;
+  // (11/15 팀장) 단계가 바뀌면 카메라 테두리가 3초 깜빡임 · 1단계 음성에 기사님 이름
+  bool _flashOn = true;
+  Timer? _flashTimer;
+  String _driverName = '';
   final ValueNotifier<bool> _cancelNote = ValueNotifier<bool>(false);
   final ValueNotifier<bool> _checkingNote = ValueNotifier<bool>(false); // 서버 답을 기다리는 중 → "확인하고 있어요" 띠 (11/12 팀장 UX)
   // 얼굴 위치 (카메라 칸이 따라감) — 세워서 거울처럼 본 화면 기준 0~1 비율
@@ -120,6 +125,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this); // 앱이 뒤로 가거나 화면이 잠기는 것을 알기 위해 (11/12)
+    _loadName();
 
     // 눈 감시 도구를 만들고, 알림이 오면 받을 함수를 연결한다
     _eye = EyeMonitor(
@@ -210,11 +216,42 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
 
   // 단계를 바꾸고 경고 화면에도 알린다
   void _setStage(int stage) {
+    final changed = stage != _stage;
     setState(() {
       _stage = stage;
     });
     _liveStage.value = stage;
+    if (changed && stage >= 1) _flash();
   }
+
+  // (11/15) 단계가 바뀌면 카메라 테두리를 3초 깜빡인다 (0.4초마다 켜고 끔)
+  void _flash() {
+    _flashTimer?.cancel();
+    var ticks = 0;
+    _flashTimer = Timer.periodic(const Duration(milliseconds: 400), (t) {
+      if (!mounted) return t.cancel();
+      ticks++;
+      setState(() => _flashOn = ticks.isEven);
+      if (ticks >= 8) {
+        t.cancel();
+        setState(() => _flashOn = true);
+      }
+    });
+  }
+
+  // (11/15) 1단계 음성에 부를 이름 — 못 받으면 '기사님'
+  Future<void> _loadName() async {
+    try {
+      final me = await AuthService.me();
+      final name = (me?['name'] as String? ?? '').trim();
+      if (mounted) setState(() => _driverName = name);
+    } catch (_) {}
+  }
+
+  String get _callName => AuthService.callName(_driverName);
+
+  // (11/15 팀장) 1단계 음성 — 이름 부르기 + 다음에 일어날 일
+  String get _stage1Voice => '$_callName, 졸음이 감지됐어요. 정신 차려 주세요.'; // (11/16) 말풍선과 같은 말 + 이름
 
   // 출발할 때 위치 권한을 한 번 묻는다 (졸음 전송 때 묻으면 경고가 늦어지므로)
   Future<void> _initLocation() async {
@@ -429,8 +466,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     VoiceService.stop(); // 말하기 멈춤
     WakelockPlus.disable(); // 운행이 끝나면 화면 꺼짐을 원래대로
     _pingTimer?.cancel(); // ping 끄기
-    _preWarnClear?.cancel();
-    _preWarnNote.dispose();
+    _flashTimer?.cancel();
     _retryingNote.dispose();
     _watchdog?.cancel(); // 카메라 지킴이 끄기
     _liveStage.dispose();
@@ -489,11 +525,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       if (res.preWarning) {
         _eye.serverCancelled(faceFound: res.faceFound);
         _sending = false;
-        _preWarnNote.value = true;
-        _preWarnClear?.cancel();
-        _preWarnClear = Timer(const Duration(seconds: 10), () => _preWarnNote.value = false);
-        await VoiceService.alarm();
-        if (mounted && !_pauseDetect.value && res.driverVoice.isNotEmpty) VoiceService.speak(res.driverVoice);
+        await _lightWarn(res.driverVoice);
         return;
       }
       // 서버가 취소하면 눈 감시 도구에 알린다 (고개 숙인 채 계속 자면 사진 없이 한 번 더 보내게, A)
@@ -511,8 +543,13 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       _setStage(res.stage);
       // 경고 화면이 떠 있는 동안에도 다음 졸음을 받을 수 있게 여기서 '보내는 중'을 푼다
       _sending = false;
-      // 졸음이 맞고 1단계 이상이면 경고 화면을 띄운다. 같은 단계면 낼 퀴즈가 있을 때만 (퀴즈는 2분 간격, 기획안 8-1)
-      if (res.isSleep && res.stage >= 1 && (!sameStage || res.voiceQuiz != null)) {
+      // (11/15 팀장) 1단계 = '정신 차리세요' — 경고 화면 없이 알림음 + 짧은 음성 + 노란 띠 (예비 경고와 같은 전달)
+      if (res.isSleep && res.stage == 1 && _warningRoute == null) {
+        await _lightWarn(_stage1Voice);
+        return;
+      }
+      // 2단계 이상이면 경고 화면을 띄운다. 같은 단계면 낼 퀴즈가 있을 때만 (퀴즈는 2단계부터 · 2분 간격)
+      if (res.isSleep && res.stage >= 2 && (!sameStage || res.voiceQuiz != null)) {
         _showWarning(res, silent: sameStage);
       }
     } on UnauthorizedException {
@@ -541,12 +578,20 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       _saveRegs(res.regulations);
       final sameStage = _warningRoute != null && res.stage == stageBefore;
       _setStage(res.stage);
-      if (res.stage >= 1 && (!sameStage || res.voiceQuiz != null)) {
+      if (res.stage == 1 && _warningRoute == null) {
+        await _lightWarn(_stage1Voice); // (11/15) 1단계는 경고 화면 없이
+      } else if (res.stage >= 2 && (!sameStage || res.voiceQuiz != null)) {
         _showWarning(res, silent: sameStage);
       }
     } catch (_) {
       // 반쯤 확인은 실패해도 조용히 넘어간다 (다음 10초에 다시 보냄)
     }
+  }
+
+  // (11/15 팀장) 1단계 '정신 차리세요': 경고 화면 없이 알림음 + 짧은 음성 한 문장 (카메라 테두리 노랑 깜빡임은 _setStage)
+  Future<void> _lightWarn(String voice) async {
+    await VoiceService.alarm();
+    if (mounted && !_pauseDetect.value && voice.isNotEmpty) VoiceService.speak(voice);
   }
 
   // 경고 화면 띄우기 — 이미 떠 있으면 닫고 새 경고로 바꾼다 (새 알람 · 음성 · 퀴즈)
@@ -741,14 +786,27 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       ),
     );
     if (yes != true || !mounted) return;
-    ApiService.endDrive().ignore(); // 서버에 운행이 끝났다고 알림 (홈 배너가 안 뜨게, 2 · 3단계는 그대로)
-    Navigator.of(context).pop();
+    // 서버에 운행이 끝났다고 알림 (홈 배너가 안 뜨게, 2 · 3단계는 그대로)
+    // (11/16 팀장) + 서버가 오늘 운행 AI 리포트를 돌려줌 → 리포트 화면. 못 받으면(연결 끊김 · 8초) 그냥 홈으로
+    Map<String, dynamic>? report;
+    try {
+      final r = await ApiService.endDrive().timeout(const Duration(seconds: 8));
+      if (r['report'] is Map) report = Map<String, dynamic>.from(r['report']);
+    } catch (_) {}
+    if (!mounted) return;
+    if (report == null) {
+      Navigator.of(context).pop();
+      return;
+    }
+    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => DriveReportScreen(report: report!)));
   }
 
   @override
   Widget build(BuildContext context) {
-    final bg = stageTint(_stage); // PPT 색 가이드 + 투명도 (경고 화면과 같게, 11/11)
-    const fg = AppColors.textPrimary;
+    // (11/15 팀장) 배경은 앱 테마 남색. 틀은 경고 화면과 같음 (StageLayout: 카메라 → 부엉이 → 버튼, 카메라 크기 · 위치 고정)
+    const bg = AppColors.navy;
+    const fg = Colors.white;
+    final ring = AppColors.stage(_stage);
 
     return PopScope(
       canPop: false, // 뒤로 가기도 [운행 종료]처럼 한 번 묻는다 (11/12)
@@ -756,105 +814,114 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
         if (!didPop) _confirmEnd();
       },
       child: Scaffold(
-      backgroundColor: bg,
-      bottomNavigationBar: ServerCancelText(cancelled: _cancelNote),
-      appBar: AppBar(
         backgroundColor: bg,
-        foregroundColor: fg,
-        elevation: 0,
-        title: const Text('운행 중'),
-      ),
-      body: SafeArea(
-        child: OnePageLayout(
-          // 카메라 확인 배너 — 얼굴이 다시 잡히면 사라짐 (취소 글자는 맨 아래, 1초 뒤 사라짐)
-          banner: Column(mainAxisSize: MainAxisSize.min, children: [
-            CameraBanner(faceLost: _faceLostNote),
-            _PreWarnBanner(show: _preWarnNote),
-            CheckingBanner(checking: _checkingNote),
-          ]),
-          belowMax: 0.3,
-          above: [
-            // 휴게 배너 (연속 운전 2시간) — [닫기]로 숨김, [가까운 졸음쉼터 듣기]로 지도, [정차했어요]로 휴식 시작
-            if (_restMessage.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.fromLTRB(16, 8, 4, 12),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.local_cafe, color: AppColors.textPrimary),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(_restMessage,
-                              style: const TextStyle(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w700)),
-                        ),
-                        IconButton(
-                          onPressed: () => setState(() => _restMessage = ''),
-                          icon: const Icon(Icons.close, color: AppColors.textSecondary),
-                        ),
-                      ],
-                    ),
-                    // [가까운 졸음쉼터 듣기] — 다시 읽고 지도 화면 (목록 · 길찾기, 11/11 팀장)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 12, bottom: 8),
-                      child: OutlinedButton.icon(
-                        onPressed: () => listenRestMap(context, _restVoice ??= nearRestVoice(_lat, _lng)),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textPrimary,
-                          side: const BorderSide(color: AppColors.cardBorder, width: 1.5),
-                          minimumSize: const Size.fromHeight(46),
-                        ),
-                        icon: const Icon(Icons.local_cafe_outlined),
-                        label: const Text('가까운 졸음쉼터 듣기'),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: FilledButton(
-                        onPressed: _goRest,
-                        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(46)),
-                        child: const Text('정차했어요'),
-                      ),
-                    ),
-                  ],
-                ),
+        bottomNavigationBar: ServerCancelText(cancelled: _cancelNote, color: Colors.white70),
+        appBar: AppBar(
+          backgroundColor: bg,
+          foregroundColor: fg,
+          elevation: 0,
+          centerTitle: true,
+          title: const Text('운행 중', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+          actions: [Padding(padding: const EdgeInsets.only(right: 12), child: StageBadge(stage: _stage))],
+        ),
+        body: SafeArea(
+          child: StageLayout(
+            // 카메라 확인 · 확인 중 띠 — 카메라 위에 겹침
+            cameraOverlay: Column(mainAxisSize: MainAxisSize.min, children: [
+              CameraBanner(faceLost: _faceLostNote),
+              CheckingBanner(checking: _checkingNote),
+            ]),
+            // 카메라 테두리 = 지금 단계 색 (정상은 얇게, 1 · 2 · 3단계는 두껍게 + 바뀔 때 깜빡임)
+            camera: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: EdgeInsets.all(_stage == 0 ? 3 : 7),
+              decoration: BoxDecoration(
+                color: _flashOn ? ring : ring.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(22),
+                boxShadow: _stage == 0 || !_flashOn
+                    ? null
+                    : [BoxShadow(color: ring.withValues(alpha: 0.55), blurRadius: 24, spreadRadius: 2)],
               ),
-            const SizedBox(height: 4),
-            // 단계 문구를 맨 위(눈높이)에 — 부엉이가 말풍선으로 안내 (11/11 초안)
-            OwlSays(owl: OwlSays.face(_stage), text: _stageTitle(_stage), owlSize: 92, fontSize: 25, maxLines: 3), // 운전 중이라 크게, 팀장 stage_texts 문구가 길어져 3줄까지 (11/11)
-            const SizedBox(height: 10),
-          ],
-          // 카메라 미리보기 — 칸 크기는 남는 자리에 맞추고 (OnePageLayout), 칸 안에서는 얼굴을 따라간다
-          camera: ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: (_controller != null && _controller!.value.isInitialized)
-                ? FollowFacePreview(controller: _controller!, face: _faceBoxNote)
-                : Container(
-                    color: Colors.black26,
-                    child: Icon(Icons.videocam_off_outlined, color: fg, size: 40),
-                  ),
-          ),
-          // 눈 기준 · 눈 뜸 확률 · 감은 비율 같은 숫자는 기사님 화면에 보여 주지 않는다 (서버 기록 → 관리자 웹에서 확인, 11/09 팀장)
-          below: [
-            if (_notice.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(_notice, textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: fg)),
-            ],
-            const SizedBox(height: 12),
-            OutlinedButton(
-              onPressed: _confirmEnd, // 한 번 묻고 끝냄 (11/12)
-              style: OutlinedButton.styleFrom(
-                foregroundColor: fg,
-                side: BorderSide(color: fg),
-                minimumSize: const Size.fromHeight(50),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(15),
+                child: (_controller != null && _controller!.value.isInitialized)
+                    ? FollowFacePreview(controller: _controller!, face: _faceBoxNote)
+                    : Container(
+                        color: Colors.black26,
+                        child: const Icon(Icons.videocam_off_outlined, color: fg, size: 40),
+                      ),
               ),
-              child: const Text('운행 종료'),
             ),
-          ],
+            message: [
+              OwlSays(owl: OwlSays.face(_stage), text: _stageTitle(_stage), owlSize: 84, fontSize: 22, maxLines: 4),
+              // 휴게 배너 (연속 운전 2시간) — [닫기]로 숨김, [가까운 졸음쉼터 듣기]로 지도, [정차했어요]로 휴식 시작
+              if (_restMessage.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 4, 12),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.local_cafe, color: AppColors.textPrimary),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(_restMessage,
+                                style: const TextStyle(
+                                    color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w700)),
+                          ),
+                          IconButton(
+                            onPressed: () => setState(() => _restMessage = ''),
+                            icon: const Icon(Icons.close, color: AppColors.textSecondary),
+                          ),
+                        ],
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12, bottom: 8),
+                        child: OutlinedButton.icon(
+                          onPressed: () => listenRestMap(context, _restVoice ??= nearRestVoice(_lat, _lng)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.textPrimary,
+                            side: const BorderSide(color: AppColors.cardBorder, width: 1.5),
+                            minimumSize: const Size.fromHeight(46),
+                          ),
+                          icon: const Icon(Icons.location_on_outlined), // (11/16) 쉼터 = 위치 마커
+                          label: const Text('가까운 졸음쉼터 듣기'),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: FilledButton(
+                          onPressed: _goRest,
+                          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+                          child: const Text('정차했어요'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (_notice.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(_notice, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, color: fg)),
+              ],
+            ],
+            actions: [
+              OutlinedButton(
+                onPressed: _confirmEnd, // 한 번 묻고 끝냄 (11/12)
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: fg,
+                  side: const BorderSide(color: Colors.white70, width: 1.5),
+                  minimumSize: const Size.fromHeight(56),
+                  textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+                child: const Text('운행 종료'),
+              ),
+            ],
+          ),
         ),
       ),
-    ),
     );
   }
 
@@ -863,32 +930,3 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
 
 }
 
-/// 예비 경고 노란 띠 (11/12 팀장) — 운행 중 첫 졸음 때 10초. 카메라 칸 위에 겹쳐 뜬다
-class _PreWarnBanner extends StatelessWidget {
-  final ValueNotifier<bool> show;
-  const _PreWarnBanner({required this.show});
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: show,
-      builder: (_, on, _) => !on
-          ? const SizedBox.shrink()
-          : Container(
-              margin: const EdgeInsets.only(top: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(color: AppColors.caution, borderRadius: BorderRadius.circular(14)),
-              child: const Row(
-                children: [
-                  Icon(Icons.notifications_active, color: Color(0xFF3A2A00), size: 26),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text('졸음이 느껴지면\n창문을 열고 환기해 주세요',
-                        style: TextStyle(color: Color(0xFF3A2A00), fontSize: 18, height: 1.3, fontWeight: FontWeight.w800)),
-                  ),
-                ],
-              ),
-            ),
-    );
-  }
-}

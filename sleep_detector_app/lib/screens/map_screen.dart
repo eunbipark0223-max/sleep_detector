@@ -187,64 +187,154 @@ class _MapScreenState extends State<MapScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => _RoutePage(title: a.name, url: web.toString())));
   }
 
+  // ── 화면 (11/16 Figma 시안 '졸음운전 감지 앱5' 졸음쉼터 — 디자인만. 위치 · 거리 · 지도 · 길찾기는 위 그대로) ──
+  static const Color _bg = Color(0xFFF8F9FC);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('가까운 졸음쉼터')),
+      backgroundColor: _bg,
+      appBar: AppBar(
+        backgroundColor: _bg,
+        surfaceTintColor: _bg,
+        foregroundColor: AppColors.textPrimary,
+        elevation: 0,
+        toolbarHeight: 66,
+        titleSpacing: 18,
+        centerTitle: false,
+        title: const Text('가까운 졸음쉼터',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.5, color: AppColors.textPrimary)),
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? _ErrorView(message: _error!, onRetry: _load)
-              : Column(
+              : Stack(
                   children: [
-                    Expanded(flex: 3, child: _web == null ? const _NoKeyView() : WebViewWidget(controller: _web!)),
-                    Expanded(flex: 2, child: _list()),
+                    // 지도 — 위쪽 전체 (아래 목록 창이 겹쳐 올라옴)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: 0,
+                      bottom: 300,
+                      child: _web == null ? const _NoKeyView() : WebViewWidget(controller: _web!),
+                    ),
+                    // 아래 목록 창 (시안의 흰 시트 — 손잡이 · 제목 · 쉼터 카드)
+                    Positioned(left: 0, right: 0, bottom: 0, height: 330, child: _sheet()),
                   ],
                 ),
     );
   }
 
-  Widget _list() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            itemCount: _near.length,
-            separatorBuilder: (_, _) => const Divider(height: 1, color: AppColors.cardBorder),
-            itemBuilder: (context, i) {
-              final near = _near[i];
-              final a = near.area;
-              return ListTile(
-                selected: _selected == i,
-                selectedTileColor: AppColors.rest.withValues(alpha: 0.08),
-                leading: CircleAvatar(
-                  radius: 14,
-                  backgroundColor: AppColors.rest,
-                  child: Text('${i + 1}', style: const TextStyle(color: Colors.white, fontSize: 13)),
+  Widget _sheet() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: _bg,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        boxShadow: [BoxShadow(color: Color(0x221F2A5C), blurRadius: 24, offset: Offset(0, -6))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 10),
+          Center(
+            child: Container(
+                width: 40, height: 4, decoration: BoxDecoration(color: const Color(0xFFC9CEDA), borderRadius: BorderRadius.circular(99))),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
+            child: Row(
+              children: [
+                const Text('가까운 쉼터',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
+                const Spacer(),
+                Text(_roadLoading ? '거리 확인 중' : '현재 위치 기준',
+                    style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+              itemCount: _near.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 9),
+              itemBuilder: (context, i) => _card(i),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+            child: Text(
+                '${_near.any((x) => x.hasRoad) ? '도로 거리: 카카오모빌리티 · ' : '거리는 직선 거리 · '}출처: 공공데이터포털 전국졸음쉼터표준데이터',
+                style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 쉼터 카드 (시안 .shelter-item — 위치 아이콘 · 이름 · 노선 방향 · 거리 · [길찾기])
+  Widget _card(int i) {
+    final near = _near[i];
+    final a = near.area;
+    final selected = _selected == i;
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: selected ? AppColors.navy : AppColors.cardBorder, width: selected ? 1.6 : 1),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => _focus(i),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(color: const Color(0xFFEDF0F8), borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.location_on_outlined, color: AppColors.navy, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(a.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
+                    const SizedBox(height: 2),
+                    // 노선 · 방향 — 가장 가까운 쉼터가 반대편 차로일 수 있어서 꼭 보여 줌
+                    Text([if (a.roadText.isNotEmpty) a.roadText, if (a.toilet == 'Y') '화장실'].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                    const SizedBox(height: 2),
+                    Text(near.distanceText,
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.navy)),
+                  ],
                 ),
-                // 노선 · 방향을 이름보다 크게 — 가장 가까운 쉼터가 반대편 차로일 수 있음
-                title: Text(a.roadText.isEmpty ? a.name : a.roadText,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                subtitle: Text(
-                  [if (a.roadText.isNotEmpty) a.name, near.distanceText, if (a.toilet == 'Y') '화장실'].join(' · '),
-                  style: const TextStyle(color: AppColors.textSecondary),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: () => _openRoute(a),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.navy,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(0, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
                 ),
-                trailing: TextButton(onPressed: () => _openRoute(a), child: const Text('길찾기')),
-                onTap: () => _focus(i),
-              );
-            },
+                icon: const Icon(Icons.directions, size: 19),
+                label: const Text('길찾기'),
+              ),
+            ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: Text(
-              '${_roadLoading ? '도로 거리 확인 중 · ' : _near.any((x) => x.hasRoad) ? '도로 거리: 카카오모빌리티 · ' : '거리는 직선 거리 · '}'
-              '출처: 공공데이터포털 전국졸음쉼터표준데이터',
-              style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -255,13 +345,17 @@ class _NoKeyView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.cardBorder.withValues(alpha: 0.4),
+      color: const Color(0xFFE9ECF4),
       alignment: Alignment.center,
-      padding: const EdgeInsets.all(24),
-      child: const Text(
-        '지도를 보려면 카카오 JavaScript 키가 필요해요\n(flutter run --dart-define=KAKAO_JS_KEY=...)\n아래 목록 · 길찾기는 그대로 쓸 수 있어요',
-        textAlign: TextAlign.center,
-        style: TextStyle(color: AppColors.textSecondary),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 60),
+      child: const Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.map_outlined, size: 40, color: AppColors.textMuted),
+          SizedBox(height: 8),
+          Text('지도를 불러오지 못했어요\n아래 목록에서 바로 길찾기를 할 수 있어요',
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 14, height: 1.45, color: AppColors.textSecondary)),
+        ],
       ),
     );
   }

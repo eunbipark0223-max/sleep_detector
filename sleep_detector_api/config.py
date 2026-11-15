@@ -31,6 +31,10 @@ def _env_bool(name: str, default: bool) -> bool:
 # True 면 시간 기준이 짧아짐 (10분→3분, 15분→1분, 2시간→2분 · 11/10 단계 창 1분 → 3분). .env 에 DEMO_MODE=true 로도 켤 수 있음
 DEMO_MODE = _env_bool("DEMO_MODE", False)
 
+# (11/15 팀장) 예비 경고 끔 — 1단계가 이미 가벼운 알림(화면 전환 없음)이라 역할이 겹침. 첫 졸음 = 1단계, 두 번째 = 2단계
+#   다시 켜려면 .env 에 PRE_WARN_ON=true (detect.py · sleep_state.try_pre_warn 은 그대로 남겨 둠)
+PRE_WARN_ON = _env_bool("PRE_WARN_ON", False)
+
 # ── AI 스위치 (수업 방식: 가짜 ↔ 진짜, 실패하면 가짜로) ──
 USE_REAL_AI = True
 FALLBACK_ON_ERROR = True
@@ -77,7 +81,7 @@ TOKEN_EXPIRE_MIN = 12 * 60    # 수업은 60분 → 운행(2시간 이상) 중�
 TOKEN_REFRESH_MIN = 6 * 60    # 운행 중 ping 때 남은 시간이 이 값보다 적으면 새 토큰을 내려 줌 (운행 중에 로그인이 끊기지 않게)
 
 # ── 기사 음성 보고 (agent_service) ────────────────────
-DRIVER_VOICE_MAX_CHARS = 90
+DRIVER_VOICE_MAX_CHARS = 50   # (11/16) 한 번에 듣고 이해되는 길이 — 약 4초
 
 # ── 음성 퀴즈 (voice_quiz_service, /quiz/answer) ──────
 QUIZ_MODE = "voice"           # 10/29 STT 시험으로 부품 A 확정 (STT 안 되면 "screen" = 부품 B)

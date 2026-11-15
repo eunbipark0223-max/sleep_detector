@@ -26,11 +26,11 @@ class StageTexts {
   static String headline(int stage) {
     switch (stage) {
       case 1:
-        return '졸음이 감지됐습니다.\n정신 차려 주세요';
+        return '졸음이 감지됐어요\n정신 차려 주세요'; // (11/15) 말풍선 2줄 · 1단계 음성과 같은 말투
       case 2:
-        return '계속 졸고 있습니다.\n가까운 졸음쉼터에서 쉬어 주세요';
+        return '계속 졸고 있어요\n가까운 쉼터에서 쉬어 가세요'; // (11/16) 해요체 · Agent 문장과 같은 말투 (서버 문장이 없을 때만)
       case 3:
-        return '관리자에게 알렸습니다.\n안전한 곳에 바로 정차해 주세요';
+        return '관리자에게 알렸어요\n지금 바로 정차하세요'; // (11/16) 30초 반복 음성도 이 문장
       default:
         return normal;
     }
