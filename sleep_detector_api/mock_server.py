@@ -429,6 +429,10 @@ def seed_more() -> None:
     make(by_name["이서윤"], 2, "perclos", now - timedelta(minutes=20), "미확인")
     make(by_name["최도윤"], 1, "microsleep", now - timedelta(minutes=8), "미확인")
     make(by_name["정예린"], 1, "rest_overdue", now - timedelta(minutes=35), "미확인")
+    # 지금 주행 중인 기사 (관리자 홈 '주행 중 기사' 시험용): 연속 운전 분을 다르게
+    for who, minutes in [("박정민", 140), ("서준호", 95), ("이서윤", 62), ("최도윤", 38), ("정예린", 121), ("강민서", 12)]:
+        st = state_of(by_name[who])
+        st.update({"drive_start": time.time() - minutes * 60, "last_ping": time.time(), "ended": False, "demo_driving": True})
 
 
 def reset_all() -> None:
@@ -945,7 +949,11 @@ def admin_users(admin: dict = Depends(require_admin)):
     out = []
     for u in USERS.values():
         mine = [e for e in EVENTS if e["user_id"] == u["id"]]
-        out.append({**u, "event_count": len(mine), "last_event_at": max((e["created_at"] for e in mine), default=None)})
+        st = STATES.get(u["id"]) or {}
+        last = st.get("last_ping")
+        driving = bool(last) and not st.get("ended") and (bool(st.get("demo_driving")) or time.time() - last <= 120)   # 진짜 서버와 같음: 마지막 ping 2분 안
+        out.append({**u, "event_count": len(mine), "last_event_at": max((e["created_at"] for e in mine), default=None),
+                    "driving": driving, "drive_min": drive_min_of(st) if driving else 0})
     return out
 
 
@@ -1110,7 +1118,7 @@ def dev_reset():
 #                          · report(객체: situation · stage_reason · regulation · recommended_action · location · eye · driving_quiz · rest)
 #                          · photo_url · latitude · longitude · created_at     (목록은 배열, 최신순)
 #   /admin/events 한 줄    위와 같고 + user_name · user_email · user_phone · user_vehicle_no · address · urgent  (전화 · 차량이 없으면 '')
-#   /admin/users 한 줄     {id · email · name · role · phone · vehicle_no · event_count · last_event_at}  (phone · vehicle_no 없으면 null)
+#   /admin/users 한 줄     {id · email · name · role · phone · vehicle_no · event_count · last_event_at · driving · drive_min}  (phone · vehicle_no 없으면 null)
 #   PATCH /users/me        {phone?, vehicle_no?} → 내 정보 (빠진 칸은 그대로, '' 면 지움, 형식이 틀리면 422)
 #   PATCH 요청/응답        {status} → {success, id, status, stage_reset}     status: 미확인 · 확인 · 조치완료 · 휴식완료 (아니면 422)
 #   관리자 전용            PATCH /events/{id}/status · /admin/*  — role 이 admin 이 아니면 403 (mock 은 이메일이 admin 으로 시작하면 admin)

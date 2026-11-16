@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session
 from auth.jwt import get_current_user
 from database.orm import get_db
 from models.models import SleepEvent, User
+from services import drive_timer
 from schema.response import (
     STAGE_LABELS,
     AdminEventResponse,
@@ -44,6 +45,7 @@ from schema.response import (
 )
 
 load_dotenv()
+DRIVING_PING_SEC = 120   # 마지막 ping 이 이 안이면 '주행 중' (앱은 30초마다 ping)
 KAKAO_API_KEY = os.getenv("KAKAO_API_KEY", "")
 KAKAO_ADDRESS_URL = "https://dapi.kakao.com/v2/local/geo/coord2address.json"
 
@@ -121,8 +123,10 @@ def admin_users(db: Session = Depends(get_db), _admin: User = Depends(require_ad
     out = []
     for user in db.execute(select(User).order_by(User.id)).scalars().all():
         count, last = counts.get(user.id, (0, None))
+        age = drive_timer.last_ping_age(user.id)         # 운행 기록이 없거나 [운행 종료] 를 눌렀으면 None
+        driving = age is not None and age <= DRIVING_PING_SEC
         out.append(AdminUserResponse(id=user.id, email=user.email, name=user.name, role=user.role, phone=user.phone, vehicle_no=user.vehicle_no,
-                                     event_count=count, last_event_at=last))
+                                     event_count=count, last_event_at=last, driving=driving, drive_min=drive_timer.drive_min(user.id) if driving else 0))
     return out
 
 

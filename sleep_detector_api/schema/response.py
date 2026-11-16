@@ -104,6 +104,8 @@ class AdminEventResponse(SleepEventResponse):
 class AdminUserResponse(UserResponse):
     event_count: int = 0
     last_event_at: Optional[datetime] = None
+    driving: bool = False   # (11/16) 지금 주행 중 — 앱이 /drive/ping 을 30초마다 보내므로 마지막 ping 이 2분 안이면 주행 중. 관리자 홈의 '주행 중 기사'
+    drive_min: int = 0      # 주행 중일 때 연속 운전 분
 
 
 # ── 통계 (P2) ─────────────────────────────────────────────────

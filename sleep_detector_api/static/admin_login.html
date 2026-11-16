@@ -19,19 +19,19 @@ static/admin_login.html — 관리자 로그인 화면
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>졸음 가드 관리자 로그인</title>
   <link rel="icon" type="image/png" href="img/favicon.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;600&display=swap">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <style>
     :root {   /* 관리자 화면(admin.html)과 같은 값 */
       --fg-400: #8A90A5; --fg-500: #666C85; --fg-700: #3A4157; --fg-950: #1F2430;     /* 앱 theme.dart 와 같은 색 */
       --bg-50: #FFFFFF; --bg-100: #F3F5FA; --bg-200: #E1E5F0;
       --pr-50: #F1F3FA; --pr-300: #A9B3DE; --pr-700: #1F2A5C; --pr-800: #141C42; --rd-600: #B3261E;
-      --font: Inter, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', Pretendard, 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+      --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
       --fs-headline: 22px; --fs-body: 13px; --fs-cap: 12px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--bg-100); color: var(--fg-950);
-           font-family: var(--font); font-size: var(--fs-body); line-height: 1.5; letter-spacing: -.005em; font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11'; -webkit-font-smoothing: antialiased; word-break: keep-all; }
+           font-family: var(--font); font-size: var(--fs-body); line-height: 1.5; letter-spacing: -.005em; -webkit-font-smoothing: antialiased; word-break: keep-all; }
     form { width: min(380px, 100%); padding: 40px 32px 32px; background: var(--bg-50); border-radius: 22px; box-shadow: 0 1px 2px rgba(16, 19, 25, .03); }
     .logo { display: block; width: 48px; height: 48px; margin: 0 auto 16px; border-radius: 12px; }
     .pill { display: block; width: fit-content; margin: 0 auto 12px; padding: 4px 10px; border-radius: 999px; background: var(--pr-50); color: var(--pr-700); font-size: var(--fs-cap); font-weight: 500; }
