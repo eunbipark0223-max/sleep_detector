@@ -314,6 +314,14 @@ def generate_response(eye, analysis, regulations, facts, rule_stage, location=""
     return out
 
 
+def rule_response(eye, analysis, regulations, facts, rule_stage, location=""):
+    """(11/16 팀장) AI 없이 규칙 단계 그대로 — 1단계(첫 졸음)용. 단계를 올리지 않고 기본 안내문 · 템플릿 문장 · 보고서만.
+    1단계 음성은 앱의 고정 문장이라 Agent 를 기다릴 필요가 없음 (첫 알림이 늦지 않게)"""
+    out = _normalize({}, eye or {}, analysis or {}, regulations or [], facts or {}, rule_stage, location)
+    out.update({"is_real": False, "used_tools": [], "voice_is_real": False})
+    return out
+
+
 # ───────────────────────────────────────────────
 # (11/16 팀장) 운행 종료 AI 리포트 — [운행 종료] 때 오늘 운행을 짧게 정리 + 다음 운행 조언
 #   숫자는 서버가 센 stats 그대로 (AI 는 문장만). AI 가 없거나 숫자가 틀리면 템플릿 문장.

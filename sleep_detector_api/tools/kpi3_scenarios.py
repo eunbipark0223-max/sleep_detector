@@ -304,6 +304,7 @@ def bonus_reset_race():
     """AI 처리 중 관리자 [조치완료] → 끝나도 단계가 다시 안 오름 · 퀴즈 없음 · 경고는 조치완료로 기록 (11/05)"""
     h, uid = new_driver()
     real = agent_service.generate_response
+    doze(h)                             # 첫 졸음 = 1단계 (AI 를 부르지 않음, 11/16) → 두 번째 졸음에서 AI 가 돈다
 
     def slow(*a, **k):                  # AI 가 도는 사이에 관리자가 누른 것과 같음
         sleep_state.reset(uid)
@@ -315,8 +316,38 @@ def bonus_reset_race():
     finally:
         agent_service.generate_response = real
     with TestSession() as s:
-        status = s.query(SleepEvent).filter(SleepEvent.user_id == uid).one().status
+        status = (s.query(SleepEvent).filter(SleepEvent.user_id == uid)
+                  .order_by(SleepEvent.id.desc()).first().status)
     return f"단계 {r['stage']} · ping {ping(h)['stage']} · 퀴즈 {r['voice_quiz'] is not None} · {status}"
+
+
+def bonus_stage1_no_ai():
+    """(11/16 팀장) 1단계(첫 졸음)는 LLM · Agent 를 부르지 않고 기록만 — Agent 가 올리려 해도 1단계. 두 번째 졸음부터 AI"""
+    h, uid = new_driver()
+    real_llm, real_agent = llm_service.interpret_situation, agent_service.generate_response
+    calls = {"llm": 0, "agent": 0}
+
+    def llm(*a, **k):
+        calls["llm"] += 1
+        return real_llm(*a, **k)
+
+    def agent(*a, **k):                 # AI 가 한 단계 올리려는 것과 같음 (천장 +1)
+        calls["agent"] += 1
+        out = real_agent(*a, **k)
+        out["stage"] = min(3, out["stage"] + 1)
+        return out
+
+    llm_service.interpret_situation, agent_service.generate_response = llm, agent
+    try:
+        r1 = doze(h)
+        first = (r1["stage"], calls["llm"], calls["agent"])
+        with TestSession() as s:
+            n_events = s.query(SleepEvent).filter(SleepEvent.user_id == uid).count()
+        r2 = doze(h)
+    finally:
+        llm_service.interpret_situation, agent_service.generate_response = real_llm, real_agent
+    return (f"첫 졸음 {first[0]}단계 · AI {first[1]}·{first[2]} · 기록 {n_events}건 · 요약 {bool(r1['summary'])} · "
+            f"두 번째 AI {calls['llm']}·{calls['agent']}")
 
 
 def bonus_error():
@@ -478,6 +509,7 @@ BONUS = [("(보너스) 3단계는 휴식으로 안 풀림 → 3단계", 3, bonus
          ("(보너스) 운행 종료 뒤 연속 운전 시간 유지", "배너 False · 100분", bonus_drive_end),
          ("(보너스) 서버 판정 오류 → 앱 판단대로 확정", "확정", bonus_error),
          ("(보너스) AI 처리 중 조치완료 → 단계 안 오름", "단계 0 · ping 0 · 퀴즈 False · 조치완료", bonus_reset_race),
+         ("(보너스) 1단계는 AI 없이 기록만", "첫 졸음 1단계 · AI 0·0 · 기록 1건 · 요약 True · 두 번째 AI 1·1", bonus_stage1_no_ai),
          ("(보너스) 경고 사진 권한", "401 · 200 · 404 · 200 · 404", bonus_photo_access),
          ("(보너스) 퀴즈 통과 음성: 2 · 3단계", "쉼터까지 조심히 가세요. / 안전한 곳에 정차해 주세요.", bonus_quiz_message),
          ("(보너스) [detect] 단계별 시간 기록", "눈판정 · LLM · RAG · Agent · 합계", bonus_detect_timing),

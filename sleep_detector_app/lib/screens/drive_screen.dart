@@ -291,7 +291,9 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       _markOnline();
       if (status.restDue) _restMessage = status.restMessage; // 연속 운전 2시간 → 휴게 배너
-      _setStage(status.stage);
+      // 졸음 의심을 보내고 답을 기다리는 중이면 단계는 그 답으로 바꾼다 — ping 이 먼저 올린 단계로 떠 있던 경고 화면이
+      //   잠깐 새 단계 모양으로 바뀌었다가 새 경고로 다시 바뀌던 것 (11/16 팀장)
+      if (!_sending) _setStage(status.stage);
       // 휴게 알림은 서버가 한 번만 true 로 보내 줌 → 한 번만 읽기
       // (경고 음성 · 퀴즈 · 휴식 중이면 배너만 띄우고 소리는 내지 않음)
       if (status.restDue) {
@@ -594,17 +596,11 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     if (mounted && !_pauseDetect.value && voice.isNotEmpty) VoiceService.speak(voice);
   }
 
-  // 경고 화면 띄우기 — 이미 떠 있으면 닫고 새 경고로 바꾼다 (새 알람 · 음성 · 퀴즈)
+  // 경고 화면 띄우기 — 이미 떠 있으면 새 경고로 바로 바꾼다 (새 알람 · 음성 · 퀴즈)
   //   퀴즈 · 휴식 화면이 위에 떠 있으면 그대로 둔다 (대답하는 중 · 쉬는 중을 끊지 않게)
   Future<void> _showWarning(SleepResponse res, {bool silent = false, bool resumeRest = false}) async {
     final old = _warningRoute;
-    if (old != null) {
-      if (!old.isCurrent) return;
-      Navigator.of(context).removeRoute(old);
-      // 이전 경고 화면이 닫히면서 부르는 VoiceService.stop() 이 새 알람을 끊지 않게 잠깐 기다린다
-      await Future.delayed(const Duration(milliseconds: 300));
-      if (!mounted) return;
-    }
+    if (old != null && !old.isCurrent) return;
     final route = MaterialPageRoute<int>(
       builder: (_) => WarningScreen(
         response: res,
@@ -617,12 +613,21 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
         faceBox: _faceBoxNote,
         silent: silent,
         resumeRest: resumeRest,
+        // 앞 경고 화면을 새 경고로 바꿀 때 — 앞 화면이 닫히며 부르는 VoiceService.stop() 이 새 알람을 끊지 않게 조금 늦게 말함
+        startDelayMs: old != null ? 500 : 0,
         lat: _lat, // 2단계 가까운 졸음쉼터 음성 안내용
         lng: _lng,
       ),
     );
     _warningRoute = route;
-    final restedStage = await Navigator.of(context).push(route);
+    // (11/16 팀장) 앞 경고 화면이 있으면 닫지 않고 새 경고로 바로 바꾼다 — 닫고 0.3초 뒤 띄우던 사이에 운행 화면이 번쩍 보였음
+    final int? restedStage;
+    if (old != null) {
+      Navigator.of(context).replace(oldRoute: old, newRoute: route);
+      restedStage = await route.popped;
+    } else {
+      restedStage = await Navigator.of(context).push(route);
+    }
     if (!mounted) return;
     if (_warningRoute == route) {
       _warningRoute = null; // 이 경고 화면이 닫혔으면 다시 띄울 수 있게

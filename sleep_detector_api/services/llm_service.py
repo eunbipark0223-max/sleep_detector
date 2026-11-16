@@ -105,6 +105,11 @@ def _facts_text(eye):
     return ", ".join(parts) or "판정 숫자 없음"
 
 
+def template_summary(eye):
+    """(11/16 팀장) AI 없이 숫자로 만든 요약 — 1단계(첫 졸음)는 LLM 을 부르지 않고 이것만 기록"""
+    return {"summary": _template(eye or {}), "model": "rule", "is_real": False}
+
+
 def _template(eye):
     """AI 없이 숫자로 만드는 기본 문장 (기획안 6-1 출력 예 모양)."""
     closed, perclos, count = _num(eye, "closed_sec"), _num(eye, "perclos"), _num(eye, "sleep_count_10min")

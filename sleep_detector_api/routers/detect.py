@@ -500,13 +500,22 @@ async def detect_handler(
 
     # ④ LLM 요약  ⑤ RAG 규정  ⑥ Agent (모두 실패하면 가짜로 — 각 서비스가 is_real 로 알려 줌)
     t_ai = time.perf_counter()
-    analysis = await run_in_threadpool(llm_service.interpret_situation, tmp_path, eye_info)
-    t_llm = time.perf_counter()
-    regulations = await run_in_threadpool(rag_service.search_regulations, analysis.get("summary", ""))
-    t_rag = time.perf_counter()
     location = f"{lat:.5f}, {lng:.5f}" if lat is not None and lng is not None else ""
-    agent = await run_in_threadpool(agent_service.generate_response, eye_info, analysis, regulations, facts,
-                                    rule_stage, location, user.id)
+    if rule_stage <= 1:
+        # (11/16 팀장) 1단계(첫 졸음)는 앱이 고정 문장으로 경고 → LLM · RAG · Agent 를 건너뛰고 기록만 해서 바로 답한다.
+        #   ① 첫 알림이 AI 시간(최대 5 + 7초)만큼 늦지 않게  ② Agent 의 +1 올림으로 첫 졸음이 2단계가 되지 않게
+        #   기록 요약은 숫자 템플릿 ("약 N초간 눈을 감은 미세수면 상태로 보여요. 10분 안에 첫 번째 졸음이에요.")
+        analysis = llm_service.template_summary(eye_info)
+        t_llm = t_rag = time.perf_counter()
+        regulations = []
+        agent = agent_service.rule_response(eye_info, analysis, regulations, facts, rule_stage, location)
+    else:
+        analysis = await run_in_threadpool(llm_service.interpret_situation, tmp_path, eye_info)
+        t_llm = time.perf_counter()
+        regulations = await run_in_threadpool(rag_service.search_regulations, analysis.get("summary", ""))
+        t_rag = time.perf_counter()
+        agent = await run_in_threadpool(agent_service.generate_response, eye_info, analysis, regulations, facts,
+                                        rule_stage, location, user.id)
     t_agent = time.perf_counter()
     # AI 처리 중에 관리자가 [조치완료] 했으면 단계를 다시 올리지 않는다 — 경고 기록은 '조치완료' 로 남김 (11/05)
     released = sleep_state.reset_count(user.id) != reset_mark

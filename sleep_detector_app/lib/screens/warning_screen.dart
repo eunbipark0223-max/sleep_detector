@@ -52,7 +52,8 @@ const int confirmRestSec = 60;
 Future<bool> confirmRest(BuildContext context) async {
   var open = true;
   Timer? autoClose;
-  VoiceService.speak('정차하셨나요? 휴식을 시작하면 15분 동안 쉬어야 운행을 다시 시작할 수 있어요.');
+  // (11/16 팀장) 휴식 시간은 서버 값(REST_WAIT_SEC)이라 앱에 '15분'을 박지 않음 — 시연 5초인데 15분이라고 말하던 것
+  VoiceService.speak('정차하셨나요? 휴식을 시작하면 쉬는 시간이 끝나야 운행을 다시 시작할 수 있어요.');
   final yes = await showDialog<bool>(
     context: context,
     builder: (ctx) {
@@ -62,7 +63,7 @@ Future<bool> confirmRest(BuildContext context) async {
       // (11/11) 글자 크게 + [취소] · [네, 정차했어요] 를 큰 버튼으로, 서로 떨어뜨려서 잘못 누르지 않게
       return AlertDialog(
         title: const Text('정차하셨나요?', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
-        content: const Text('휴식을 시작하면 15분 동안 쉬어야\n운행을 다시 시작할 수 있어요.',
+        content: const Text('휴식을 시작하면 쉬는 시간이 끝나야\n운행을 다시 시작할 수 있어요.',
             style: TextStyle(fontSize: 18, height: 1.45, color: AppColors.textPrimary)),
         actionsPadding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
         actions: [
@@ -387,6 +388,9 @@ class WarningScreen extends StatefulWidget {
   /// 앱을 껐다 켰을 때 쉬는 중이었다면 true — 경고 음성 대신 바로 휴식 화면을 이어 연다 (남은 시간은 서버가 알려 줌)
   final bool resumeRest;
 
+  /// 앞 경고 화면을 바꿔 띄울 때 알람 · 음성을 이만큼 늦게 시작 (앞 화면이 닫히며 소리를 멈추므로, 11/16)
+  final int startDelayMs;
+
   /// 같은 단계에서 또 졸았을 때 true — 알람 · 고정 문구 · 음성 보고를 다시 내지 않고 퀴즈만 (기획안 6-6)
   final bool silent;
 
@@ -406,6 +410,7 @@ class WarningScreen extends StatefulWidget {
       this.faceBox,
       this.silent = false,
       this.resumeRest = false,
+      this.startDelayMs = 0,
       this.lat,
       this.lng});
 
@@ -414,6 +419,11 @@ class WarningScreen extends StatefulWidget {
 }
 
 class _WarningScreenState extends State<WarningScreen> {
+  // 졸음 판정 쉬기(pauseDetect)를 지금 누가 쥐고 있는지 — 경고 화면을 바로 바꿔 띄우면 새 화면이 먼저 켜고 앞 화면이 나중에 닫히므로,
+  //   앞 화면이 닫히면서 판정을 다시 켜 버리지 않게 마지막으로 켠 화면만 끈다 (11/16)
+  static int _pauseOwner = 0;
+  static int _seq = 0;
+  final int _id = ++_seq;
   late int _stage; // 지금 화면의 단계 (정차 후 돌려받은 단계로 바뀜)
   Timer? _repeat; // 3단계 30초 반복 음성
   String _restMessage = ''; // 휴식 뒤 서버가 준 안내 (예: 주의 단계로 다시 출발합니다). 있으면 이전 단계의 요약 · 안내 · 음성 보고 대신 보여 준다
@@ -441,10 +451,15 @@ class _WarningScreenState extends State<WarningScreen> {
     _stage = widget.response.stage;
     if (_stage >= 2 && !widget.silent) _findNearRest(); // 알람 · 고정 문구가 나오는 동안 미리 찾기
     widget.liveStage?.addListener(_onLiveStage);
+    _pauseOwner = _id;
     widget.pauseDetect?.value = true; // 알람 · 음성 · 퀴즈가 끝날 때까지 졸음 판정 쉬기
     if (widget.resumeRest) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _goRest(); // 앱을 껐다 켠 뒤 — 쉬던 중이니 알람 없이 바로 휴식 화면
+      });
+    } else if (widget.startDelayMs > 0) {
+      Future.delayed(Duration(milliseconds: widget.startDelayMs), () {
+        if (mounted) _speakWarning();
       });
     } else {
       _speakWarning();
@@ -454,7 +469,7 @@ class _WarningScreenState extends State<WarningScreen> {
   @override
   void dispose() {
     widget.liveStage?.removeListener(_onLiveStage);
-    widget.pauseDetect?.value = false; // 혹시 쉬는 중에 닫혀도 판정은 다시 켠다
+    if (_pauseOwner == _id) widget.pauseDetect?.value = false; // 혹시 쉬는 중에 닫혀도 판정은 다시 켠다 (다음 경고 화면이 쥐고 있으면 그대로)
     if (!_keepSpeaking) VoiceService.stop(); // 말하기 멈춤
     _repeat?.cancel(); // 3단계 반복 멈춤
     _repeat = null;
