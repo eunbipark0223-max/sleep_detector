@@ -8,7 +8,8 @@ static/admin_login.html — 관리자 로그인 화면
   - 이메일 · 비밀번호로 POST /users/login → 관리자(role admin)면 토큰 저장 후 admin.html 로 이동
   - 기사 계정이면 "관리자 계정이 아닙니다"
   - 로고: img/logo.png (졸음 가드 올빼미, 팀 확정 이미지) · 탭 아이콘 img/favicon.png
-  - 화면 모양 (11/12): 앱(졸음 가드)과 같은 테마 — navy 그라데이션 바탕 · 큰 둥근 흰 카드 · 큰 둥근 navy 버튼. 부엉이 캐릭터는 쓰지 않고 로고만 둠
+  - 화면 모양 (11/16): 관리자 화면(admin.html)과 같은 Readdy 시안 값 — 연한 회색 바탕 · 흰 둥근 카드(22px) · 입력 칸 10px · 남색 알약 버튼.
+    색 · 글자 · 모서리 값은 admin.html 맨 위 :root 와 같다 (글자 22 · 13 · 12 세 단계만, 굵기 400 · 500 · 600)
 ═══════════════════════════════════════════════════════════════
 -->
 <!DOCTYPE html>
@@ -19,31 +20,37 @@ static/admin_login.html — 관리자 로그인 화면
   <title>졸음 가드 관리자 로그인</title>
   <link rel="icon" type="image/png" href="img/favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;600&display=swap">
   <style>
-    :root { --navy: #1F2A5C; --navy-dark: #141C42; --bg: #F3F5FA; --red: #B3261E; --control-border: #6A7189; --tile: #E9EDF8; }   /* 관리자 화면(admin.html)과 같은 값 */
-    * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
-           background: radial-gradient(900px 520px at 12% 0%, #3B4DA3 0%, rgba(59, 77, 163, 0) 62%), linear-gradient(160deg, #2B3A82 0%, #1F2A5C 55%, #141C42 100%);
-           font-family: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; color: #1F2430; }
-    form { width: min(420px, 100%); background: #fff; border-radius: 28px; padding: 40px 34px 34px; box-shadow: 0 24px 60px rgba(10, 16, 48, .45); }
-    .logo { width: 72px; height: 72px; margin: 0 auto 14px; display: block; border-radius: 20px; }
-    .pill { display: block; width: fit-content; margin: 0 auto 12px; padding: 6px 16px; border-radius: 999px; background: var(--tile); color: var(--navy); font-size: 14px; font-weight: 800; }
-    h1 { margin: 0 0 6px; font-size: 28px; font-weight: 800; color: #1F2430; text-align: center; letter-spacing: -.02em; }
-    p.sub { margin: 0 0 26px; font-size: 15px; color: #4A5068; text-align: center; }
-    label { display: block; margin: 16px 0 8px; font-size: 14px; font-weight: 700; }
-    input { width: 100%; height: 54px; padding: 0 18px; border: 1.5px solid var(--control-border); border-radius: 16px; font-size: 16px; font-family: inherit; background: var(--bg); }
-    input:focus { outline: 3px solid #3B57D9; outline-offset: 2px; border-color: var(--navy); background: #fff; }
-    button { width: 100%; height: 58px; margin-top: 28px; border: 0; border-radius: 18px; background: var(--navy); color: #fff; font-size: 17px; font-weight: 800; cursor: pointer; font-family: inherit; box-shadow: 0 6px 16px rgba(31, 42, 92, .3); }
-    button:hover:not(:disabled) { background: var(--navy-dark); }
-    button:focus-visible { outline: 3px solid #3B57D9; outline-offset: 3px; }
+    :root {   /* 관리자 화면(admin.html)과 같은 값 */
+      --fg-400: #8A90A5; --fg-500: #666C85; --fg-700: #3A4157; --fg-950: #1F2430;     /* 앱 theme.dart 와 같은 색 */
+      --bg-50: #FFFFFF; --bg-100: #F3F5FA; --bg-200: #E1E5F0;
+      --pr-50: #F1F3FA; --pr-300: #A9B3DE; --pr-700: #1F2A5C; --pr-800: #141C42; --rd-600: #B3261E;
+      --font: Inter, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', Pretendard, 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+      --fs-headline: 22px; --fs-body: 13px; --fs-cap: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--bg-100); color: var(--fg-950);
+           font-family: var(--font); font-size: var(--fs-body); line-height: 1.5; letter-spacing: -.005em; font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11'; -webkit-font-smoothing: antialiased; word-break: keep-all; }
+    form { width: min(380px, 100%); padding: 40px 32px 32px; background: var(--bg-50); border-radius: 22px; box-shadow: 0 1px 2px rgba(16, 19, 25, .03); }
+    .logo { display: block; width: 48px; height: 48px; margin: 0 auto 16px; border-radius: 12px; }
+    .pill { display: block; width: fit-content; margin: 0 auto 12px; padding: 4px 10px; border-radius: 999px; background: var(--pr-50); color: var(--pr-700); font-size: var(--fs-cap); font-weight: 500; }
+    h1 { margin-bottom: 4px; font-size: var(--fs-headline); font-weight: 600; letter-spacing: -.035em; line-height: 1.2; text-align: center; }
+    p.sub { margin-bottom: 28px; color: var(--fg-500); text-align: center; }
+    label { display: block; margin: 16px 0 6px; font-size: var(--fs-cap); font-weight: 500; color: var(--fg-700); }
+    input { width: 100%; height: 40px; padding: 0 14px; border: 1px solid transparent; border-radius: 10px; background: var(--bg-100); font: inherit; letter-spacing: inherit; color: inherit; outline: none; transition: border-color .15s, background .15s; }
+    input:focus { border-color: var(--pr-300); background: var(--bg-50); }
+    button { display: block; width: 100%; height: 40px; margin-top: 24px; border: 0; border-radius: 999px; background: var(--pr-700); color: #fff; font: inherit; font-weight: 500; letter-spacing: inherit; cursor: pointer; transition: background .15s; }
+    button:hover:not(:disabled) { background: var(--pr-800); }
+    button:focus-visible, input:focus-visible { outline: 2px solid #7091D6; outline-offset: 2px; }
     button:disabled { opacity: .6; cursor: default; }
-    #msg { min-height: 22px; margin-top: 14px; font-size: 14px; font-weight: 600; color: var(--red); text-align: center; }
+    #msg { min-height: 20px; margin-top: 14px; font-size: var(--fs-cap); font-weight: 500; color: var(--rd-600); text-align: center; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
   </style>
 </head>
 <body>
   <form id="loginForm">
-    <img class="logo" src="img/logo.png" alt="졸음 가드 로고 (올빼미)" width="72" height="72">
+    <img class="logo" src="img/logo.png" alt="졸음 가드 로고 (올빼미)" width="48" height="48">
     <span class="pill">관리자 전용</span>
     <h1>졸음 가드 관리자</h1>
     <p class="sub">졸음 경고 확인 · 조치완료</p>

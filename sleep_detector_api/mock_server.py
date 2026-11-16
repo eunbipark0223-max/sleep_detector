@@ -394,6 +394,43 @@ def seed() -> None:
               lat=37.4300, lng=127.1300, created_at=_now_text(now - timedelta(minutes=50)))
 
 
+def seed_more() -> None:
+    """(11/16) 관리자 화면 시험용: 기사를 더 늘리고 최근 7일 경고를 흩어 놓는다 (목록 · 그래프가 비어 보이지 않게). 항상 같은 값 (random 씨앗 고정)."""
+    now = datetime.now()
+    people = [
+        ("park@test.com", "박정민", "010-3412-1182", "70바 1182"), ("seo@test.com", "서준호", "010-2287-6834", "12다 6834"),
+        ("kang@test.com", "강민서", "010-5521-3391", "25가 3391"), ("lee@test.com", "이서윤", "010-8830-3320", "91사 3320"),
+        ("choi@test.com", "최도윤", "010-7742-9021", "83아 9021"), ("jung@test.com", "정예린", "010-6615-2275", "70바 2275"),
+        ("han@test.com", "한승우", "010-9104-1190", "82가 1190"), ("yoon@test.com", "윤지호", "010-4478-5547", "91사 5547"),
+        ("oh@test.com", "오민재", "010-3369-7712", "83아 7712"),
+    ]
+    spots = [(37.4021, 127.1088), (37.4105, 127.1190), (37.3950, 127.1100), (37.4300, 127.1300), (36.9921, 127.9246)]
+    rng = random.Random(7)
+
+    def make(user_id: int, stage: int, reason: str, when: datetime, status: str) -> None:
+        lat, lng = rng.choice(spots)
+        ai = make_ai_text(stage, reason, min(stage + 1, 3), 2.0, 0.3, 120, lat, lng)
+        if reason == "no_response":
+            ai["report"]["situation"] = "운전 중 음성 퀴즈에 2번 답하지 못함"
+            ai["summary"] = "운전 중 음성 퀴즈에 2번 답하지 못했습니다."
+        add_event(user_id, stage, reason, ai["report"], summary=ai["summary"], guidance=ai["guidance"], ear=0.18, method="ear",
+                  perclos=0.3, eye_closed_prob=0.7, lat=lat, lng=lng, status=status, created_at=_now_text(when))
+
+    users = [add_user(email, name, phone=phone, vehicle_no=plate) for email, name, phone, plate in people]
+    for u in users:                                   # 최근 7일에 흩어진 지난 경고 (이미 처리됨)
+        for _ in range(rng.randint(1, 5)):
+            stage = rng.choice([1, 1, 1, 2, 2, 3])
+            reason = rng.choice(["microsleep", "perclos"]) if stage < 3 else "no_response"
+            when = now - timedelta(days=rng.randint(0, 6), hours=rng.randint(1, 23), minutes=rng.randint(0, 59))
+            make(u["id"], stage, reason, when, "조치완료" if stage == 3 else ("휴식완료" if stage == 2 else "확인"))
+    by_name = {u["name"]: u["id"] for u in users}     # 지금 막 들어온 경고 (처리 전) — 홈의 긴급 경고 · 알림 시험용
+    make(by_name["박정민"], 3, "no_response", now - timedelta(minutes=12), "미확인")
+    make(by_name["서준호"], 3, "perclos", now - timedelta(minutes=5), "미확인")
+    make(by_name["이서윤"], 2, "perclos", now - timedelta(minutes=20), "미확인")
+    make(by_name["최도윤"], 1, "microsleep", now - timedelta(minutes=8), "미확인")
+    make(by_name["정예린"], 1, "rest_overdue", now - timedelta(minutes=35), "미확인")
+
+
 def reset_all() -> None:
     USERS.clear(); EVENTS.clear(); STATES.clear(); QUIZZES.clear(); PHOTOS.clear()
     _next.update({"user": 1, "event": 1})
@@ -402,6 +439,7 @@ def reset_all() -> None:
     add_user("admin@test.com", "관리자", "admin")
     add_user("driver2@test.com", "이기사")          # 일부러 전화번호 · 차량번호 없이 — 관리자 웹의 '미등록' 표시 시험용
     seed()
+    seed_more()
 
 
 reset_all()
