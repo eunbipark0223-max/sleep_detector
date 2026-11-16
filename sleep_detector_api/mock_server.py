@@ -557,9 +557,17 @@ def update_me(body: ProfileUpdate, user: dict = Depends(current_user)):
     return me(user)
 
 
-# 비밀번호 변경 — 새 비밀번호 규칙은 진짜 서버와 같음. 모의 서버는 비밀번호를 저장하지 않아서(로그인이 비밀번호를 보지 않음) 지금 비밀번호는 검사하지 않는다
+# 비밀번호 변경 — 새 비밀번호 규칙은 진짜 서버와 같음. 모의 서버는 로그인이 비밀번호를 보지 않아서, 처음 바꿀 때는 지금 비밀번호를 검사하지 않고
+# 한 번 바꾼 뒤부터는 그 비밀번호와 맞는지 본다 (관리자 설정 화면의 '비밀번호 불일치' 시험용. 서버를 다시 켜면 처음 상태)
+_PASSWORDS: dict = {}   # user_id → 마지막으로 바꾼 비밀번호
+
+
 @app.put("/users/me/password")
 def change_my_password(body: PasswordChange, user: dict = Depends(current_user)):
+    saved = _PASSWORDS.get(user["id"])
+    if saved is not None and body.current_password != saved:
+        raise HTTPException(status_code=400, detail="지금 비밀번호가 맞지 않아요")
+    _PASSWORDS[user["id"]] = body.new_password
     return {"success": True}
 
 
