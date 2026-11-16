@@ -533,10 +533,19 @@ async def login(request: Request):
     return login_response(add_user(email, email.split("@")[0], "admin" if email.startswith("admin") else "user"))
 
 
+@app.get("/users/google/config")
+def google_config():
+    # 진짜 서버는 .env 의 FIREBASE_* 값을 돌려줌. 모의 서버는 구글 창을 열 수 없으니 mock=true 로 알려서 시험용 관리자로 바로 로그인
+    return {"enabled": True, "mock": True, "apiKey": "", "authDomain": "", "projectId": "mock", "appId": ""}
+
+
 @app.post("/users/google")
 async def login_google(request: Request):
-    await read_body(request)
-    return login_response(USERS[1])
+    body = await read_body(request)
+    email = str(body.get("email") or "").strip()
+    if email.startswith("admin"):          # 관리자 웹 구글 로그인 시험 (진짜 서버는 관리자 계정이면 id_token 을 검증함)
+        return login_response(add_user(email, str(body.get("name") or "관리자"), "admin"))
+    return login_response(USERS[1])        # 기사 앱 시험: 예전처럼 시험용 기사(1번)
 
 
 @app.get("/users/me")

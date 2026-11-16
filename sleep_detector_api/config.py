@@ -97,6 +97,11 @@ QUIZ_RETRY_WAIT_MIN = 5       # (부품 B) 복귀 퀴즈 실패 후 다시 시�
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL") or "https://generativelanguage.googleapis.com/v1beta/openai/"
 GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-3.5-flash-lite"
+# ── 구글(Firebase) 로그인 — 관리자 웹 (11/16). 자세한 설명: services/firebase_verify.py ──
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "").strip()
+FIREBASE_API_KEY = os.getenv("FIREBASE_API_KEY", "").strip()      # 웹 API 키 (공개용)
+FIREBASE_APP_ID = os.getenv("FIREBASE_APP_ID", "").strip()
+FIREBASE_VERIFY = _env_bool("FIREBASE_VERIFY", False)               # True 면 기사 앱의 구글 로그인도 id_token 검증 (앱이 id_token 을 보내야 함)
 GEMINI_EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL") or "gemini-embedding-2"  # 11/04 001 → 2 (벡터 공간이 달라 색인 다시 만듦)
 
 # ── 경로 ──────────────────────────────────────────────

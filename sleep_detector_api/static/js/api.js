@@ -48,12 +48,12 @@ async function apiFetch(path, options = {}) {
   } finally {
     clearTimeout(timer);
   }
-  if (res.status === 401 && !path.startsWith('/users/login')) {
+  if (res.status === 401 && !path.startsWith('/users/login') && !path.startsWith('/users/google')) {      // 로그인 · 구글 로그인 실패는 화면으로 돌려보내지 않고 글로 알림
     clearToken();
     location.href = 'admin_login.html';
     throw new Error('로그인이 필요합니다');
   }
-  if (res.status === 403 && !path.startsWith('/users/login')) {    // 이 서버의 403 은 '관리자만' (require_admin) — 기사 계정 토큰이거나 관리자 권한이 빠진 경우
+  if (res.status === 403 && !path.startsWith('/users/login') && !path.startsWith('/users/google')) {    // 이 서버의 403 은 '관리자만' (require_admin) — 기사 계정 토큰이거나 관리자 권한이 빠진 경우
     clearToken();
     location.href = 'admin_login.html?denied=1';                   // 로그인 화면이 이유를 안내 (연결 끊김 안내와 헷갈리지 않게)
     throw new Error('관리자만 사용할 수 있습니다');
@@ -75,6 +75,15 @@ async function apiFetch(path, options = {}) {
 // ── 로그인 (관리자만 통과) ────────────────────────────────────
 async function adminLogin(email, password) {
   const data = await apiFetch('/users/login', { method: 'POST', body: { email: email, password: password } });
+  if (!data.user || data.user.role !== 'admin') throw new Error('관리자 계정이 아닙니다');
+  setToken(data.access_token);
+  return data.user;
+}
+
+// 구글 로그인 (11/16): 서버가 Firebase 웹 설정을 알려 주고(.env), 구글 창에서 받은 id_token 을 서버가 검증한다. 관리자 계정만 들어올 수 있음
+function fetchGoogleConfig() { return apiFetch('/users/google/config'); }
+async function adminGoogleLogin(profile) {
+  const data = await apiFetch('/users/google', { method: 'POST', body: profile });
   if (!data.user || data.user.role !== 'admin') throw new Error('관리자 계정이 아닙니다');
   setToken(data.access_token);
   return data.user;
