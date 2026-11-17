@@ -935,9 +935,8 @@ async def drive_wake(request: Request, user: dict = Depends(current_user)):
     return {"success": True, "event_id": event["id"], "pressed": pressed}
 
 
-def _call_name(name) -> str:
-    n = (name or "").strip()
-    return "기사님" if not n else (f"{n}님" if n.endswith("기사") else f"{n} 기사님")
+def _driver_name(name) -> str:
+    return (name or "").strip()   # (11/17 팀장) 이름만 — 리포트 '이름 기사님' · 음성 '이름님' (진짜 서버와 같음)
 
 
 @app.post("/drive/start")
@@ -1037,7 +1036,7 @@ def drive_end(user: dict = Depends(current_user)):
         advice = "다음 운행 전에는 충분히 자고 출발하세요." if top >= 3 else "졸음이 오면 바로 쉼터에서 15분 쉬어 가세요."
     if rc:
         summary += f" 휴식은 {rc}번 했어요."
-    return {"success": True, "report": {**stats, "name": _call_name(user.get("name")),
+    return {"success": True, "report": {**stats, "name": f"{_driver_name(user.get('name'))} 기사님".strip(),
             "started": started.strftime("%H:%M") if started else "", "ended": now.strftime("%H:%M"),
             "summary": summary, "advice": advice, "is_real": False}}
 
@@ -1167,7 +1166,7 @@ async def detect(
         st["quiz_fail"] = 0
 
     return {**base, "is_sleep": True, "reason": reason, "stage": stage, "status": STAGE_LABELS[stage], "summary": ai["summary"],
-            "guidance": ai["guidance"], "driver_voice": f"{_call_name(user.get('name'))}, {ai['driver_voice']}",
+            "guidance": ai["guidance"], "driver_voice": f"{_driver_name(user.get('name')) or '기사'}님, {ai['driver_voice']}",
             "sleep_count_10min": count, "voice_quiz": voice_quiz,
             "regulations": MOCK_REGULATIONS, "event_id": event["id"]}
 

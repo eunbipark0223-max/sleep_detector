@@ -6,11 +6,11 @@
 //
 // [이 파일이 하는 일]
 //   - 단계별 색 · 내 얼굴(카메라) · 큰 글씨 한 줄 + AI 안내 카드(보라) + [규정 듣기]
-//   - 소리 순서: 🔔 알람 → Agent 한 문장 driverVoice (없으면 stage_texts.dart 고정 문구) → (2단계) 가까운 쉼터 (11/16)
+//   - 소리 순서: 🔔 알람 → 서버 한 문장 driverVoice ('OOO님, 쉼터에서 쉬어 가세요.' / '… 지금 바로 정차하세요.', 없으면 stage_texts.dart 고정 문구) (11/17)
 //   - 운전 중 음성 퀴즈 (부품 A): D 의 quiz_screen 을 띄우고, 돌려받은 단계로 색 갱신 (2번 실패면 한 단계 위 + 알람)
 //   - 같은 단계에서 또 졸면 알람 · 음성 보고 없이 낼 퀴즈만 (silent, 기획안 6-6)
-//   - 3단계: 관리자 조치완료 전까지 30초마다 알람 + '관리자에게 알렸어요. 지금 바로 정차하세요.'
-//   - 졸음쉼터 안내 (B 의 rest_area_service, 11/11 팀장 범위): 2단계는 고정 문구 뒤 · 3단계는 음성 보고 뒤 "가까운 ○○ 졸음쉼터, ○○방향, 약 ○킬로미터" 한 번
+//   - 3단계: 관리자 조치완료 전까지 30초마다 알람 + 'OOO님, 지금 바로 정차하세요.' ('관리자에게 알렸어요' 는 화면 큰 글씨, 11/17)
+//   - 졸음쉼터 안내 (B 의 rest_area_service): 자동으로 읽지 않음 (11/17) — 2단계 화면에 '📍 가까운 ○○ 졸음쉼터, ○○방향, 약 ○킬로미터' 한 줄
 //     + [가까운 졸음쉼터 듣기] → 다시 읽고 지도 화면 (새 창 없음, 3단계는 길안내를 먼저 권하지 않음, 30초 반복은 짧게 그대로)
 //   - 2단계 [정차했어요] → 확인 창 (음성 · 1분 뒤 저절로 취소) → rest_screen → [운행 재개] 뒤 운행 화면으로 복귀
 //
@@ -433,6 +433,7 @@ class _WarningScreenState extends State<WarningScreen> {
   bool _readingRegs = false; // 규정을 읽는 중 (30초 반복이 끊지 않게)
   bool _keepSpeaking = false; // 닫혀도 말을 끊지 않음 (운행 재개 안내를 끝까지 듣게)
   Future<String?>? _nearRest; // 2 · 3단계 — 가까운 졸음쉼터 안내 문장 (알람이 울리는 동안 미리 찾아 둠, 못 찾으면 null)
+  String? _restLine; // (11/17) 찾은 쉼터 문장 — 2단계 화면에 한 줄로
 
   // (11/15 팀장) 3단계 [깨어 있어요] — 10초 안에 누르는지. 결과는 눌러도 · 안 눌러도 서버(관리자 웹)로
   static const int _wakeSec = 10;
@@ -508,7 +509,7 @@ class _WarningScreenState extends State<WarningScreen> {
       if (_readingRegs) return; // 규정을 듣는 중에는 끊지 않음
       await VoiceService.alarm();
       if (!mounted || _repeat == null || _readingRegs) return;
-      await VoiceService.speak(StageTexts.voice(3));
+      await VoiceService.speak('$_voiceName, 지금 바로 정차하세요.'); // (11/17 팀장) 이름 + 할 일만 ('관리자에게 알렸어요' 는 화면에)
     });
   }
 
@@ -528,12 +529,8 @@ class _WarningScreenState extends State<WarningScreen> {
       final agentVoice = widget.response.driverVoice;
       await VoiceService.speak(agentVoice.isNotEmpty ? agentVoice : StageTexts.voice(_stage));
       if (!mounted || _flowStopped) return;
-      // 2단계: 이어서 가장 가까운 쉼터 한 곳 ("가까운 ○○ 졸음쉼터, ○○방향, 약 ○킬로미터", B 의 rest_area_service)
-      // 3단계: "바로 정차" 뒤 쉼터 한 번만 (길안내를 먼저 권하지 않음, 11/11 팀장)
-      if (_stage >= 2) {
-        await _speakNearRest();
-        if (!mounted || _flowStopped) return;
-      }
+      // (11/17 팀장) 쉼터는 자동으로 읽지 않음 (음성이 너무 길었음) — 화면에 이름 · 거리를 띄우고, [가까운 졸음쉼터 안내] 를 누르면 읽어 줌
+      if (_stage >= 2) _findNearRest();
     } else {
       // 화면이 만들어지는 중에는 퀴즈 화면을 띄울 수 없어서 잠깐 기다린다
       await Future.delayed(const Duration(milliseconds: 300));
@@ -592,7 +589,7 @@ class _WarningScreenState extends State<WarningScreen> {
     if (!mounted || _wakePressed) return;
     // (11/16) Agent 한 문장("○○ 기사님, 10분 새 3번 졸았어요. 지금 바로 정차하세요.") + 버튼 안내
     final agentVoice = widget.response.driverVoice;
-    await VoiceService.speak(agentVoice.isNotEmpty ? '$agentVoice 깨어 계시면 버튼을 눌러 주세요.' : '지금 멈추세요. 깨어 계시면 아래 버튼을 눌러 주세요.');
+    await VoiceService.speak(agentVoice.isNotEmpty ? '$agentVoice 깨어 계시면 버튼을 눌러 주세요.' : '$_voiceName, 지금 바로 정차하세요. 깨어 계시면 버튼을 눌러 주세요.');
     while (mounted && !_wakePressed && !_wakeTimedOut) {
       await VoiceService.alarm(); // 누를 때까지 강하게 반복
       await Future.delayed(const Duration(milliseconds: 600));
@@ -627,20 +624,16 @@ class _WarningScreenState extends State<WarningScreen> {
     widget.pauseDetect?.value = false;
     await VoiceService.stop();
     if (!mounted) return;
-    VoiceService.speak('응답을 보냈어요. 안전한 곳에 바로 정차해 주세요.'); // (11/16) 버튼 글씨와 같은 말
+    VoiceService.speak('확인했어요. 관리자가 확인하면 정상 화면으로 돌아가요.'); // (11/17 팀장) 버튼 글씨와 같은 말
   }
 
   // 2 · 3단계 — 가장 빨리 갈 수 있는 졸음쉼터 1곳 문장 미리 찾기 (알람이 울리는 동안)
   void _findNearRest() {
-    _nearRest ??= nearRestVoice(widget.lat, widget.lng);
-  }
-
-  // 찾은 졸음쉼터를 음성으로 한 번 알려 준다 — 못 찾으면 넘어감 (경고 순서가 멈추지 않게)
-  Future<void> _speakNearRest() async {
-    _findNearRest();
-    final v = await _nearRest;
-    if (v == null || !mounted || _flowStopped) return;
-    await VoiceService.speak(v);
+    if (_nearRest != null) return;
+    _nearRest = nearRestVoice(widget.lat, widget.lng);
+    _nearRest!.then((v) {
+      if (mounted && v != null) setState(() => _restLine = v); // 2단계 화면에 쉼터 한 줄 (11/17)
+    });
   }
 
   // [가까운 졸음쉼터 듣기] — 다시 읽어 주고 B 의 지도 화면 (목록 · [길찾기] · 다른 쉼터). 도착하면 [정차했어요]
@@ -653,10 +646,18 @@ class _WarningScreenState extends State<WarningScreen> {
   // (11/16 팀장) 말풍선 = 음성과 같은 Agent 문장 (이름만 빼고 문장마다 줄바꿈)
   //   "김기사님, 10분 새 2번 졸았어요. 가까운 쉼터에서 쉬어 가세요." → "10분 새 2번 졸았어요.(줄바꿈)가까운 쉼터에서 쉬어 가세요."
   //   서버 문장이 없거나, 화면을 연 뒤 단계가 바뀌었으면(관리자 해제 등) 고정 문구 (stage_texts.dart)
+  // (11/17 팀장) 음성에서 부르는 이름 — 서버 문장 앞의 'OOO님' 을 그대로 씀 (없으면 '기사님')
+  String get _voiceName =>
+      RegExp(r'^([^,.]{1,20}님),').firstMatch(widget.response.driverVoice.trim())?.group(1) ?? '기사님';
+
   String get _headline {
     final v = widget.response.driverVoice.trim();
-    if (v.isEmpty || _stage != widget.response.stage || _stage < 2) return StageTexts.headline(_stage);
-    return v.replaceFirst(RegExp(r'^[^,.]{1,20}님,\s*'), '').replaceAll(RegExp(r'\.\s+'), '.\n');
+    // (11/17 팀장) 3단계는 고정 문구 '관리자에게 알렸어요 / 지금 바로 정차하세요' (관리자 알림은 음성 대신 화면으로)
+    if (v.isEmpty || _stage != widget.response.stage || _stage < 2 || _stage >= 3) return StageTexts.headline(_stage);
+    return v
+        .replaceFirst(RegExp(r'^[^,.]{1,20}님,\s*'), '')
+        .replaceAll(RegExp(r'\.\s+'), '.\n')
+        .replaceFirst(RegExp(r'\.$'), ''); // (11/17) 끝 마침표 빼기 — 운행 화면 고정 문구와 똑같이 보이게
   }
 
   // 단계별 부엉이 (0 초록 · 1 노랑 · 2 주황 · 3 빨강, 11/09 그림: 장수연님)
@@ -802,6 +803,14 @@ class _WarningScreenState extends State<WarningScreen> {
             // 글은 부엉이 말풍선 하나만 — 요약 · 음성 보고 글 · '지켜보고 있어요' 는 뺌 (음성으로 들려줌)
             message: [
               StageMessage(_headline),
+              // (11/17 팀장) 2단계: 가까운 쉼터 한 줄 (음성으로 자동으로 읽지 않는 대신)
+              if (_stage == 2 && _restLine != null) ...[
+                const SizedBox(height: 8),
+                Text('📍 $_restLine',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: fg)),
+              ],
               if (stageChanged && _restMessage.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(_restMessage.replaceAll('.', ''),
@@ -829,17 +838,16 @@ class _WarningScreenState extends State<WarningScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(_wakePressed ? '응답을 보냈어요' : '깨어 있어요',
+                        Text(_wakePressed ? '확인했어요' : '깨어 있어요',
                             style: const TextStyle(fontSize: 38, fontWeight: FontWeight.w900)),
-                        const SizedBox(height: 6),
-                        Text(
-                            _wakePressed
-                                ? '안전한 곳에 바로 정차해 주세요'
-                                : _wakeTimedOut
-                                    ? '관리자가 곧 연락드려요 · 깨어 있으면 눌러 주세요'
-                                    : '$_wakeLeft초 안에 눌러 주세요',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                        // (11/17 팀장) 누른 뒤에는 '확인했어요' 만 (안내는 음성으로)
+                        if (!_wakePressed) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                              _wakeTimedOut ? '관리자가 곧 연락드려요 · 깨어 있으면 눌러 주세요' : '$_wakeLeft초 안에 눌러 주세요',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                        ],
                       ],
                     ),
                   ),

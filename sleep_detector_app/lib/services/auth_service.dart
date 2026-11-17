@@ -209,13 +209,9 @@ class AuthService {
     return _saveLogin(_decode(res));
   }
 
-  /// (11/16 팀장) 기사님 부르는 말 — '김기사' → '김기사님', '박은비' → '박은비 기사님', 없으면 '기사님'
-  ///   홈 인사 · 운행 화면 음성 · 서버 음성(detect._call_name) · 운행 리포트가 모두 같은 규칙
-  static String callName(String? name) {
-    final n = (name ?? '').trim();
-    if (n.isEmpty) return '기사님';
-    return n.endsWith('기사') ? '$n님' : '$n 기사님';
-  }
+  /// (11/17 팀장) 기사 이름만 — '박은비' (없으면 '') · 서버 detect._driver_name 과 같음
+  ///   화면(홈 인사): '$이름 기사님' · 음성: '$이름님' — 이름이 없으면 둘 다 '기사님'
+  static String driverName(String? name) => (name ?? '').trim();
 
   /// 저장된 토큰으로 내 정보를 가져온다 (스플래시의 자동 로그인 확인용).
   /// 토큰이 없거나 서버가 거절(401 · 404)하면 null — 그때는 토큰을 지운다. 연결 오류는 AuthException (로그아웃시키지 않음).

@@ -327,7 +327,7 @@ def bonus_reset_race():
 
 
 def bonus_stage2_still_asleep():
-    """(11/16 팀장) 휴식 뒤 1단계 → 졸음 2단계 → 2단계 경고 뒤에도 계속 감음(사진 없이 다시 보냄) → 퀴즈 없이 3단계 · 문장은 '휴식 권고 단계에서'"""
+    """(11/16 팀장) 휴식 뒤 1단계 → 졸음 2단계 → 2단계 경고 뒤에도 계속 감음(사진 없이 다시 보냄) → 퀴즈 없이 3단계 · 음성은 '이름 + 지금 바로 정차' (11/17)"""
     h, uid = new_driver()
     doze(h); doze(h)                                    # 2단계
     client.post("/drive/rest", headers=h)
@@ -336,7 +336,7 @@ def bonus_stage2_still_asleep():
     r2 = doze(h)                                        # 1단계에서 또 졸음 → 2단계 (10분 1번)
     r3 = client.post("/detect", data={"reason": "microsleep", "closed_sec": "6.0", "perclos": "0.2"}, headers=h).json()
     return (f"{r2['stage']} → {r3['stage']} · 퀴즈 {r3['voice_quiz'] is not None} · "
-            f"휴식 권고 {'휴식 권고 단계' in r3['driver_voice']}")
+            f"음성 {r3['driver_voice'].endswith('님, 지금 바로 정차하세요.')}")
 
 
 def bonus_stage1_no_ai():
@@ -513,7 +513,7 @@ def bonus_drive_report():
     doze(h)
     r2 = doze(h)
     rep = client.post("/drive/end", headers=h).json()["report"]
-    voice_ok = r2["driver_voice"].startswith(f"기사{_n} 기사님, ") and len(r2["driver_voice"]) <= 60
+    voice_ok = r2["driver_voice"].startswith(f"기사{_n}님, ") and len(r2["driver_voice"]) <= 60
     return (f"졸음 {rep['sleep_count']} · 최고 {rep['max_stage']} · 시간표 {len(rep['timeline'])} · "
             f"요약 {bool(rep['summary'])} · 조언 {bool(rep['advice'])} · 음성 {voice_ok}")
 
@@ -528,7 +528,7 @@ BONUS = [("(보너스) 3단계는 휴식으로 안 풀림 → 3단계", 3, bonus
          ("(보너스) 운행 종료 뒤 연속 운전 시간 유지", "배너 False · 100분", bonus_drive_end),
          ("(보너스) 서버 판정 오류 → 앱 판단대로 확정", "확정", bonus_error),
          ("(보너스) 바로 경고 · AI 는 뒤에서 기록만", "단계 2 · ping 2 · 기록 2단계 · Agent 1번 · 보고서 True · 규정 True", bonus_reset_race),
-         ("(보너스) 2단계 뒤 계속 감음 → 퀴즈 없이 3단계", "2 → 3 · 퀴즈 False · 휴식 권고 True", bonus_stage2_still_asleep),
+         ("(보너스) 2단계 뒤 계속 감음 → 퀴즈 없이 3단계", "2 → 3 · 퀴즈 False · 음성 True", bonus_stage2_still_asleep),
          ("(보너스) 1단계는 AI 없이 기록만", "첫 졸음 1단계 · AI 0·0 · 기록 1건 · 요약 True · 두 번째 AI 1·1", bonus_stage1_no_ai),
          ("(보너스) 경고 사진 권한", "401 · 200 · 404 · 200 · 404", bonus_photo_access),
          ("(보너스) 퀴즈 통과 음성: 2 · 3단계", "쉼터까지 조심히 가세요. / 안전한 곳에 정차해 주세요.", bonus_quiz_message),

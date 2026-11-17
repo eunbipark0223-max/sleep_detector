@@ -83,12 +83,11 @@ def _template_voice(stage, facts, guidance):
         if closed <= 0:   # 피로 누적(PERCLOS) — 한 번에 감은 초가 없음 → 없는 '1초' 를 말하지 않게 (11/02 KPI ⑥)
             return "눈을 자주 감고 있어요. 정신 차려 주세요."
         return f"{max(1, round(closed))}초 동안 눈을 감았어요. 정신 차려 주세요."
-    # (11/12 팀장) 주의 단계에서 다시 졸아 올라간 단계면 '10분 동안 1번' 대신 그 이유 (단계와 말이 맞게)
-    head = (f"{_note_label(facts.get('stage_note'))} 단계에서 또 졸았어요." if facts.get("stage_note")
-            else f"10분 새 {n}번 졸았어요.")
+    # (11/17 팀장) 2 · 3단계 음성은 '이름 + 할 일' 만 — 숫자 · 이유('10분 새 2번', '주의 단계에서 또')는 상황과 어긋날 수 있어 뺌
+    #   (단계는 횟수 말고도 계속 감음 · 퀴즈 실패로도 오름). 실제 횟수는 앱 화면에 sleep_count_10min 으로 작게 보여 줌
     if stage == 2:
-        return f"{head} 가까운 쉼터에서 쉬어 가세요."
-    return f"{head} 지금 바로 정차하세요."
+        return "쉼터에서 쉬어 가세요."
+    return "지금 바로 정차하세요."
 
 
 def _allowed_numbers(facts):

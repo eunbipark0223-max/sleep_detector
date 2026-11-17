@@ -276,12 +276,10 @@ _REASON_TEXT = {"microsleep": "눈 감김", "perclos": "피로 누적", "no_face
                 "rest_overdue": "휴게 미준수"}
 
 
-def _call_name(name):
-    """'김기사' → '김기사님', '박은비' → '박은비 기사님' (앱 drive_screen 과 같은 규칙)"""
-    n = (name or "").strip()
-    if not n:
-        return "기사님"
-    return f"{n}님" if n.endswith("기사") else f"{n} 기사님"
+def _driver_name(name):
+    """(11/17 팀장) 기사 이름만 — '박은비' (없으면 ''). 앱 AuthService.driverName 과 같음
+    운행 리포트: '이름 기사님' · 음성: '이름님' — 이름이 없으면 둘 다 '기사님'"""
+    return (name or "").strip()
 
 
 @router.post("/drive/end")
@@ -322,7 +320,7 @@ def drive_end_handler(session: Session = Depends(get_session), user: User = Depe
     print(f"[detect] {now:%H:%M:%S} u{user.id} 운행 종료 리포트 · {stats['drive_min']}분 · 졸음 {stats['sleep_count']}번 · "
           f"최고 {stats['max_stage']}단계 · 휴식 {stats['rest_count']}번 ({'AI' if ai['is_real'] else '템플릿'})")
     return {"success": True, "report": {
-        **stats, "name": _call_name(user.name),
+        **stats, "name": f"{_driver_name(user.name)} 기사님".strip(),
         "started": started.strftime("%H:%M") if started else "", "ended": now.strftime("%H:%M"),
         "summary": ai["summary"], "advice": ai["advice"], "is_real": ai["is_real"]}}
 
@@ -616,7 +614,7 @@ async def detect_handler(
         **base, "is_sleep": True, "reason": reason, "stage": stage, "status": _label(stage),
         "summary": event.summary or "", "guidance": agent["guidance"],
         # (11/16 팀장) 음성은 '이름 + 사실 하나 + 행동 하나' 한 문장 (약 4초)
-        "driver_voice": f"{_call_name(user.name)}, {agent['driver_voice']}",
+        "driver_voice": f"{_driver_name(user.name) or '기사'}님, {agent['driver_voice']}",
         "sleep_count_10min": facts["sleep_count_10min"], "voice_quiz": voice_quiz,
         "regulations": [{"title": r["title"], "source": r["source"], "content": r["content"]} for r in regulations],
         "event_id": event.id,

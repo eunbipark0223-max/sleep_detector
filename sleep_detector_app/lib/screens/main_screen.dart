@@ -73,7 +73,8 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _setName(Map<String, dynamic>? user) {
-    final name = AuthService.callName(user?['name'] as String?);
+    final n = AuthService.driverName(user?['name'] as String?);
+    final name = n.isEmpty ? '기사님' : '$n 기사님'; // (11/17) 화면은 '이름 + 기사님'
     final email = (user?['email'] as String? ?? '').trim();
     if (mounted && (name != _callName || email != _email)) {
       setState(() {

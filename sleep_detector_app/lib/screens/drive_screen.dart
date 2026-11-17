@@ -248,7 +248,10 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
-  String get _callName => AuthService.callName(_driverName);
+  String get _callName { // (11/17 팀장) 음성은 '이름 + 님' (이름이 없으면 '기사님')
+    final n = AuthService.driverName(_driverName);
+    return n.isEmpty ? '기사님' : '$n님';
+  }
 
   // (11/15 팀장) 1단계 음성 — 이름 부르기 + 다음에 일어날 일
   String get _stage1Voice => '$_callName, 졸음이 감지됐어요. 정신 차려 주세요.'; // (11/16) 말풍선과 같은 말 + 이름
