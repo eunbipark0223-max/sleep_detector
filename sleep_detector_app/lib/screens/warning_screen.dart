@@ -35,7 +35,6 @@ import '../services/api_service.dart';
 import '../services/voice_service.dart';
 import '../stage_texts.dart';
 import '../theme.dart';
-import '../widgets/owl_says.dart';
 import '../widgets/stage_layout.dart';
 import 'map_screen.dart';
 import 'quiz_screen.dart';
@@ -107,13 +106,14 @@ Future<bool> confirmRest(BuildContext context) async {
 
 /// 경고 화면 큰 버튼 — 흰 바탕 · 남색 글자 · 남색 테두리 (투명도 없이 PPT 원래 색), 운전 중 누르기 쉽게 높이 60 · 글자 20 굵게 (11/11)
 final ButtonStyle _bigButton = OutlinedButton.styleFrom(
-  backgroundColor: Colors.white,
+  backgroundColor: Colors.white.withValues(alpha: 0.7), // (11/16 R안) 흰 반투명 · 테두리 없음 · 모서리 24
   foregroundColor: AppColors.navy,
-  disabledBackgroundColor: Colors.white.withValues(alpha: 0.6),
+  disabledBackgroundColor: Colors.white.withValues(alpha: 0.4),
   disabledForegroundColor: AppColors.navy.withValues(alpha: 0.4),
-  side: const BorderSide(color: AppColors.navy, width: 2),
+  side: BorderSide.none,
+  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
   minimumSize: const Size.fromHeight(60),
-  textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+  textStyle: const TextStyle(fontSize: 19, fontWeight: FontWeight.w600),
 );
 const Color _sky = Color(0xFF2FA8E0); // 스피커 아이콘 하늘색
 
@@ -676,13 +676,13 @@ class _WarningScreenState extends State<WarningScreen> {
           fit: StackFit.expand,
           children: [
             Container(
-              padding: const EdgeInsets.all(7),
+              padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
-                color: _stage >= 3 ? Colors.white : AppColors.stage(_stage), // (11/15) 단계 색 테두리 (운행 화면과 같은 두께)
-                borderRadius: BorderRadius.circular(22),
+                color: AppColors.stage(_stage), // (11/16 R안) 단계 색 얇은 테두리 · 모서리 26 (운행 화면과 같음)
+                borderRadius: BorderRadius.circular(26),
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(15),
+                borderRadius: BorderRadius.circular(23),
                 child: FollowFacePreview(controller: c, face: widget.faceBox),
               ),
             ),
@@ -766,9 +766,9 @@ class _WarningScreenState extends State<WarningScreen> {
   @override
   Widget build(BuildContext context) {
     final r = widget.response;
-    // (11/15 팀장) 바탕 = 앱 테마 남색, 3단계만 진한 빨강 (단계는 카메라 테두리 · 부엉이로). 글자는 흰색
-    final bg = _stage >= 3 ? const Color(0xFFB3261E) : AppColors.navy;
-    const fg = Colors.white;
+    // (11/16 R안) 바탕 = 지금 단계의 연한 색 (부엉이가 잘 보이게), 글자는 검정
+    final bg = AppColors.stagePastel(_stage);
+    const fg = AppColors.textPrimary;
     final stageChanged = _stage != r.stage; // 휴식 뒤 단계가 바뀌었으면 처음 경고의 글은 숨긴다
     final driving = widget.liveStage != null;
 
@@ -778,19 +778,20 @@ class _WarningScreenState extends State<WarningScreen> {
         backgroundColor: bg,
         bottomNavigationBar: widget.serverCancelled == null
             ? null
-            : ServerCancelText(cancelled: widget.serverCancelled!, color: Colors.white70),
+            : ServerCancelText(cancelled: widget.serverCancelled!, color: AppColors.textSecondary),
         appBar: AppBar(
           backgroundColor: bg,
           foregroundColor: fg,
           elevation: 0,
-          centerTitle: true,
+          toolbarHeight: 48,
           automaticallyImplyLeading: !_locked,
-          title: Text(_title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-          actions: [Padding(padding: const EdgeInsets.only(right: 12), child: StageBadge(stage: _stage))],
         ),
         body: SafeArea(
-          // (11/15 팀장) 운행 화면과 같은 틀 — 카메라 크기 · 위치 고정, 부엉이 말풍선, 아래 버튼 자리 고정
+          top: false,
+          // (11/15 팀장) 운행 화면과 같은 틀 — 카메라 크기 · 위치 고정, 아래 버튼 자리 고정
+          // (11/16 R안) 위에 '● 단계' + 큰 제목, 부엉이 말풍선 대신 큰 글
           child: StageLayout(
+            header: StageHeader(stage: _stage, title: _title),
             cameraOverlay: (widget.faceLost == null && widget.checking == null)
                 ? null
                 : Column(mainAxisSize: MainAxisSize.min, children: [
@@ -800,11 +801,10 @@ class _WarningScreenState extends State<WarningScreen> {
             camera: _topVisual(bg, fg),
             // 글은 부엉이 말풍선 하나만 — 요약 · 음성 보고 글 · '지켜보고 있어요' 는 뺌 (음성으로 들려줌)
             message: [
-              OwlSays(owl: OwlSays.face(_stage), text: _headline, owlSize: 84, fontSize: 22, maxLines: 4),
+              StageMessage(_headline),
               if (stageChanged && _restMessage.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                Text(_restMessage,
-                    textAlign: TextAlign.center,
+                Text(_restMessage.replaceAll('.', ''),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: fg)),
@@ -819,8 +819,8 @@ class _WarningScreenState extends State<WarningScreen> {
                   child: ElevatedButton(
                     onPressed: _wakePressed ? null : _onWakePressed,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFFB3261E),
+                      backgroundColor: AppColors.card,
+                      foregroundColor: const Color(0xFFD62B2B),
                       disabledBackgroundColor: Colors.white.withValues(alpha: 0.85),
                       disabledForegroundColor: const Color(0xFF2E7D4F),
                       elevation: 0,
@@ -847,16 +847,11 @@ class _WarningScreenState extends State<WarningScreen> {
               ],
               // 2단계: 쉼터 안내 + 정차했어요 + 작은 규정 보기
               if (_stage == 2) ...[
-                OutlinedButton.icon(
+                // (11/16 R안) [가까운 졸음쉼터 안내] 흰 버튼 + [정차했어요] 남색 꽉 찬 버튼
+                FilledButton.icon(
                   onPressed: _voiceDone ? _listenRest : null,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    disabledForegroundColor: Colors.white54,
-                    side: const BorderSide(color: Colors.white70, width: 2),
-                    minimumSize: const Size.fromHeight(60),
-                    textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-                  ),
-                  icon: const Icon(Icons.location_on, size: 28), // (11/16) 쉼터 = 위치 마커
+                  style: stageButton('white', height: 60),
+                  icon: const Icon(Icons.location_on_rounded, size: 24), // (11/16) 쉼터 = 위치 마커
                   label: const Text('가까운 졸음쉼터 안내'),
                 ),
                 const SizedBox(height: 10),
@@ -864,17 +859,12 @@ class _WarningScreenState extends State<WarningScreen> {
                   onPressed: () async {
                     if (await confirmRest(context) && mounted) _goRest();
                   },
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.rest, // 주황 — 이 단계에서 가장 중요한 행동
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size.fromHeight(64),
-                    textStyle: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-                  ),
+                  style: stageButton('navy'), // 이 단계에서 가장 중요한 행동
                   child: const Text('정차했어요'),
                 ),
                 TextButton(
                   onPressed: _voiceDone ? _showRegulations : null,
-                  style: TextButton.styleFrom(foregroundColor: Colors.white70, disabledForegroundColor: Colors.white24),
+                  style: TextButton.styleFrom(foregroundColor: AppColors.textSecondary, disabledForegroundColor: Colors.black26),
                   child: const Text('규정 보기 ›', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                 ),
               ],

@@ -43,7 +43,6 @@ import '../services/eye_monitor.dart';
 import '../services/voice_service.dart';
 import '../stage_texts.dart';
 import '../theme.dart';
-import '../widgets/owl_says.dart';
 import '../widgets/stage_layout.dart';
 import 'drive_report_screen.dart';
 import 'rest_screen.dart';
@@ -808,9 +807,10 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    // (11/15 팀장) 배경은 앱 테마 남색. 틀은 경고 화면과 같음 (StageLayout: 카메라 → 부엉이 → 버튼, 카메라 크기 · 위치 고정)
-    const bg = AppColors.navy;
-    const fg = Colors.white;
+    // (11/16 R안) 바탕 = 지금 단계의 연한 색 (부엉이 · 글자가 잘 보이게), 글자는 검정.
+    //   틀은 경고 화면과 같음 (StageLayout: 머리 → 카메라 → 글 → 버튼, 카메라 크기 · 위치 고정)
+    final bg = AppColors.stagePastel(_stage);
+    const fg = AppColors.textPrimary;
     final ring = AppColors.stage(_stage);
 
     return PopScope(
@@ -820,17 +820,17 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       },
       child: Scaffold(
         backgroundColor: bg,
-        bottomNavigationBar: ServerCancelText(cancelled: _cancelNote, color: Colors.white70),
+        bottomNavigationBar: ServerCancelText(cancelled: _cancelNote, color: AppColors.textSecondary),
         appBar: AppBar(
           backgroundColor: bg,
           foregroundColor: fg,
           elevation: 0,
-          centerTitle: true,
-          title: const Text('운행 중', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-          actions: [Padding(padding: const EdgeInsets.only(right: 12), child: StageBadge(stage: _stage))],
+          toolbarHeight: 48,
         ),
         body: SafeArea(
+          top: false,
           child: StageLayout(
+            header: StageHeader(stage: _stage, title: '운행 중'),
             // 카메라 확인 · 확인 중 띠 — 카메라 위에 겹침
             cameraOverlay: Column(mainAxisSize: MainAxisSize.min, children: [
               CameraBanner(faceLost: _faceLostNote),
@@ -839,32 +839,32 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
             // 카메라 테두리 = 지금 단계 색 (정상은 얇게, 1 · 2 · 3단계는 두껍게 + 바뀔 때 깜빡임)
             camera: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              padding: EdgeInsets.all(_stage == 0 ? 3 : 7),
+              padding: EdgeInsets.all(_stage == 0 ? 0 : 3),
               decoration: BoxDecoration(
-                color: _flashOn ? ring : ring.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(22),
+                color: _flashOn ? ring : ring.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(26),
                 boxShadow: _stage == 0 || !_flashOn
                     ? null
                     : [BoxShadow(color: ring.withValues(alpha: 0.55), blurRadius: 24, spreadRadius: 2)],
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(15),
+                borderRadius: BorderRadius.circular(_stage == 0 ? 26 : 23),
                 child: (_controller != null && _controller!.value.isInitialized)
                     ? FollowFacePreview(controller: _controller!, face: _faceBoxNote)
                     : Container(
-                        color: Colors.black26,
-                        child: const Icon(Icons.videocam_off_outlined, color: fg, size: 40),
+                        color: const Color(0xFF1F2228),
+                        child: const Icon(Icons.videocam_off_outlined, color: Colors.white54, size: 40),
                       ),
               ),
             ),
             message: [
-              OwlSays(owl: OwlSays.face(_stage), text: _stageTitle(_stage), owlSize: 84, fontSize: 22, maxLines: 4),
+              StageMessage(_stageTitle(_stage)), // (11/16 R안) 부엉이 말풍선 대신 큰 글 · 마침표 없음
               // 휴게 배너 (연속 운전 2시간) — [닫기]로 숨김, [가까운 졸음쉼터 듣기]로 지도, [정차했어요]로 휴식 시작
               if (_restMessage.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 Container(
                   padding: const EdgeInsets.fromLTRB(16, 8, 4, 12),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(20)),
                   child: Column(
                     children: [
                       Row(
@@ -872,7 +872,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
                           const Icon(Icons.local_cafe, color: AppColors.textPrimary),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: Text(_restMessage,
+                            child: Text(_restMessage.replaceAll('.', ''), // 마침표 없음 (사용자 요청 6)
                                 style: const TextStyle(
                                     color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w700)),
                           ),
@@ -913,14 +913,9 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
               ],
             ],
             actions: [
-              OutlinedButton(
+              FilledButton(
                 onPressed: _confirmEnd, // 한 번 묻고 끝냄 (11/12)
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: fg,
-                  side: const BorderSide(color: Colors.white70, width: 1.5),
-                  minimumSize: const Size.fromHeight(56),
-                  textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                ),
+                style: stageButton('white'), // (11/16 R안) 흰 반투명 + 남색 글
                 child: const Text('운행 종료'),
               ),
             ],

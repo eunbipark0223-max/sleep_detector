@@ -24,19 +24,78 @@ class HomeStateCard extends StatelessWidget {
   // (11/16 팀장) 진행 중인 운행이 있으면 [운행 시작] 자리에 이 위젯 ('진행 중인 운행이 있어요' + [이어서 운행]).
   //   새 운행은 카드 아래 회색 글씨 링크 (home_screen)
   final Widget? resume;
+  // (11/16 R안) 운행 요약 숫자 — (값, 이름) 예: ('1:20', '운행 시간'). 비면 안 보임
+  final List<(String, String)> stats;
   const HomeStateCard({
     super.key,
     required this.stage,
     required this.onStart,
     this.startLabel = '운행 시작',
     this.resume,
+    this.stats = const [],
   });
 
   @override
   Widget build(BuildContext context) {
     final s = stage.clamp(0, 3);
-    final stageColor = AppColors.stage(s);
     // 0단계는 시안 문구, 1 ~ 3단계는 경고 화면 · 음성과 같은 문구 (stage_texts)
+    final big = s == 0 ? '안전 운전 중이에요' : StageTexts.headline(s);
+    return _readdy(s, big);
+  }
+
+  // (11/16 R안 · readdy 홈 카드) 흰 카드 · 단계 점 + 이름 · 큰 글 · 운행 요약 숫자 · 버튼 (부엉이 · 그라데이션 · 그림자 없음)
+  Widget _readdy(int s, String big) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+      decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(24)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            Container(width: 10, height: 10, decoration: BoxDecoration(color: AppColors.stage(s), shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            Text(SleepEvent.stageLabels[s],
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+          ]),
+          const SizedBox(height: 12),
+          Text(big,
+              maxLines: 3,
+              style: const TextStyle(
+                  fontSize: 27, height: 1.3, fontWeight: FontWeight.w700, letterSpacing: -0.8, color: AppColors.textPrimary)),
+          if (stats.isNotEmpty) ...[
+            const SizedBox(height: 22),
+            IntrinsicHeight(
+              child: Row(children: [
+                for (var i = 0; i < stats.length; i++) ...[
+                  if (i > 0) const VerticalDivider(width: 24, thickness: 1, color: Color(0xFFE5E8EE)),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(stats[i].$1,
+                          style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                      const SizedBox(height: 2),
+                      Text(stats[i].$2, style: const TextStyle(fontSize: 13, color: AppColors.textMuted)),
+                    ]),
+                  ),
+                ],
+              ]),
+            ),
+          ],
+          const SizedBox(height: 22),
+          resume ??
+              FilledButton.icon(
+                onPressed: onStart,
+                icon: const Icon(Icons.photo_camera_outlined, size: 20),
+                label: Text(startLabel),
+              ),
+        ],
+      ),
+    );
+  }
+
+  // 예전 남색 카드 (안 씀 — 되돌릴 때 참고)
+  // ignore: unused_element
+  Widget _old(BuildContext context, int s) {
+    final stageColor = AppColors.stage(s);
     final small = s == 0 ? '오늘도 안전하게' : '지금 단계';
     final big = s == 0 ? '안전 운전\n중이에요' : StageTexts.headline(s);
     final sub = s == 0 ? '편안한 운전을\n도와드릴게요' : null;
@@ -252,16 +311,18 @@ class HomeSectionHeading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // (11/16 R안) readdy 소제목 — 작은 회색 글자
     return SizedBox(
       height: 44,
       child: Row(
         children: [
+          const SizedBox(width: 8),
           Text(
             title,
             style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: AppColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textMuted,
             ),
           ),
           const Spacer(),
@@ -479,18 +540,16 @@ class HomeEmptyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // (11/16 R안) 흰 카드 (모서리 24, 테두리 · 부엉이 없음)
     return Container(
       constraints: const BoxConstraints(minHeight: 82),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.cardBorder),
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(24),
       ),
       child: Row(
         children: [
-          Image.asset(OwlSays.body(0), width: 58, height: 58),
-          const SizedBox(width: 11),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

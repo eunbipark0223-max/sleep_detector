@@ -16,7 +16,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/sleep_event.dart';
 import '../services/api_service.dart';
 import '../theme.dart';
-import '../widgets/owl_says.dart';
 
 class EventDetailScreen extends StatefulWidget {
   final SleepEvent event;
@@ -71,50 +70,41 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
         centerTitle: true,
-        title: const Text('경고 기록', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+        title: const Text('경고 기록', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
         children: [
-          // 머리: 단계 · 시각 · 종류 (남색 카드 + 단계 부엉이)
+          // 머리 (11/16 R안 · 사용자 요청 13·15): 단계 연한 색 카드 — '● n단계 · 이름' · 큰 종류 · 시각.
+          //   사진 카드와 겹치지 않게 아래에 간격을 둠, 부엉이 · 남색 없음
           Container(
-            padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-            decoration: BoxDecoration(color: AppColors.navy, borderRadius: BorderRadius.circular(20)),
-            child: Row(
+            padding: const EdgeInsets.fromLTRB(22, 18, 22, 20),
+            decoration: BoxDecoration(color: AppColors.stagePastel(s), borderRadius: BorderRadius.circular(24)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                            color: c.withValues(alpha: 0.22),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: c.withValues(alpha: 0.6))),
-                        child: Text('$s단계 · ${e.stageLabel}',
-                            style: TextStyle(
-                                fontSize: 14, fontWeight: FontWeight.w800, color: Color.lerp(c, Colors.white, 0.5))),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(_dateTime,
-                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.white)),
-                      const SizedBox(height: 2),
-                      Text(e.reasonLabel, style: const TextStyle(fontSize: 14, color: Color(0xFFBEC8E9))),
-                    ],
-                  ),
-                ),
-                Image.asset(OwlSays.face(s), width: 72, height: 72),
+                Row(children: [
+                  Container(width: 10, height: 10, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+                  const SizedBox(width: 8),
+                  Text('$s단계 · ${e.stageLabel}',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                ]),
+                const SizedBox(height: 8),
+                Text(e.reasonLabel,
+                    style: const TextStyle(
+                        fontSize: 30, height: 1.2, fontWeight: FontWeight.w800, letterSpacing: -0.8, color: AppColors.textPrimary)),
+                const SizedBox(height: 4),
+                Text(_dateTime, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
 
           // 졸음 사진 (관리자 웹과 같은 사진)
           _card(
             padding: EdgeInsets.zero,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(24),
               child: AspectRatio(
                 aspectRatio: 4 / 3,
                 child: FutureBuilder<Uint8List?>(
@@ -161,7 +151,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     Text('자동 분석 · 참고용', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
                   ],
                 ),
-                _row('무슨 일이 있었나요?', situation),
+                // (11/16 사용자 요청 16) '눈 감김 시간은 짧았어요' 대신 실제 눈 감은 시간으로
+                _row(
+                    '무슨 일이 있었나요?',
+                    closedSec is num && closedSec > 0
+                        ? situation.replaceAll(RegExp(r'눈 감(김|긴) 시간은 짧았어요\.?'),
+                            '눈 감긴 시간은 ${closedSec.toStringAsFixed(1)}초였어요.')
+                        : situation),
                 _row('왜 이 단계인가요?', reason),
                 if (closedSec is num && closedSec > 0) _row('눈을 감은 시간', '약 ${closedSec.toStringAsFixed(1)}초'),
                 _row('참고한 법규', regulation),
@@ -183,7 +179,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('그때 드린 안내',
+                        const Text('앱이 드린 안내', // (11/16 사용자 요청 14) '그때 드린 안내' → 더 분명하게
                             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.textSecondary)),
                         const SizedBox(height: 4),
                         Text(e.guidance,
@@ -203,7 +199,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('그 뒤 기록',
+                  const Text('기사님의 대처', // (11/16 사용자 요청 14) '그 뒤 기록' → 더 분명하게
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
                   for (final q in quiz)
                     _row(
@@ -247,14 +243,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
-  Widget _card({required Widget child, EdgeInsets padding = const EdgeInsets.all(16), Color color = Colors.white}) =>
+  // (11/16 R안) 흰 카드 · 모서리 24 · 테두리 없음
+  Widget _card({required Widget child, EdgeInsets padding = const EdgeInsets.all(20), Color color = AppColors.card}) =>
       Container(
         padding: padding,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.cardBorder),
-        ),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(24)),
         child: child,
       );
 

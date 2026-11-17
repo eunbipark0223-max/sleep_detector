@@ -16,6 +16,7 @@ class StageLayout extends StatelessWidget {
   final Widget? cameraOverlay; // 카메라 위에 겹치는 띠 (카메라 확인 · 확인 중)
   final List<Widget> message; // 부엉이 말풍선 등
   final List<Widget> actions; // 단계별 버튼 (아래에 붙음)
+  final Widget? header; // (11/16 R안) 카메라 위 — 단계 점 · 이름 + 큰 제목 (StageHeader)
 
   static const double cameraRatio = 0.40;
   static const double actionsHeight = 196;
@@ -26,17 +27,19 @@ class StageLayout extends StatelessWidget {
     this.cameraOverlay,
     required this.message,
     required this.actions,
+    this.header,
   });
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, box) {
-      final camH = (box.maxHeight * cameraRatio).clamp(180.0, 420.0);
+      final camH = (box.maxHeight * (header == null ? cameraRatio : 0.36)).clamp(180.0, 420.0);
       return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (header != null) ...[header!, const SizedBox(height: 18)],
             SizedBox(
               height: camH,
               child: Stack(
@@ -48,10 +51,10 @@ class StageLayout extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
             Expanded(
               child: SingleChildScrollView(
-                physics: const ClampingScrollPhysics(),
+                physics: const ClampingScrollPhysics(), // 스크롤바는 안 보임 (사용자 요청 7)
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: message),
               ),
             ),
@@ -69,6 +72,57 @@ class StageLayout extends StatelessWidget {
     });
   }
 }
+
+/// (11/16 R안 · readdy) 운행 · 경고 화면 머리 — '● 주의' 작은 글 + 큰 제목 (단계 파스텔 바탕 위 검정 글자)
+class StageHeader extends StatelessWidget {
+  final int stage;
+  final String title;
+  const StageHeader({super.key, required this.stage, required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = stage.clamp(0, 3);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Container(width: 10, height: 10, decoration: BoxDecoration(color: AppColors.stage(s), shape: BoxShape.circle)),
+          const SizedBox(width: 8),
+          Text(StageBadge.labels[s],
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+        ]),
+        const SizedBox(height: 8),
+        Text(title,
+            style: const TextStyle(
+                fontSize: 34, height: 1.15, fontWeight: FontWeight.w800, letterSpacing: -1, color: AppColors.textPrimary)),
+      ],
+    );
+  }
+}
+
+/// 운행 · 경고 화면 아래 문장 (readdy) — 부엉이 말풍선 대신 큰 글. 마침표는 뺌 (사용자 요청 6)
+class StageMessage extends StatelessWidget {
+  final String text;
+  const StageMessage(this.text, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(text.replaceAll('.', '').replaceAll('\n\n', '\n'),
+        style: const TextStyle(fontSize: 21, height: 1.45, fontWeight: FontWeight.w500, color: AppColors.textPrimary));
+  }
+}
+
+/// 운행 · 경고 화면 큰 버튼 (readdy) — kind: 'white'(흰 반투명 + 남색 글) · 'navy'(남색 꽉 참)
+ButtonStyle stageButton(String kind, {double height = 64}) => FilledButton.styleFrom(
+      backgroundColor: kind == 'navy' ? AppColors.navy : Colors.white.withValues(alpha: 0.7),
+      foregroundColor: kind == 'navy' ? Colors.white : AppColors.navy,
+      disabledBackgroundColor: Colors.white.withValues(alpha: 0.4),
+      disabledForegroundColor: AppColors.navy.withValues(alpha: 0.4),
+      minimumSize: Size.fromHeight(height),
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      textStyle: const TextStyle(fontSize: 19, fontWeight: FontWeight.w600),
+    );
 
 /// 단계 배지 '● 주의' — 제목 줄 오른쪽 (모든 단계 같은 자리). 빨강 바탕(3단계) 위에서는 흰 배지
 class StageBadge extends StatelessWidget {

@@ -120,23 +120,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  // 최신순으로 정렬된 목록을 날짜가 바뀔 때마다 구분 줄을 끼워서 카드로 만든다
+  // 최신순으로 정렬된 목록을 날짜별로 묶어서 — 날짜 작은 제목 + 흰 카드 하나에 줄로 나눈 목록 (11/16 R안 · readdy)
   static List<Widget> _byDay(List<SleepEvent> sorted, DateTime now) {
-    final counts = <String, int>{};
+    final groups = <String, List<SleepEvent>>{};
     for (final e in sorted) {
-      counts.update(_dayKey(e.createdAt), (n) => n + 1, ifAbsent: () => 1);
+      groups.putIfAbsent(_dayKey(e.createdAt), () => []).add(e);
     }
     final out = <Widget>[];
-    String? lastKey;
-    for (final e in sorted) {
-      final key = _dayKey(e.createdAt);
-      if (key != lastKey) {
-        out.add(
-          _DayHeader(label: _dayLabel(e.createdAt, now), count: counts[key]!),
-        );
-        lastKey = key;
-      }
-      out.add(_EventCard(event: e));
+    for (final list in groups.values) {
+      out.add(_DayHeader(label: _dayLabel(list.first.createdAt, now), count: list.length));
+      out.add(Container(
+        decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(24)),
+        child: Column(children: [
+          for (var i = 0; i < list.length; i++) ...[
+            if (i > 0) const _Line(),
+            _EventCard(event: list[i]),
+          ],
+        ]),
+      ));
     }
     return out;
   }
@@ -174,11 +175,133 @@ String _dayLabel(DateTime t, DateTime now) {
   return '$year${d.month}월 ${d.day}일 (${weekdays[d.weekday - 1]})';
 }
 
-// 목록 맨 위 남색 띠 (Figma 시안 '졸음운전 감지 앱3' 운행 기록, 11/12 — 예전 건수 요약 대신)
+/// 카드 안 줄 사이 얇은 선 — 좌우 같은 여백 (11/16 사용자 요청 12)
+class _Line extends StatelessWidget {
+  const _Line();
+  @override
+  Widget build(BuildContext context) => const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20),
+        child: Divider(height: 1, thickness: 1, color: Color(0xFFE5E8EE)),
+      );
+}
+
+/// 달력 아이콘 모양 날짜 (11/16 사용자 요청 4) — 위 빨간 띠에 'n월', 아래 큰 날짜 숫자
+class _CalendarTile extends StatelessWidget {
+  final DateTime day;
+  const _CalendarTile({required this.day});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 46,
+      height: 50,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0x14000000)),
+      ),
+      child: Column(children: [
+        Container(
+          height: 15,
+          width: double.infinity,
+          color: const Color(0xFFFF3B30),
+          alignment: Alignment.center,
+          child: Text('${day.month}월',
+              style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Colors.white, height: 1)),
+        ),
+        Expanded(
+          child: Center(
+            child: Text('${day.day}',
+                style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w600, color: Color(0xFF1C1C1E), height: 1)),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+// 목록 맨 위 '운행 요약' (11/16 R안 · readdy) — 경고가 있었던 날마다 달력 날짜 · 요일 · 단계별 건수 · 오른쪽 '경고 n회'
 class _Summary extends StatelessWidget {
   final List<SleepEvent> events;
   final DateTime now;
   const _Summary({required this.events, required this.now});
+
+  static const _week = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = <String, List<SleepEvent>>{};
+    for (final e in [...events]..sort((a, b) => b.createdAt.compareTo(a.createdAt))) {
+      if (e.createdAt.year < 2000) continue;
+      groups.putIfAbsent(_dayKey(e.createdAt), () => []).add(e);
+    }
+    final days = groups.values.take(3).toList();
+    if (days.isEmpty) return const SizedBox.shrink();
+    Widget row(List<SleepEvent> list) {
+      final d = list.first.createdAt.toLocal();
+      final label = _dayLabel(d, now);
+      final title = _week[d.weekday - 1] + (label == '오늘' ? ' · 오늘' : label == '어제' ? ' · 어제' : '');
+      final counts = [for (var s = 1; s <= 3; s++) list.where((e) => e.stage == s).length];
+      final sub = [
+        for (var s = 1; s <= 3; s++)
+          if (counts[s - 1] > 0) '${SleepEvent.stageLabels[s]} ${counts[s - 1]}',
+      ].join(' · ');
+      final top = list.map((e) => e.stage).fold<int>(0, (a, b) => b > a ? b : a);
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Row(children: [
+          _CalendarTile(day: d),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              const SizedBox(height: 3),
+              Text(sub.isEmpty ? '경고 없음' : sub,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, color: AppColors.textMuted)),
+            ]),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(color: AppColors.stage(top), borderRadius: BorderRadius.circular(999)),
+            child: Text('경고 ${list.length}회',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.onStage(top))),
+          ),
+        ]),
+      );
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const _SmallTitle('운행 요약'),
+      Container(
+        decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(24)),
+        child: Column(children: [
+          for (var i = 0; i < days.length; i++) ...[if (i > 0) const _Line(), row(days[i])],
+        ]),
+      ),
+      const SizedBox(height: 8),
+      const _SmallTitle('경고 기록'),
+    ]);
+  }
+}
+
+class _SmallTitle extends StatelessWidget {
+  final String text;
+  const _SmallTitle(this.text);
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+        child: Text(text, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textMuted)),
+      );
+}
+
+// 예전 남색 띠 (안 씀 — 되돌릴 때 참고)
+// ignore: unused_element
+class _OldSummary extends StatelessWidget {
+  final List<SleepEvent> events;
+  final DateTime now;
+  const _OldSummary({required this.events, required this.now});
 
   @override
   Widget build(BuildContext context) {
@@ -236,17 +359,13 @@ class _DayHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 20, bottom: 9, left: 2),
+      padding: const EdgeInsets.only(top: 6, bottom: 8, left: 16),
       child: Semantics(
         header: true,
         label: '$label $count건',
         child: Text(
           label,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            color: AppColors.textPrimary,
-          ),
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
         ),
       ),
     );
@@ -267,10 +386,8 @@ class _FilterBar extends StatelessWidget {
   Widget _pill(String text, bool on, VoidCallback tap) => Padding(
     padding: const EdgeInsets.only(right: 8),
     child: Material(
-      color: on ? AppColors.navy : Colors.white,
-      shape: StadiumBorder(
-        side: BorderSide(color: on ? AppColors.navy : AppColors.cardBorder),
-      ),
+      color: on ? AppColors.navy : AppColors.card,
+      shape: const StadiumBorder(),
       child: InkWell(
         customBorder: const StadiumBorder(),
         onTap: tap,
@@ -327,8 +444,54 @@ class _EventCard extends StatelessWidget {
     return '$ampm $h:${d.minute.toString().padLeft(2, '0')}';
   }
 
+  // (11/16 R안 · readdy) 카드 안 한 줄 — 왼쪽 단계 색 막대 · 이유 + 단계 표 · 시각(검정) · 오른쪽 동그란 꺾쇠
   @override
   Widget build(BuildContext context) {
+    final s = event.stage.clamp(0, 3);
+    final c = AppColors.stage(s);
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => EventDetailScreen(event: event))),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        child: Row(children: [
+          Container(width: 6, height: 44, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3))),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Flexible(
+                  child: Text(event.reasonLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(6)),
+                  child: Text(event.stageLabel,
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.onStage(s))),
+                ),
+              ]),
+              const SizedBox(height: 4),
+              Text(_time(event.createdAt), style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
+            ]),
+          ),
+          Container(
+            width: 32,
+            height: 32,
+            decoration: const BoxDecoration(color: AppColors.background, shape: BoxShape.circle),
+            child: const Icon(Icons.chevron_right_rounded, size: 20, color: AppColors.textMuted),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  // 예전 흰 카드 (안 씀 — 되돌릴 때 참고)
+  // ignore: unused_element
+  Widget _old(BuildContext context) {
     final s = event.stage.clamp(0, 3);
     final c = AppColors.stage(s);
     return Padding(
