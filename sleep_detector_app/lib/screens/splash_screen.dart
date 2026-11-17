@@ -13,6 +13,8 @@
 
 
 import 'package:flutter/material.dart';
+import '../theme.dart';
+import '../widgets/web_ui.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
@@ -26,7 +28,6 @@ class SplashScreen extends StatefulWidget {
 }
 
 /// 시작 화면 그림(assets/owl/splash.png)의 바탕 남색
-const Color _splashNavy = Color(0xFF010972);
 
 class _SplashScreenState extends State<SplashScreen> {
   @override
@@ -67,12 +68,19 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _splashNavy, // 그림 바탕과 같은 남색 (그림 위아래 빈자리가 이어져 보이게)
+      backgroundColor: AppColors.card, // (11/17) 로그인 · 회원가입과 같은 흰 바탕
       body: Stack(
         children: [
           // 트럭 부엉이 시작 화면 그림 ("졸음 가드" 글씨 포함, 노션 '메인 로고 아이디어' 스플래시, 11/10) — 화면 폭에 꽉 차게
           Positioned.fill(
-            child: Image.asset('assets/owl/splash.png', fit: BoxFit.contain, semanticLabel: '졸음 가드'),
+            child: const Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                // (11/17) 그림은 아직 안 넣음 — 자리만 표시
+                ImageSlot(label: '메인 캐릭터 이미지', width: 200, height: 200, radius: 28),
+                SizedBox(height: 20),
+                Text('졸음가드', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              ]),
+            ),
           ),
           Align(
             alignment: Alignment.bottomCenter,
@@ -83,26 +91,11 @@ class _SplashScreenState extends State<SplashScreen> {
                 children: [
                   // "졸기 전 · 졸 때 · 졸고 나서" 는 위 부엉이 3개 이름으로 옮김 (11/11)
 
+                  // (11/17 사용자 요청) '운수 안전관리팀 · Sleep Guard System' 글씨 뺌
                   const CircularProgressIndicator(
-                    color: Colors.white,
+                    color: AppColors.navy,
                     strokeWidth: 2.5,
                   ),
-                  const SizedBox(height: 18),
-                  Text(
-                    '운수 안전관리팀',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white.withValues(alpha: 0.9),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Sleep Guard System',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.white.withValues(alpha: 0.7),
-                    ),
-                  )
                 ],
               ),
             ),

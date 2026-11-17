@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import '../widgets/owl_says.dart';
+import '../widgets/web_ui.dart';
 import 'warning_screen.dart' show stageTint;
 
 class GuideScreen extends StatelessWidget {
@@ -34,7 +35,7 @@ class GuideScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('앱 사용 가이드')),
+      appBar: AppBar(title: const Text('사용 가이드')), // (11/17) 메뉴 이름과 같게
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -105,7 +106,7 @@ class GuideScreen extends StatelessWidget {
               decoration: BoxDecoration(color: stageTint(s), borderRadius: BorderRadius.circular(16)),
               child: Row(
                 children: [
-                  Image.asset(OwlSays.face(s), width: 72, height: 72),
+                  const ImageSlot(label: '캐릭터 이미지', width: 72, height: 72),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(

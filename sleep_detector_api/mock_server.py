@@ -59,6 +59,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
 
 from schema.request import PasswordChange, ProfileUpdate, check_password_rules, format_phone, format_vehicle_no   # 전화번호 · 차량번호 형식 검사는 진짜 서버와 같은 것을 쓴다
+from services import employee_service   # (11/17 C) 시연용 사번 목록 · 전화번호 인증 (DB 없이 씀)
 
 # ── 기준 숫자 (진짜 서버는 config.py 에서 가져옴) ──────────────────
 WINDOW_SEC = int(os.getenv("MOCK_WINDOW_SEC", "60"))          # 1단계 자동 해제 · 졸음 횟수를 세는 구간 (진짜 600)
@@ -447,6 +448,69 @@ def seed_more() -> None:
             make(u["id"], stage, reason, when, "조치완료" if stage == 3 else ("휴식완료" if stage == 2 else "확인"), rng_old)
 
 
+def demo_history(user_id: int) -> int:
+    """(11/17 C) 화면 확인용 운행 기록 — 최근 3주에 걸친 경고 + 방금 생긴 경고 2개(알림 '새 알림' 확인용).
+
+    구글로 처음 로그인한 기사에게 자동으로, 다른 계정은 POST /mock/demo-history {email} 로 넣는다. 넣은 개수를 돌려준다.
+    """
+    now = datetime.now()
+    quiz_ok = [{"type": "add", "asked": "23+45", "heard": "육십팔", "passed": True, "answer_sec": 2.1}]
+    quiz_fail = [{"type": "repeat", "asked": "졸리면 쉬어 가겠습니다", "heard": "", "passed": False, "answer_sec": None}]
+    situations = {
+        "microsleep": "약 {s}초간 눈을 감은 미세수면 상태로 보여요.",
+        "perclos": "최근 30초 중 {p}% 동안 눈을 감아 피로가 쌓인 상태로 보여요.",
+        "rest_overdue": "연속 운전 2시간 안내 뒤 15분 안에 쉬지 않았어요.",
+        "no_response": "운전 중 음성 퀴즈에 2번 답하지 못했어요.",
+    }
+    # (며칠 전, 시, 분, 단계, 이유, 처리 상태)  — 0일 전 = 오늘
+    plan = [
+        (20, 6, 40, 1, "microsleep", "확인"), (18, 14, 5, 2, "perclos", "휴식완료"), (16, 3, 22, 1, "microsleep", "확인"),
+        (15, 4, 10, 3, "no_response", "조치완료"), (12, 23, 48, 1, "rest_overdue", "확인"), (10, 2, 15, 2, "perclos", "휴식완료"),
+        (8, 5, 30, 1, "microsleep", "확인"), (6, 16, 45, 1, "microsleep", "확인"), (5, 1, 55, 2, "perclos", "휴식완료"),
+        (3, 4, 20, 3, "no_response", "조치완료"), (2, 13, 10, 1, "rest_overdue", "확인"), (1, 6, 5, 2, "perclos", "휴식완료"),
+        (0, max(now.hour - 3, 0), 12, 1, "microsleep", "확인"),
+    ]
+    spots = [(37.4021, 127.1088), (37.4105, 127.1190), (36.3504, 127.3845), (35.8714, 128.6014), (37.2636, 127.0286)]
+    n = 0
+    for i, (days, h, m, stage, reason, status) in enumerate(plan):
+        t = (now - timedelta(days=days)).replace(hour=h, minute=m, second=0, microsecond=0)
+        if t > now:
+            t = now - timedelta(hours=1)
+        lat, lng = spots[i % len(spots)]
+        closed = round(1.2 + (i % 4) * 0.4, 1)
+        perclos = 0.18 + (i % 5) * 0.05
+        add_event(user_id, stage, reason, {
+            "situation": situations[reason].format(s=closed, p=int(perclos * 100)), "stage_reason": STAGE_REASON[stage],
+            "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[stage], "location": f"{lat}, {lng}",
+            "eye": {"closed_sec": closed, "perclos": perclos, "eye_open_prob": 0.3} if reason in ("microsleep", "perclos") else None,
+            "driving_quiz": quiz_fail if reason == "no_response" else quiz_ok,
+            "rest": {"started": f"{h:02d}:{(m + 3) % 60:02d}", "resumed": f"{(h + 1) % 24:02d}:{m:02d}", "minutes": 20} if status == "휴식완료" else None,
+        }, summary=situations[reason].format(s=closed, p=int(perclos * 100)), guidance=GUIDANCE[stage],
+            ear=0.18, method="ear", perclos=perclos, eye_closed_prob=0.7, lat=lat, lng=lng, status=status,
+            created_at=_now_text(t))
+        n += 1
+    # 방금 생긴 경고 2개 — 알림 화면 '새 알림' 과 종 빨간 숫자 확인용
+    for mins, stage, reason in ((6, 1, "microsleep"), (1, 2, "perclos")):
+        add_event(user_id, stage, reason, {"situation": situations[reason].format(s=1.8, p=31), "stage_reason": STAGE_REASON[stage],
+                  "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[stage], "location": "37.4021, 127.1088",
+                  "eye": {"closed_sec": 1.8, "perclos": 0.31, "eye_open_prob": 0.3}, "driving_quiz": quiz_ok},
+                  summary=situations[reason].format(s=1.8, p=31), guidance=GUIDANCE[stage], ear=0.18, method="ear",
+                  perclos=0.31, lat=37.4021, lng=127.1088, created_at=_now_text(now - timedelta(minutes=mins)))
+        n += 1
+    return n
+
+
+@app.post("/mock/demo-history")
+async def mock_demo_history(request: Request):
+    """(11/17 C) 화면 확인용 운행 기록 넣기 — {email} 계정에 (없으면 422)"""
+    body = await read_body(request)
+    email = str(body.get("email") or "").strip()
+    user = next((u for u in USERS.values() if u["email"] == email), None)
+    if user is None:
+        raise HTTPException(status_code=422, detail="그 이메일의 계정이 없어요 (앱에서 먼저 로그인해 주세요)")
+    return {"success": True, "user_id": user["id"], "added": demo_history(user["id"])}
+
+
 def reset_all() -> None:
     USERS.clear(); EVENTS.clear(); STATES.clear(); QUIZZES.clear(); PHOTOS.clear()
     _next.update({"user": 1, "event": 1})
@@ -524,7 +588,7 @@ async def signup(request: Request):
     if not email:
         raise HTTPException(status_code=422, detail="email 이 필요합니다")
     if any(u["email"] == email for u in USERS.values()):
-        raise HTTPException(status_code=400, detail="이미 가입된 이메일입니다")
+        raise HTTPException(status_code=400, detail="이미 가입된 이메일이에요")
     try:   # 전화번호 · 차량번호 · 동의 검사는 진짜 서버(SignupRequest)와 같은 규칙
         phone = format_phone(str(body["phone"])) if str(body.get("phone") or "").strip() else None
         vehicle_no = format_vehicle_no(str(body["vehicle_no"])) if str(body.get("vehicle_no") or "").strip() else None
@@ -532,8 +596,87 @@ async def signup(request: Request):
         raise HTTPException(status_code=422, detail=str(e))
     if body.get("privacy_agreed") is False:
         raise HTTPException(status_code=422, detail="개인정보 수집 · 이용에 동의해야 가입할 수 있어요.")
+    # (11/17 C) 사번으로 가입하면 사번 확인 · 전화 인증 표 확인 (진짜 서버 routers/user.py 와 같은 규칙)
+    emp_no = None
+    if str(body.get("emp_no") or "").strip():
+        emp_no = _check_emp_no(str(body["emp_no"]))
+        if not employee_service.use_email_token(email, body.get("email_token")):
+            raise HTTPException(status_code=400, detail="이메일 인증을 먼저 해 주세요")
+        if not phone or not employee_service.use_phone_token(phone, body.get("phone_token")):
+            raise HTTPException(status_code=400, detail="전화번호 인증을 먼저 해 주세요")
     user = add_user(email, str(body.get("name") or email.split("@")[0]), phone=phone, vehicle_no=vehicle_no)
+    user["emp_no"] = emp_no
     return {"success": True, "message": "가입되었습니다", "user": user}
+
+
+# (11/17 C) 사번 확인 · 전화번호 인증 (시연용) — 진짜 서버와 같은 주소 · 같은 응답 모양
+def _check_emp_no(raw: str) -> str:
+    no = employee_service.normalize_emp_no(raw)
+    if no not in {n for n, _ in employee_service.DEMO_EMPLOYEES}:
+        raise HTTPException(status_code=404, detail="등록되지 않은 사번이에요")
+    if any(u.get("emp_no") == no for u in USERS.values()):
+        raise HTTPException(status_code=409, detail="이미 가입된 사번이에요")
+    return no
+
+
+@app.post("/users/employee/check")
+async def employee_check(request: Request):
+    body = await read_body(request)
+    no = _check_emp_no(str(body.get("emp_no") or ""))
+    return {"ok": True, "emp_no": no, "name": None}
+
+
+def _phone_or_422(raw) -> str:
+    try:
+        return format_phone(str(raw or ""))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.post("/users/phone/send")
+async def phone_send(request: Request):
+    body = await read_body(request)
+    code = employee_service.send_code(_phone_or_422(body.get("phone")))
+    return {"sent": True, "demo": True, "demo_code": code, "expires_sec": employee_service.CODE_TTL_SEC}
+
+
+_EMAIL_RULE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def _email_or_422(raw) -> str:
+    email = str(raw or "").strip()
+    if not _EMAIL_RULE.match(email):
+        raise HTTPException(status_code=422, detail="이메일 형식이 올바르지 않아요")
+    return email
+
+
+@app.post("/users/email/send")
+async def email_send(request: Request):
+    body = await read_body(request)
+    code = employee_service.send_email_code(_email_or_422(body.get("email")))
+    return {"sent": True, "demo": True, "demo_code": code, "expires_sec": employee_service.CODE_TTL_SEC}
+
+
+@app.post("/users/email/verify")
+async def email_verify(request: Request):
+    body = await read_body(request)
+    email = _email_or_422(body.get("email"))
+    try:
+        token = employee_service.verify_email_code(email, str(body.get("code") or ""))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"verified": True, "email": email, "email_token": token}
+
+
+@app.post("/users/phone/verify")
+async def phone_verify(request: Request):
+    body = await read_body(request)
+    phone = _phone_or_422(body.get("phone"))
+    try:
+        token = employee_service.verify_code(phone, str(body.get("code") or ""))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"verified": True, "phone": phone, "phone_token": token}
 
 
 @app.post("/users/login")
@@ -553,6 +696,7 @@ def google_config():
 
 @app.post("/users/google")
 async def login_google(request: Request):
+    # (11/16 D) 관리자 웹 구글 로그인 시험 · (11/17 C) 앱 구글 로그인은 이메일로 계정을 찾거나 만든다
     body = await read_body(request)
     email = str(body.get("email") or "").strip()
     if email.startswith("admin"):          # 관리자 웹 구글 로그인 시험 (진짜 서버는 관리자 계정이면 id_token 을 검증함)
@@ -561,7 +705,14 @@ async def login_google(request: Request):
         if not existed:
             google_admin["provider"] = "google"                  # 구글로 새로 만든 계정만 표시 (설정에서 이메일 변경 불가). 이미 있던 이메일 계정은 그대로 둠 (진짜 서버는 이때 409)
         return login_response(google_admin)
-    return login_response(USERS[1])        # 기사 앱 시험: 예전처럼 시험용 기사(1번)
+    if not email:
+        return login_response(USERS[1])  # 예전 시험 스크립트처럼 아무것도 안 보내면 기본 기사
+    is_new = not any(u["email"] == email for u in USERS.values())
+    user = add_user(email, str(body.get("name") or email.split("@")[0]))
+    user.setdefault("provider", "google")
+    if is_new:
+        demo_history(user["id"])  # (11/17 C) 처음 로그인한 구글 계정에 화면 확인용 운행 기록 (연습 서버만)
+    return login_response(user)
 
 
 @app.get("/users/me")

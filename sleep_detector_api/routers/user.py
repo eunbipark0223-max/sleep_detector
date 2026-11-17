@@ -11,6 +11,11 @@
 #   - 프로필 사진 POST · GET · DELETE /users/me/photo (수업 그대로, profile_screen)
 #   - PATCH /users/me  {name?, phone?, vehicle_no?} — 기사 연락용 전화번호 · 차량번호 (profile_screen 에서 입력, 관리자 웹 연락처에 보임) · 이름은 관리자 설정 화면
 #   - PUT /users/me/password {current_password, new_password} — 비밀번호 변경 (관리자 설정 화면, 가입과 같은 규칙. 구글 계정은 400)
+#   - (11/17 C) 앱 회원가입 = 사번 확인 → 전화번호 인증 → 가입
+#       POST /users/employee/check {emp_no, name?}   — 회사 명단(employees 표)에 있고 아직 가입 안 한 사번인지
+#       POST /users/phone/send {phone}               — 인증번호 (시연용: 문자 대신 응답 demo_code)
+#       POST /users/phone/verify {phone, code}       — 맞으면 phone_token → /users/signup 에 emp_no 와 같이 보냄
+#       POST /users/email/send · /users/email/verify — 이메일도 같은 방식 (email_token)
 #
 # [수업에서 바꾼 것]
 #   - 요청 · 응답 이름: schema 의 SignupRequest · LoginRequest · GoogleLoginRequest · UserResponse · LoginResponse (D)
@@ -37,7 +42,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import config
-from schema.request  import SignupRequest, LoginRequest, GoogleLoginRequest, ProfileUpdate, PasswordChange
+from schema.request  import (
+    SignupRequest, LoginRequest, GoogleLoginRequest, ProfileUpdate, PasswordChange,
+    EmployeeCheckRequest, PhoneSendRequest, PhoneVerifyRequest, EmailSendRequest, EmailVerifyRequest,
+)
+from services import employee_service
 from schema.response import UserResponse, LoginResponse
 from database.db_connection import get_session
 from models.models import User
@@ -75,12 +84,26 @@ def signup_user_handler(
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="이미 사용중인 이메일입니다",
+            detail="이미 가입된 이메일이에요",
         )
+
+    # (11/17 C) 사번으로 가입하는 앱: 사번이 명단에 있고 · 아직 안 쓰였고 · 전화번호를 인증했어야 한다
+    emp_no = None
+    if body.emp_no:
+        try:
+            emp = employee_service.check_employee(session, body.emp_no, body.name)
+        except employee_service.EmployeeError as e:
+            raise HTTPException(status_code=e.status, detail=e.message)
+        if not employee_service.use_email_token(str(body.email), body.email_token):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이메일 인증을 먼저 해 주세요")
+        if not body.phone or not employee_service.use_phone_token(body.phone, body.phone_token):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="전화번호 인증을 먼저 해 주세요")
+        emp_no = emp.emp_no
 
     hashed_password = hash_password(body.password)
 
     user = User(
+        emp_no         =emp_no,
         email          =str(body.email),
         hashed_password=hashed_password,
         name           =body.name,
@@ -94,6 +117,53 @@ def signup_user_handler(
     session.refresh(user)
 
     return user
+
+@router.post("/users/employee/check", status_code=status.HTTP_200_OK)
+def check_employee_handler(
+    body   : EmployeeCheckRequest,
+    session: Session = Depends(get_session),
+):
+    """(11/17 C) 회원가입 첫 단계 — 사번이 회사 명단에 있고 아직 가입 안 했는지. 200 {ok, emp_no, name}"""
+    try:
+        emp = employee_service.check_employee(session, body.emp_no, body.name)
+    except employee_service.EmployeeError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
+    return {"ok": True, "emp_no": emp.emp_no, "name": emp.name}
+
+
+@router.post("/users/phone/send", status_code=status.HTTP_200_OK)
+def send_phone_code_handler(body: PhoneSendRequest):
+    """(11/17 C) 전화번호 인증번호 받기 — 시연용: 문자를 보내지 않고 응답에 demo_code 로 번호를 준다 (5분 유효)"""
+    code = employee_service.send_code(body.phone)
+    return {"sent": True, "demo": True, "demo_code": code, "expires_sec": employee_service.CODE_TTL_SEC}
+
+
+@router.post("/users/phone/verify", status_code=status.HTTP_200_OK)
+def verify_phone_code_handler(body: PhoneVerifyRequest):
+    """(11/17 C) 인증번호 확인 — 맞으면 가입 때 같이 보낼 phone_token (30분 유효)"""
+    try:
+        token = employee_service.verify_code(body.phone, body.code)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return {"verified": True, "phone": body.phone, "phone_token": token}
+
+
+@router.post("/users/email/send", status_code=status.HTTP_200_OK)
+def send_email_code_handler(body: EmailSendRequest):
+    """(11/17 C) 이메일 인증번호 받기 — 시연용: 메일을 보내지 않고 응답에 demo_code 로 번호를 준다 (5분 유효)"""
+    code = employee_service.send_email_code(str(body.email))
+    return {"sent": True, "demo": True, "demo_code": code, "expires_sec": employee_service.CODE_TTL_SEC}
+
+
+@router.post("/users/email/verify", status_code=status.HTTP_200_OK)
+def verify_email_code_handler(body: EmailVerifyRequest):
+    """(11/17 C) 이메일 인증번호 확인 — 맞으면 가입 때 같이 보낼 email_token (30분 유효)"""
+    try:
+        token = employee_service.verify_email_code(str(body.email), body.code)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    return {"verified": True, "email": str(body.email), "email_token": token}
+
 
 @router.post(
     "/users/login",
@@ -111,13 +181,13 @@ def login_user_handler(
     if not user or not user.hashed_password:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="이메일 또는 비밀번호가 올바르지 않습니다",
+            detail="이메일 또는 비밀번호가 올바르지 않아요",
         )
 
     if not verify_password(body.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="이메일 또는 비밀번호가 올바르지 않습니다",
+            detail="이메일 또는 비밀번호가 올바르지 않아요",
         )
 
     return _login_response(user)

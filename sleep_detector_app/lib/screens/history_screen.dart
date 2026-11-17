@@ -22,7 +22,7 @@ import 'package:flutter/material.dart';
 import '../models/sleep_event.dart';
 import '../services/api_service.dart';
 import '../theme.dart';
-import '../widgets/owl_says.dart';
+import '../widgets/web_ui.dart';
 import 'event_detail_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -57,17 +57,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
     });
   }
 
+  // (11/17 관리자 웹 '졸음 경고' 화면) 달력에서 보는 달 · 누른 날짜 (null = 그 달 전체)
+  DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+  DateTime? _day;
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFFF8F9FC),
+      color: AppColors.background,
       child: Column(
         children: [
-          _FilterBar(
-            selected: _stage,
-            stages: _filterStages,
-            onSelected: (stage) => setState(() => _stage = stage),
-          ),
           Expanded(
             child: RefreshIndicator(
               onRefresh: () async => _reload(),
@@ -97,19 +96,77 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   if (events.isEmpty)
                     return _scroll(const [_Hint(text: '아직 경고 기록이 없어요')]);
 
+                  // 보고 있는 달의 경고만 (달력 · 도넛 · 목록 모두 같은 달)
+                  bool inMonth(SleepEvent e) {
+                    final d = e.createdAt.toLocal();
+                    return d.year == _month.year && d.month == _month.month;
+                  }
+
+                  bool sameDay(SleepEvent e, DateTime day) {
+                    final d = e.createdAt.toLocal();
+                    return d.year == day.year && d.month == day.month && d.day == day.day;
+                  }
+
+                  final month = events.where(inMonth).toList();
+                  final prevMonth = DateTime(_month.year, _month.month - 1);
+                  final prevCount = events.where((e) {
+                    final d = e.createdAt.toLocal();
+                    return d.year == prevMonth.year && d.month == prevMonth.month;
+                  }).length;
                   // 받은 목록을 건드리지 않게 복사해서 최신순으로 정렬한다
-                  final shown =
-                      events
-                          .where((e) => _stage == null || e.stage == _stage)
-                          .toList()
-                        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+                  final shown = month
+                      .where((e) => _stage == null || e.stage == _stage)
+                      .where((e) => _day == null || sameDay(e, _day!))
+                      .toList()
+                    ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
                   final now = DateTime.now();
+                  final thisMonth = DateTime(now.year, now.month);
                   return _scroll([
-                    _Summary(events: events, now: now), // 요약은 단계 필터와 상관없이 전체 기준
-                    if (shown.isEmpty)
-                      const _Hint(text: '이 단계의 경고가 없어요')
-                    else
-                      ..._byDay(shown, now),
+                    const SizedBox(height: 12),
+                    _MonthCalendar(
+                      month: _month,
+                      events: month,
+                      selected: _day,
+                      canNext: _month.isBefore(thisMonth),
+                      onPrev: () => setState(() {
+                        _month = DateTime(_month.year, _month.month - 1);
+                        _day = null;
+                      }),
+                      onNext: () => setState(() {
+                        _month = DateTime(_month.year, _month.month + 1);
+                        _day = null;
+                      }),
+                      onDay: (d) => setState(() => _day = (_day != null && _day == d) ? null : d),
+                    ),
+                    const SizedBox(height: 12),
+                    _MonthDonut(month: _month, events: month, diff: month.length - prevCount),
+                    const SizedBox(height: 12),
+                    WebCard(
+                      padding: EdgeInsets.zero,
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        _FilterBar(
+                          selected: _stage,
+                          stages: _filterStages,
+                          onSelected: (stage) => setState(() => _stage = stage),
+                        ),
+                        if (_day != null)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(18, 0, 10, 4),
+                            child: Row(children: [
+                              Text('${_day!.month}월 ${_day!.day}일만 보는 중',
+                                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                              const Spacer(),
+                              TextButton(
+                                  onPressed: () => setState(() => _day = null), child: const Text('전체 보기')),
+                            ]),
+                          ),
+                        const Divider(height: 1, thickness: 1, color: AppColors.line),
+                        if (shown.isEmpty)
+                          const _Hint(text: '이 조건의 경고가 없어요')
+                        else
+                          ..._byDay(shown, now),
+                      ]),
+                    ),
                   ]);
                 },
               ),
@@ -120,23 +177,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  // 최신순으로 정렬된 목록을 날짜가 바뀔 때마다 구분 줄을 끼워서 카드로 만든다
+  // 최신순으로 정렬된 목록을 날짜별로 묶어서 — 날짜 작은 제목 + 흰 카드 하나에 줄로 나눈 목록 (11/16 R안 · readdy)
   static List<Widget> _byDay(List<SleepEvent> sorted, DateTime now) {
-    final counts = <String, int>{};
+    final groups = <String, List<SleepEvent>>{};
     for (final e in sorted) {
-      counts.update(_dayKey(e.createdAt), (n) => n + 1, ifAbsent: () => 1);
+      groups.putIfAbsent(_dayKey(e.createdAt), () => []).add(e);
     }
+    // (11/17) 큰 카드 하나 안에 날짜 작은 제목 + 줄 목록
     final out = <Widget>[];
-    String? lastKey;
-    for (final e in sorted) {
-      final key = _dayKey(e.createdAt);
-      if (key != lastKey) {
-        out.add(
-          _DayHeader(label: _dayLabel(e.createdAt, now), count: counts[key]!),
-        );
-        lastKey = key;
+    for (final list in groups.values) {
+      out.add(_DayHeader(label: _dayLabel(list.first.createdAt, now), count: list.length));
+      for (var i = 0; i < list.length; i++) {
+        if (i > 0) out.add(const _Line());
+        out.add(_EventCard(event: list[i]));
       }
-      out.add(_EventCard(event: e));
     }
     return out;
   }
@@ -145,7 +199,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget _scroll(List<Widget> children) {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       children: children,
     );
   }
@@ -174,11 +228,134 @@ String _dayLabel(DateTime t, DateTime now) {
   return '$year${d.month}월 ${d.day}일 (${weekdays[d.weekday - 1]})';
 }
 
-// 목록 맨 위 남색 띠 (Figma 시안 '졸음운전 감지 앱3' 운행 기록, 11/12 — 예전 건수 요약 대신)
+/// 카드 안 줄 사이 얇은 선 — 좌우 같은 여백 (11/16 사용자 요청 12)
+class _Line extends StatelessWidget {
+  const _Line();
+  @override
+  Widget build(BuildContext context) => const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 18),
+        child: Divider(height: 1, thickness: 1, color: AppColors.line),
+      );
+}
+
+/// 달력 아이콘 모양 날짜 (11/16 사용자 요청 4) — 위 빨간 띠에 'n월', 아래 큰 날짜 숫자
+class _CalendarTile extends StatelessWidget {
+  final DateTime day;
+  const _CalendarTile({required this.day});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 46,
+      height: 50,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0x14000000)),
+      ),
+      child: Column(children: [
+        Container(
+          height: 15,
+          width: double.infinity,
+          color: const Color(0xFFFF3B30),
+          alignment: Alignment.center,
+          child: Text('${day.month}월',
+              style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Colors.white, height: 1)),
+        ),
+        Expanded(
+          child: Center(
+            child: Text('${day.day}',
+                style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w600, color: Color(0xFF1C1C1E), height: 1)),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+// 예전 목록 맨 위 '운행 요약' (11/16 R안 · 안 씀 — 11/17 달력 · 도넛으로 바뀜, 되돌릴 때 참고)
+// ignore: unused_element
 class _Summary extends StatelessWidget {
   final List<SleepEvent> events;
   final DateTime now;
   const _Summary({required this.events, required this.now});
+
+  static const _week = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = <String, List<SleepEvent>>{};
+    for (final e in [...events]..sort((a, b) => b.createdAt.compareTo(a.createdAt))) {
+      if (e.createdAt.year < 2000) continue;
+      groups.putIfAbsent(_dayKey(e.createdAt), () => []).add(e);
+    }
+    final days = groups.values.take(3).toList();
+    if (days.isEmpty) return const SizedBox.shrink();
+    Widget row(List<SleepEvent> list) {
+      final d = list.first.createdAt.toLocal();
+      final label = _dayLabel(d, now);
+      final title = _week[d.weekday - 1] + (label == '오늘' ? ' · 오늘' : label == '어제' ? ' · 어제' : '');
+      final counts = [for (var s = 1; s <= 3; s++) list.where((e) => e.stage == s).length];
+      final sub = [
+        for (var s = 1; s <= 3; s++)
+          if (counts[s - 1] > 0) '${SleepEvent.stageLabels[s]} ${counts[s - 1]}',
+      ].join(' · ');
+      final top = list.map((e) => e.stage).fold<int>(0, (a, b) => b > a ? b : a);
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Row(children: [
+          _CalendarTile(day: d),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              const SizedBox(height: 3),
+              Text(sub.isEmpty ? '경고 없음' : sub,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, color: AppColors.textMuted)),
+            ]),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(color: AppColors.stage(top), borderRadius: BorderRadius.circular(999)),
+            child: Text('경고 ${list.length}회',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.onStage(top))),
+          ),
+        ]),
+      );
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const _SmallTitle('운행 요약'),
+      Container(
+        decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(24)),
+        child: Column(children: [
+          for (var i = 0; i < days.length; i++) ...[if (i > 0) const _Line(), row(days[i])],
+        ]),
+      ),
+      const SizedBox(height: 8),
+      const _SmallTitle('경고 기록'),
+    ]);
+  }
+}
+
+class _SmallTitle extends StatelessWidget {
+  final String text;
+  const _SmallTitle(this.text);
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+        child: Text(text, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textMuted)),
+      );
+}
+
+// 예전 남색 띠 (안 씀 — 되돌릴 때 참고)
+// ignore: unused_element
+class _OldSummary extends StatelessWidget {
+  final List<SleepEvent> events;
+  final DateTime now;
+  const _OldSummary({required this.events, required this.now});
 
   @override
   Widget build(BuildContext context) {
@@ -191,15 +368,7 @@ class _Summary extends StatelessWidget {
       ),
       child: Row(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: Image.asset(
-              OwlSays.body(0),
-              width: 62,
-              height: 62,
-              fit: BoxFit.contain,
-            ),
-          ),
+          const ImageSlot(label: '캐릭터 이미지', width: 62, height: 62, radius: 14),
           const SizedBox(width: 10),
           const Expanded(
             child: Column(
@@ -236,17 +405,13 @@ class _DayHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 20, bottom: 9, left: 2),
+      padding: const EdgeInsets.only(top: 16, bottom: 4, left: 18),
       child: Semantics(
         header: true,
         label: '$label $count건',
         child: Text(
           label,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            color: AppColors.textPrimary,
-          ),
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
         ),
       ),
     );
@@ -263,51 +428,46 @@ class _FilterBar extends StatelessWidget {
     required this.onSelected,
   });
 
-  // 시안의 둥근 알약 버튼 (선택 = 남색 바탕 흰 글)
-  Widget _pill(String text, bool on, VoidCallback tap) => Padding(
-    padding: const EdgeInsets.only(right: 8),
-    child: Material(
-      color: on ? AppColors.navy : Colors.white,
-      shape: StadiumBorder(
-        side: BorderSide(color: on ? AppColors.navy : AppColors.cardBorder),
-      ),
-      child: InkWell(
-        customBorder: const StadiumBorder(),
+  // (11/17 관리자 웹) 연회색 칸 안의 알약 — 고른 것만 흰 바탕 + 그림자
+  Widget _pill(String text, bool on, VoidCallback tap) => GestureDetector(
         onTap: tap,
         child: Container(
-          height: 42,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          height: 34,
+          padding: const EdgeInsets.symmetric(horizontal: 13),
           alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: on ? AppColors.card : Colors.transparent,
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: on ? const [BoxShadow(color: Color(0x141F2A5C), blurRadius: 6, offset: Offset(0, 1))] : null,
+          ),
           child: Text(
             text,
             style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: on ? Colors.white : AppColors.textSecondary,
+              fontSize: 13,
+              fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+              color: on ? AppColors.textPrimary : AppColors.textSecondary,
             ),
           ),
         ),
-      ),
-    ),
-  );
+      );
 
   @override
   Widget build(BuildContext context) {
     return Align(
-      alignment: Alignment.centerLeft, // 시안처럼 왼쪽부터
+      alignment: Alignment.centerLeft,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(18, 7, 18, 15),
-        child: Row(
-          children: [
-            _pill('전체', selected == null, () => onSelected(null)),
-            for (final stage in stages)
-              _pill(
-                SleepEvent.stageLabels[stage],
-                selected == stage,
-                () => onSelected(stage),
-              ),
-          ],
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+        child: Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(color: AppColors.field, borderRadius: BorderRadius.circular(999)),
+          child: Row(
+            children: [
+              _pill('전체', selected == null, () => onSelected(null)),
+              for (final stage in stages)
+                _pill('$stage단계 | ${stageShortName(stage)}', selected == stage, () => onSelected(stage)),
+            ],
+          ),
         ),
       ),
     );
@@ -327,8 +487,41 @@ class _EventCard extends StatelessWidget {
     return '$ampm $h:${d.minute.toString().padLeft(2, '0')}';
   }
 
+  // (11/16 R안 · readdy) 카드 안 한 줄 — 왼쪽 단계 색 막대 · 이유 + 단계 표 · 시각(검정) · 오른쪽 동그란 꺾쇠
   @override
   Widget build(BuildContext context) {
+    // (11/17 관리자 웹 표 한 줄) 긴급은 왼쪽에 빨간 세로 선 · 이유 · 시각 · 오른쪽 단계 알약 + 꺾쇠
+    final s = event.stage.clamp(0, 3);
+    return InkWell(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => EventDetailScreen(event: event))),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(left: BorderSide(color: s >= 3 ? AppColors.urgent : Colors.transparent, width: 3)),
+        ),
+        padding: const EdgeInsets.fromLTRB(15, 13, 12, 13),
+        child: Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(event.reasonLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              const SizedBox(height: 2),
+              Text(_time(event.createdAt), style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
+            ]),
+          ),
+          const SizedBox(width: 8),
+          StageBadge(stage: s),
+          const SizedBox(width: 4),
+          const Icon(Icons.chevron_right_rounded, size: 20, color: AppColors.textMuted),
+        ]),
+      ),
+    );
+  }
+
+  // 예전 흰 카드 (안 씀 — 되돌릴 때 참고)
+  // ignore: unused_element
+  Widget _old(BuildContext context) {
     final s = event.stage.clamp(0, 3);
     final c = AppColors.stage(s);
     return Padding(
@@ -458,4 +651,239 @@ class _Hint extends StatelessWidget {
       ),
     );
   }
+}
+
+/// (11/17 관리자 웹) 한 달 달력 — 경고가 있던 날 아래에 단계 색 점, 누르면 그날만 보기 (다시 누르면 풀림)
+class _MonthCalendar extends StatelessWidget {
+  final DateTime month; // 그 달 1일
+  final List<SleepEvent> events; // 그 달 경고
+  final DateTime? selected;
+  final bool canNext;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+  final ValueChanged<DateTime> onDay;
+  const _MonthCalendar({
+    required this.month,
+    required this.events,
+    required this.selected,
+    required this.canNext,
+    required this.onPrev,
+    required this.onNext,
+    required this.onDay,
+  });
+
+  static const _weekNames = ['일', '월', '화', '수', '목', '금', '토'];
+
+  @override
+  Widget build(BuildContext context) {
+    // 날짜별로 있었던 단계들 (점 색)
+    final stagesByDay = <int, Set<int>>{};
+    for (final e in events) {
+      final d = e.createdAt.toLocal();
+      stagesByDay.putIfAbsent(d.day, () => <int>{}).add(e.stage.clamp(1, 3));
+    }
+    final now = DateTime.now();
+    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+    final lead = DateTime(month.year, month.month, 1).weekday % 7; // 일요일 = 0
+    final cells = <Widget>[
+      for (var i = 0; i < lead; i++) const SizedBox.shrink(),
+      for (var day = 1; day <= daysInMonth; day++) _dayCell(DateTime(month.year, month.month, day), stagesByDay[day], now),
+    ];
+
+    return WebCard(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          const SizedBox(width: 4),
+          Text('${month.year}년 ${month.month}월',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          const SizedBox(width: 6),
+          Text('경고 ${events.length}건', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+          const Spacer(),
+          IconButton(onPressed: onPrev, icon: const Icon(Icons.chevron_left, size: 22), tooltip: '이전 달'),
+          IconButton(
+              onPressed: canNext ? onNext : null, icon: const Icon(Icons.chevron_right, size: 22), tooltip: '다음 달'),
+        ]),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.fromLTRB(6, 10, 6, 6),
+          decoration: BoxDecoration(color: AppColors.field, borderRadius: BorderRadius.circular(16)),
+          child: Column(children: [
+            Row(children: [
+              for (final w in _weekNames)
+                Expanded(
+                  child: Center(
+                      child: Text(w, style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted))),
+                ),
+            ]),
+            const SizedBox(height: 6),
+            GridView.count(
+              crossAxisCount: 7,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              childAspectRatio: 1.05,
+              children: cells,
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  Widget _dayCell(DateTime day, Set<int>? stages, DateTime now) {
+    final future = day.isAfter(DateTime(now.year, now.month, now.day));
+    final isSelected = selected != null && selected == day;
+    final isToday = day.year == now.year && day.month == now.month && day.day == now.day;
+    final dots = (stages?.toList() ?? <int>[])..sort();
+    return GestureDetector(
+      onTap: future ? null : () => onDay(day),
+      child: Container(
+        margin: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.card : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: isSelected ? const [BoxShadow(color: Color(0x141F2A5C), blurRadius: 6, offset: Offset(0, 1))] : null,
+        ),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Text('${day.day}',
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: isToday || isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: future ? const Color(0xFFBFC3CE) : (isToday ? AppColors.navy : AppColors.textPrimary),
+              )),
+          const SizedBox(height: 3),
+          SizedBox(
+            height: 5,
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              for (final s in dots)
+                Container(
+                  width: 5,
+                  height: 5,
+                  margin: const EdgeInsets.symmetric(horizontal: 1),
+                  decoration: BoxDecoration(color: AppColors.stage(s), shape: BoxShape.circle),
+                ),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// (11/17 관리자 웹) 그 달 전체 — 도넛 그래프(가운데 총 건수) + 1 · 2 · 3단계 칸(건수 · %)
+class _MonthDonut extends StatelessWidget {
+  final DateTime month;
+  final List<SleepEvent> events;
+  final int diff; // 지난달보다 몇 건 많은지 (음수면 적음)
+  const _MonthDonut({required this.month, required this.events, required this.diff});
+
+  @override
+  Widget build(BuildContext context) {
+    final counts = [for (var s = 1; s <= 3; s++) events.where((e) => e.stage.clamp(1, 3) == s).length];
+    final total = events.length;
+    String pct(int n) => total == 0 ? '0%' : '${(n * 100 / total).round()}%';
+    return WebCard(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Text('${month.month}월 전체',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          const Spacer(),
+          if (diff != 0)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                  color: diff > 0 ? AppColors.stageTint(3) : AppColors.stageTint(0),
+                  borderRadius: BorderRadius.circular(999)),
+              child: Text('지난달보다 ${diff > 0 ? '+' : ''}$diff건',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: diff > 0 ? AppColors.stageInk(3) : AppColors.stageInk(0))),
+            ),
+        ]),
+        const SizedBox(height: 16),
+        Center(
+          child: SizedBox(
+            width: 150,
+            height: 150,
+            child: CustomPaint(
+              painter: _DonutPainter(counts),
+              child: Center(
+                child: Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic, children: [
+                  Text('$total',
+                      style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                  const SizedBox(width: 2),
+                  const Text('건', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                ]),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(children: [
+          for (var s = 1; s <= 3; s++) ...[
+            if (s > 1) const SizedBox(width: 8),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
+                decoration: BoxDecoration(color: AppColors.stageTint(s), borderRadius: BorderRadius.circular(14)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('$s단계 | ${stageShortName(s)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11, color: AppColors.stageInk(s))),
+                  const SizedBox(height: 6),
+                  Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+                    Text('${counts[s - 1]}',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.stageInk(s))),
+                    const SizedBox(width: 2),
+                    Text('건', style: TextStyle(fontSize: 11, color: AppColors.stageInk(s))),
+                  ]),
+                  const SizedBox(height: 2),
+                  Text(pct(counts[s - 1]), style: TextStyle(fontSize: 11, color: AppColors.stageInk(s))),
+                ]),
+              ),
+            ),
+          ],
+        ]),
+      ]),
+    );
+  }
+}
+
+class _DonutPainter extends CustomPainter {
+  final List<int> counts; // 1 · 2 · 3단계
+  _DonutPainter(this.counts);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 16.0;
+    final rect = Offset.zero & size;
+    final arcRect = rect.deflate(stroke / 2);
+    final total = counts.fold<int>(0, (a, b) => a + b);
+    final base = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..color = AppColors.field;
+    canvas.drawArc(arcRect, 0, 6.283185, false, base);
+    if (total == 0) return;
+    const gap = 0.04; // 조각 사이 틈
+    var start = -1.5708; // 12시 방향부터
+    for (var i = 0; i < 3; i++) {
+      if (counts[i] == 0) continue;
+      final sweep = 6.283185 * counts[i] / total;
+      final p = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..color = AppColors.stage(i + 1);
+      final hasGap = counts.where((c) => c > 0).length > 1;
+      canvas.drawArc(arcRect, start + (hasGap ? gap / 2 : 0), sweep - (hasGap ? gap : 0), false, p);
+      start += sweep;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DonutPainter old) => old.counts.join(',') != counts.join(',');
 }

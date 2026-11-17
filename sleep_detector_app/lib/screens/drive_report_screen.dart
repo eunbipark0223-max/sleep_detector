@@ -10,7 +10,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
-import '../widgets/owl_says.dart';
+import '../widgets/web_ui.dart';
 
 class DriveReportScreen extends StatelessWidget {
   final Map<String, dynamic> report;
@@ -99,7 +99,7 @@ class DriveReportScreen extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            Image.asset(OwlSays.face(top), width: 68, height: 68),
+                            const ImageSlot(label: '캐릭터 이미지', width: 68, height: 68),
                           ],
                         ),
                       ],

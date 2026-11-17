@@ -36,6 +36,11 @@ import 'package:http_parser/http_parser.dart';
 import '../config.dart';
 
 /// 화면에 그대로 보여 줘도 되는 오류 글을 담는다.
+/// (11/17) 구글 계정 고르기 창을 닫음 — 오류가 아니라서 화면에 아무 말도 하지 않는다
+class GoogleCanceled implements Exception {
+  const GoogleCanceled();
+}
+
 class AuthException implements Exception {
   final String message;
   final int? statusCode;
@@ -82,6 +87,12 @@ class AuthService {
 
   static Future<void> clearEyeThreshold() => _storage.delete(key: _eyeThresholdKey);
 
+  // (11/17 C) 알림 화면을 마지막으로 본 시각 — 그 뒤에 생긴 경고만 '새 알림' (빨간 점 · 숫자)
+  static const String _noticeSeenKey = 'notice_seen_at';
+  static Future<DateTime?> getNoticeSeenAt() async =>
+      DateTime.tryParse(await _storage.read(key: _noticeSeenKey) ?? '');
+  static Future<void> saveNoticeSeenAt(DateTime t) => _storage.write(key: _noticeSeenKey, value: t.toIso8601String());
+
   /// 로그인이 필요한 요청에 붙일 헤더 (토큰이 없으면 Authorization 없이)
   static Future<Map<String, String>> authHeaders() async {
     final token = await getToken();
@@ -102,6 +113,9 @@ class AuthService {
     String? phone,
     String? vehicleNo,
     bool privacyAgreed = false,
+    String? empNo, // (11/17 C) 사번 — 보내면 phoneToken 도 꼭 (서버가 전화 인증을 확인)
+    String? phoneToken,
+    String? emailToken, // (11/17 C) 이메일 인증 표 — empNo 를 보내면 꼭
   }) async {
     final res = await _send(() => http.post(_uri('/users/signup'), headers: _json, body: jsonEncode({
       'email': email,
@@ -110,9 +124,50 @@ class AuthService {
       'phone': ?phone,
       'vehicle_no': ?vehicleNo,
       'privacy_agreed': privacyAgreed,
+      'emp_no': ?empNo,
+      'phone_token': ?phoneToken,
+      'email_token': ?emailToken,
     })));
     if (res.statusCode != 201 && res.statusCode != 200) throw _error(res);
     return _decode(res);
+  }
+
+  /// (11/17 C) 회원가입 1단계 — 사번이 회사 명단에 있고 아직 가입 안 했는지. 맞으면 서버가 정리한 사번을 돌려준다
+  static Future<String> checkEmployee(String empNo) async {
+    final res = await _send(() => http.post(_uri('/users/employee/check'), headers: _json, body: jsonEncode({'emp_no': empNo})));
+    if (res.statusCode != 200) throw _error(res);
+    return (_decode(res)['emp_no'] ?? empNo).toString();
+  }
+
+  /// (11/17 C) 전화번호 인증번호 받기. 시연용 서버는 문자 대신 번호를 돌려준다 (진짜 문자를 보내면 null)
+  static Future<String?> sendPhoneCode(String phone) async {
+    final res = await _send(() => http.post(_uri('/users/phone/send'), headers: _json, body: jsonEncode({'phone': phone})));
+    if (res.statusCode != 200) throw _error(res);
+    final code = _decode(res)['demo_code'];
+    return code?.toString();
+  }
+
+  /// (11/17 C) 이메일 인증번호 받기. 시연용 서버는 메일 대신 번호를 돌려준다
+  static Future<String?> sendEmailCode(String email) async {
+    final res = await _send(() => http.post(_uri('/users/email/send'), headers: _json, body: jsonEncode({'email': email})));
+    if (res.statusCode != 200) throw _error(res);
+    return _decode(res)['demo_code']?.toString();
+  }
+
+  /// (11/17 C) 이메일 인증번호 확인 — 맞으면 가입할 때 같이 보낼 인증 표(email_token)
+  static Future<String> verifyEmailCode(String email, String code) async {
+    final res = await _send(
+        () => http.post(_uri('/users/email/verify'), headers: _json, body: jsonEncode({'email': email, 'code': code})));
+    if (res.statusCode != 200) throw _error(res);
+    return _decode(res)['email_token'].toString();
+  }
+
+  /// (11/17 C) 인증번호 확인 — 맞으면 가입할 때 같이 보낼 인증 표(phone_token)
+  static Future<String> verifyPhoneCode(String phone, String code) async {
+    final res = await _send(
+        () => http.post(_uri('/users/phone/verify'), headers: _json, body: jsonEncode({'phone': phone, 'code': code})));
+    if (res.statusCode != 200) throw _error(res);
+    return _decode(res)['phone_token'].toString();
   }
 
   /// 이메일 로그인. 성공하면 토큰을 저장하고 사용자 정보(id · email · name · role)를 돌려준다.
@@ -134,13 +189,14 @@ class AuthService {
       final credential = GoogleAuthProvider.credential(idToken: account.authentication.idToken);
       final result = await FirebaseAuth.instance.signInWithCredential(credential);
       final user = result.user;
-      if (user == null || user.email == null) throw const AuthException('구글 계정 정보를 가져오지 못했습니다');
+      if (user == null || user.email == null) throw const AuthException('구글 계정 정보를 가져오지 못했어요');
       firebaseUser = user;
     } on GoogleSignInException catch (e) {
-      if (e.code == GoogleSignInExceptionCode.canceled) throw const AuthException('구글 로그인이 취소되었습니다');
-      throw AuthException('구글 로그인에 실패했습니다 (${e.code.name})');
+      // (11/17) 기사님이 계정 고르기 창을 닫은 것 → 화면에 문구 없이 그냥 로그인 화면 그대로 (GoogleCanceled)
+      if (e.code == GoogleSignInExceptionCode.canceled) throw const GoogleCanceled();
+      throw AuthException('구글 로그인에 실패했어요 (${e.code.name})');
     } on FirebaseAuthException catch (e) {
-      throw AuthException('구글 로그인에 실패했습니다 (${e.code})');
+      throw AuthException('구글 로그인에 실패했어요 (${e.code})');
     }
 
     final email = firebaseUser.email!;
@@ -233,6 +289,9 @@ class AuthService {
       await clearEyeThreshold();
     } catch (_) {}
     try {
+      await _storage.delete(key: _noticeSeenKey); // (11/17) 다른 계정으로 들어오면 알림을 처음부터 '안 읽음' 으로
+    } catch (_) {}
+    try {
       await FirebaseAuth.instance.signOut();
     } catch (_) {}
     try {
@@ -249,9 +308,9 @@ class AuthService {
     try {
       return await request().timeout(_timeout);
     } on TimeoutException {
-      throw const AuthException('서버 응답이 없습니다. 잠시 뒤 다시 시도해 주세요');
+      throw const AuthException('서버 응답이 없어요. 잠시 뒤 다시 시도해 주세요');
     } catch (_) {
-      throw const AuthException('서버에 연결할 수 없습니다. 네트워크와 서버 주소를 확인해 주세요');
+      throw const AuthException('서버에 연결할 수 없어요. 네트워크와 서버 주소를 확인해 주세요');
     }
   }
 
@@ -263,7 +322,7 @@ class AuthService {
 
   static Future<Map<String, dynamic>> _saveLogin(Map<String, dynamic> data) async {
     final token = data['access_token'];
-    if (token is! String || token.isEmpty) throw const AuthException('로그인 응답에 토큰이 없습니다');
+    if (token is! String || token.isEmpty) throw const AuthException('로그인 응답에 토큰이 없어요');
     await saveToken(token);
     final user = data['user'];
     return user is Map ? Map<String, dynamic>.from(user) : <String, dynamic>{};
@@ -285,6 +344,6 @@ class AuthService {
         if (lines.isNotEmpty) message = lines.join('\n');
       }
     } catch (_) {}
-    return AuthException(message ?? '요청에 실패했습니다 (${res.statusCode})', res.statusCode);
+    return AuthException(message ?? '요청에 실패했어요 (${res.statusCode})', res.statusCode);
   }
 }

@@ -16,16 +16,22 @@
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../theme.dart';
+import '../widgets/chatbot_icon.dart';
 import '../widgets/contact_dialog.dart';
+import '../widgets/web_ui.dart';
 import 'chat_screen.dart';
 import 'history_screen.dart';
 import 'home_screen.dart';
 import 'login_screen.dart';
 import 'map_screen.dart';
+import 'notice_screen.dart';
 import 'guide_screen.dart';
 import 'profile_screen.dart';
 import 'upload_screen.dart';
@@ -41,19 +47,29 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  static const List<String> _titles = ['홈', '운행 기록', '가까운 졸음쉼터', '규정 도우미'];
+  static const List<String> _titles = ['홈', '운행 기록', '가까운 졸음쉼터', 'MY'];
   static const int _mapTab = 2; // 지도 화면은 제목줄이 따로 있음 → 이 탭에서는 위 제목줄을 숨김
+  static const int _myTab = 3; // (11/17) 아래 탭 MY — 내 정보 · 사용 가이드 · 로그아웃 (예전 ≡ 메뉴)
 
   int _index = 0;
   String _callName = '기사님'; // (11/16 팀장) 홈 인사에 이름 — 음성 · 리포트와 같은 부르는 말
-  String _email = ''; // 오른쪽 메뉴 머리에 보임
-  final GlobalKey<ScaffoldState> _scaffoldKey =
-      GlobalKey<ScaffoldState>(); // ≡ 버튼 → 오른쪽 메뉴 열기
+  String _email = ''; // MY 탭 프로필 카드에 보임
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _requireContact());
+    _loadUnread(); // 알림 종 빨간 숫자
+    // (11/17) 안 읽은 알림 숫자를 30초마다 다시 센다 (운행 중 생긴 경고 · 관리자 처리도 바로 반영)
+    _unreadTimer = Timer.periodic(const Duration(seconds: 30), (_) => _loadUnread());
+  }
+
+  Timer? _unreadTimer;
+
+  @override
+  void dispose() {
+    _unreadTimer?.cancel();
+    super.dispose();
   }
 
   void _setName(Map<String, dynamic>? user) {
@@ -119,11 +135,71 @@ class _MainScreenState extends State<MainScreen> {
         ); // [전체 보기] → 운행 기록 탭
       case 1:
         return const HistoryScreen();
-      case _mapTab:
-        return const MapScreen();
       default:
-        return const ChatScreen();
+        return const MapScreen();
     }
+  }
+
+  // (11/17 사용자 요청) 규정 도우미 = 홈 오른쪽 위 로봇 버튼 → 새 화면 (아래 탭에서는 뺌)
+  Future<void> _openChat() => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(
+            title: const Text('규정 도우미'),
+            centerTitle: true,
+            bottom: const PreferredSize(
+              preferredSize: Size.fromHeight(1),
+              child: Divider(height: 1, thickness: 1, color: AppColors.line),
+            ),
+          ),
+          body: const ChatScreen(),
+        ),
+      ));
+
+  // (11/17 사용자 요청) 알림 = 홈 오른쪽 위 종 버튼. 빨간 숫자 = 알림 화면을 마지막으로 본 뒤 생긴 경고 수
+  int _unread = 0;
+
+  Future<void> _loadUnread() async {
+    try {
+      final seen = await AuthService.getNoticeSeenAt();
+      final events = await ApiService.fetchMyEvents();
+      final n = events.where((e) => seen == null || e.createdAt.isAfter(seen)).length;
+      if (mounted && n != _unread) setState(() => _unread = n);
+    } catch (_) {} // 서버 연결이 안 되면 숫자 없이
+  }
+
+  Future<void> _openNotice() async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NoticeScreen()));
+    _loadUnread();
+  }
+
+  // 머리줄 오른쪽 둥근 아이콘 버튼 (빨간 숫자 배지 선택)
+  Widget _barIcon(IconData icon, String tip, VoidCallback onTap, {int badge = 0, Widget? child}) {
+    return Stack(clipBehavior: Clip.none, children: [
+      IconButton(
+        tooltip: tip,
+        onPressed: onTap,
+        icon: child ?? Icon(icon, size: 26, color: AppColors.textPrimary),
+        style: IconButton.styleFrom(minimumSize: const Size(44, 44)),
+      ),
+      if (badge > 0)
+        Positioned(
+          right: 4,
+          top: 4,
+          child: Container(
+            constraints: const BoxConstraints(minWidth: 18),
+            height: 18,
+            padding: const EdgeInsets.symmetric(horizontal: 5),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.urgent,
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: AppColors.background, width: 1.5),
+            ),
+            child: Text(badge > 99 ? '99+' : '$badge',
+                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.white, height: 1)),
+          ),
+        ),
+    ]);
   }
 
   Future<void> _onMenu(String value) async {
@@ -177,197 +253,132 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  // 홈 탭 제목줄 (Figma 시안 '졸음운전 감지 앱2' — 디자인만, 메뉴 동작은 _onMenu 그대로)
+  // 제목줄 (11/16 R안 · readdy) — 홈은 제목 없이 오른쪽 ≡ 만 (위 로고 · 앱 이름 · 인사 없음),
+  //   운행 기록 · 규정 도우미는 왼쪽 큰 제목 (애플 큰 제목)
   PreferredSizeWidget _homeBar([String? title]) {
-    title ??= '안녕하세요, $_callName';
     return AppBar(
-      toolbarHeight: 66,
-      backgroundColor: const Color(0xFFF8F9FC),
-      surfaceTintColor: const Color(0xFFF8F9FC),
-      foregroundColor: AppColors.textPrimary,
+      toolbarHeight: 68,
+      backgroundColor: AppColors.background,
+      surfaceTintColor: Colors.transparent,
       elevation: 0,
-      titleSpacing: 18,
+      titleSpacing: 20,
       centerTitle: false,
-      title: Text(
-        title, // 왼쪽 위 로고는 뺌 (11/12 팀장)
-        style: const TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -0.5,
-          color: AppColors.textPrimary,
-        ),
+      // (11/17 사용자 요청) 홈 머리줄은 로고 자리만 ('졸음가드' · LIVE 글자 없음)
+      title: title == null
+          ? const Align(alignment: Alignment.centerLeft, child: ImageSlot.logo(size: 32))
+          : Text(
+              title,
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.8,
+                color: AppColors.textPrimary,
+              ),
+            ),
+      // (11/17 사용자 요청) ≡ 버튼 없음 — 메뉴는 아래 탭 [MY] 로. 홈은 오른쪽 위에 [규정 도우미 로봇] [알림 종]
+      actions: title == null
+          ? [
+              // 로봇 ↔ '입력 중…' 말풍선을 번갈아 (챗봇이 말을 거는 느낌)
+              _barIcon(Icons.smart_toy_outlined, '규정 도우미', _openChat, child: const ChatbotIcon()),
+              _barIcon(Icons.notifications_none_rounded, '알림', _openNotice, badge: _unread),
+              const SizedBox(width: 10),
+            ]
+          : null,
+      // 머리줄 아래 얇은 선 (관리자 웹)
+      bottom: const PreferredSize(
+        preferredSize: Size.fromHeight(1),
+        child: Divider(height: 1, thickness: 1, color: AppColors.line),
       ),
-      actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: 18),
-          child: _menuButton(),
-        ),
+    );
+  }
+
+  // ── MY 탭 (11/17 사용자 요청 — ≡ 메뉴 대신, 다른 앱의 아래 'MY' 탭처럼) ─────────────
+  //   애플 설정 화면처럼 흰 카드 묶음: [내 프로필 카드] · [사용 가이드] · [로그아웃]
+  Widget _myPage() {
+    final initial = _callName == '기사님' ? '기' : _callName.characters.first;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      children: [
+        // 내 프로필 — 누르면 내 정보 화면
+        _myGroup([
+          _myRow(
+            onTap: () => _onMenu('profile'),
+            leading: Container(
+              width: 52,
+              height: 52,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: AppColors.navy.withValues(alpha: 0.08), shape: BoxShape.circle),
+              child: Text(initial, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.navy)),
+            ),
+            title: _callName,
+            sub: _email.isEmpty ? '내 정보 보기' : _email,
+            height: 84,
+          ),
+        ]),
+        const SizedBox(height: 14),
+        _myGroup([
+          _myRow(onTap: () => _onMenu('profile'), icon: Icons.person_rounded, title: '내 정보'),
+          _myRow(onTap: () => _onMenu('guide'), icon: Icons.menu_book_rounded, title: '사용 가이드'),
+          if (_showDevTools) _myRow(onTap: () => _onMenu('photo'), icon: Icons.photo_camera_rounded, title: '사진 1장 테스트'),
+        ]),
+        const SizedBox(height: 14),
+        _myGroup([
+          _myRow(onTap: () => _onMenu('logout'), icon: Icons.logout_rounded, title: '로그아웃', color: AppColors.danger, chevron: false),
+        ]),
       ],
     );
   }
 
-  // ≡ 버튼 (흰 네모) — 누르면 오른쪽 메뉴
-  Widget _menuButton() {
-    return Semantics(
-      label: '메뉴',
-      button: true,
-      child: Material(
-        color: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: const BorderSide(color: AppColors.cardBorder),
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: () => _scaffoldKey.currentState?.openEndDrawer(),
-          child: const SizedBox(
-            width: 46,
-            height: 46,
-            child: Icon(Icons.menu, color: AppColors.navy),
-          ),
-        ),
-      ),
-    );
-  }
+  // 흰 카드 하나에 줄 여러 개 — 줄 사이 얇은 선 (아이콘 뒤부터)
+  Widget _myGroup(List<Widget> rows) => WebCard(
+        padding: EdgeInsets.zero,
+        child: Column(children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) const Divider(height: 1, thickness: 1, indent: 56, color: AppColors.line),
+            rows[i],
+          ],
+        ]),
+      );
 
-  // 메뉴 한 줄 — 누르면 메뉴를 닫고 해당 화면으로
-  Widget _menuItem(String value, IconData icon, String text) {
-    return ListTile(
-      // (11/16) 메뉴 폭을 줄여서 여백 · 간격도 줄임 — '앱 사용 가이드' 가 한 줄에 들어가게
-      contentPadding: const EdgeInsets.only(left: 16, right: 8, top: 2, bottom: 2),
-      horizontalTitleGap: 12,
-      leading: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: const Color(0xFFEDF0F8),
-          borderRadius: BorderRadius.circular(12),
+  // MY 한 줄 — 모든 줄 같은 높이(56) · 같은 아이콘(22) · 같은 글자(15.5)
+  Widget _myRow({
+    required VoidCallback onTap,
+    required String title,
+    IconData? icon,
+    Widget? leading,
+    String? sub,
+    Color? color,
+    bool chevron = true,
+    double height = 56,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: SizedBox(
+        height: height,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          child: Row(children: [
+            leading ?? Icon(icon, size: 22, color: color ?? AppColors.textSecondary),
+            SizedBox(width: leading != null ? 14 : 16),
+            Expanded(
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: sub != null ? 17 : 15.5,
+                        fontWeight: sub != null ? FontWeight.w600 : FontWeight.w500,
+                        color: color ?? AppColors.textPrimary)),
+                if (sub != null) ...[
+                  const SizedBox(height: 2),
+                  Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: AppColors.textMuted)),
+                ],
+              ]),
+            ),
+            if (chevron) const Icon(Icons.chevron_right_rounded, size: 22, color: AppColors.textMuted),
+          ]),
         ),
-        child: Icon(icon, size: 22, color: AppColors.navy),
-      ),
-      title: Text(
-        text,
-        maxLines: 1,
-        softWrap: false,
-        overflow: TextOverflow.fade,
-        style: const TextStyle(
-          fontSize: 17,
-          fontWeight: FontWeight.w700,
-          color: AppColors.textPrimary,
-        ),
-      ),
-      trailing: const Icon(Icons.chevron_right, size: 20, color: AppColors.textMuted),
-      onTap: () {
-        Navigator.of(context).pop(); // 메뉴 닫기
-        _onMenu(value);
-      },
-    );
-  }
-
-  // 오른쪽 메뉴 — 위: 남색 머리(이름 · 이메일), 가운데: 메뉴, 맨 아래: 로그아웃
-  Widget _menuDrawer() {
-    final initial = _callName == '기사님' ? '기' : _callName.characters.first;
-    return Drawer(
-      backgroundColor: const Color(0xFFF8F9FC),
-      width: MediaQuery.of(context).size.width * 0.58, // (11/16) 화면 절반 조금 넘게 — 뒤 홈이 보이게
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.horizontal(left: Radius.circular(24)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: EdgeInsets.fromLTRB(
-              22,
-              MediaQuery.of(context).padding.top + 24,
-              22,
-              22,
-            ),
-            decoration: const BoxDecoration(
-              color: AppColors.navy,
-              borderRadius: BorderRadius.only(topLeft: Radius.circular(24)),
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 28,
-                  backgroundColor: Colors.white,
-                  child: Text(
-                    initial,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.navy,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _callName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                        ),
-                      ),
-                      if (_email.isNotEmpty) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          _email,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFFBEC8E9),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          _menuItem('profile', Icons.person_outline, '내 정보'),
-          _menuItem('guide', Icons.menu_book_outlined, '앱 사용 가이드'),
-          if (_showDevTools)
-            _menuItem(
-              'photo',
-              Icons.photo_camera_outlined,
-              '사진 1장 테스트',
-            ), // 개발용 (기본 숨김)
-          const Spacer(),
-          const Divider(height: 1, color: AppColors.cardBorder),
-          SafeArea(
-            top: false,
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 22,
-                vertical: 6,
-              ),
-              leading: const Icon(Icons.logout, color: AppColors.danger),
-              title: const Text(
-                '로그아웃',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.danger,
-                ),
-              ),
-              onTap: () {
-                Navigator.of(context).pop();
-                _onMenu('logout');
-              },
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -375,47 +386,72 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      key: _scaffoldKey,
-      endDrawer: _menuDrawer(), // (11/16 팀장) ≡ 를 누르면 오른쪽에서 세로 전체로 미끄러져 나오는 메뉴
       appBar: _index == _mapTab
           ? null
           : _index == 0
-          ? _homeBar()
-          : _index == 1
-          ? _homeBar('운행 기록')
-          : _index == 3
-          ? _homeBar('규정 도우미')
-          : AppBar(
-              title: Text(_titles[_index]),
-              actions: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: _menuButton(),
+          ? _homeBar() // 홈은 로고 자리만
+          : _homeBar(_titles[_index]), // 운행 기록 · 규정 도우미 · MY = 왼쪽 큰 제목
+      body: _index == _myTab ? _myPage() : _page(_index),
+      bottomNavigationBar: _TabBar(
+        index: _index,
+        onTap: (i) {
+          setState(() => _index = i);
+          if (i == 0) _loadUnread(); // 홈으로 돌아오면 알림 숫자 다시
+        },
+      ),
+    );
+  }
+}
+
+/// 하단 탭 (11/16 R안 · readdy) — 꽉 찬 흰 바탕(투명 X, 사용자 요청 5) · 위 얇은 선 · 아이콘 + 작은 글자, 고른 탭만 남색
+class _TabBar extends StatelessWidget {
+  final int index;
+  final ValueChanged<int> onTap;
+  const _TabBar({required this.index, required this.onTap});
+
+  static const _items = [
+    (Icons.home_outlined, Icons.home_rounded, '홈'),
+    (Icons.article_outlined, Icons.article_rounded, '운행 기록'),
+    (Icons.location_on_outlined, Icons.location_on_rounded, '졸음쉼터'), // (11/16) 쉼터 = 위치 마커
+    (Icons.person_outline_rounded, Icons.person_rounded, 'MY'), // (11/17) ≡ 메뉴 대신
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.card,
+        border: Border(top: BorderSide(color: AppColors.fill)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 62,
+          child: Row(
+            children: [
+              for (var i = 0; i < _items.length; i++)
+                Expanded(
+                  child: InkWell(
+                    onTap: () => onTap(i),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(i == index ? _items[i].$2 : _items[i].$1,
+                            size: 26, color: i == index ? AppColors.navy : AppColors.textMuted),
+                        const SizedBox(height: 3),
+                        Text(_items[i].$3,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: i == index ? FontWeight.w600 : FontWeight.w500,
+                              color: i == index ? AppColors.navy : AppColors.textMuted,
+                            )),
+                      ],
+                    ),
+                  ),
                 ),
-              ],
-            ),
-      body: _page(_index),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: '홈',
+            ],
           ),
-          NavigationDestination(icon: Icon(Icons.history), label: '운행 기록'),
-          NavigationDestination(
-            icon: Icon(Icons.location_on_outlined), // (11/16) 쉼터 = 위치 마커
-            selectedIcon: Icon(Icons.location_on),
-            label: '가까운 졸음쉼터',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline),
-            selectedIcon: Icon(Icons.chat_bubble),
-            label: '규정 도우미',
-          ),
-        ],
+        ),
       ),
     );
   }

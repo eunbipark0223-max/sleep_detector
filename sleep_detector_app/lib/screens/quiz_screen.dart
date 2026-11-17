@@ -116,7 +116,7 @@ class _QuizScreenState extends State<QuizScreen> {
 
   // ── 화면 (11/16 Figma 시안 '졸음운전 감지 앱5' 음성 퀴즈 — 디자인만. 읽기 · 듣기 · 채점 흐름은 위 그대로) ──
   // (11/16 팀장) 운전 중에 뜨는 화면이라 운행 · 경고 화면과 같은 남색 (밤에 흰 화면이 눈부시지 않게)
-  static const Color _bg = AppColors.navy;
+  static const Color _bg = AppColors.navyDeep; // (11/17 R안 · readdy 퀴즈) 진한 남색
   static const Color _sub = Color(0xFFBEC8E9);
 
   String get _typeLabel => switch (_quiz.type) {

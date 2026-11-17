@@ -25,7 +25,7 @@ import '../models/sleep_event.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../theme.dart';
-import '../widgets/owl_says.dart';
+import '../widgets/web_ui.dart';
 import '../widgets/home_ui.dart';
 import 'calibration_screen.dart';
 import 'drive_screen.dart';
@@ -67,7 +67,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static const int _recentCount = 3;
+  static const int _tabCount = 5; // 숫자 칸 아래 목록에 보이는 최대 줄 수
+  int _tab = 0; // 0 오늘 경고 · 1 이번 주 · 2 긴급
 
   // (11/16 팀장) 홈의 '출발 준비 (카메라 · 음성 안내)' 줄은 뺐다 — 권한은 [운행 시작] 때 안내창 → 휴대폰 권한 창으로 받음
 
@@ -225,78 +226,40 @@ class _HomeScreenState extends State<HomeScreen> {
       onRefresh: () async => _reload(),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(18, 4, 18, 18),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
         children: [
-          // 지금 상태 카드 (남색) + [운행 시작]
+          // 지금 상태 카드 (11/16 R안 · readdy 흰 카드) + 운행 요약 숫자 + 버튼
           FutureBuilder<DriveState?>(
             future: _driveState,
             builder: (context, drive) => FutureBuilder<List<SleepEvent>?>(
               future: _recent,
-              builder: (context, snapshot) => Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  HomeStateCard(
-                    // (11/16 팀장) 서버가 아는 단계를 먼저 — 아래 [이어서 운행]과 같은 답이라 어긋나지 않음.
-                    //   서버에 못 물어봤을 때(연결 끊김)만 경고 기록으로 가늠 (currentStage)
-                    stage: drive.data?.stage ?? currentStage(snapshot.data),
-                    onStart: _startDrive,
-                    // (11/16 팀장) 진행 중인 운행(2 · 3단계 · 휴식 중 · 방금까지 운행)이 있으면 [운행 시작] 자리에
-                    //   '진행 중인 운행이 있어요' + [이어서 운행] (위에 따로 있던 배너를 카드 안으로 옮김)
-                    resume: (drive.data?.active ?? false)
-                        ? _ResumeInCard(
-                            state: drive.data!,
-                            onResume: () => _resumeDrive(drive.data!),
-                          )
-                        : null,
-                  ),
-                  // (11/16 팀장) 진행 중인 운행이 있을 때 새 운행은 카드 아래 회색 글씨로 (주 버튼은 카드 안 [이어서 운행])
-                  if (drive.data?.active ?? false)
-                    Center(
-                      child: TextButton(
-                        onPressed: _startDrive,
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppColors.textMuted,
-                          minimumSize: const Size(0, 44),
-                          textStyle: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        child: const Text('새로운 운행 시작 ›'),
-                      ),
-                    ),
-                ],
-              ),
+              builder: (context, snapshot) {
+                final st = drive.data;
+                final active = st?.active ?? false;
+                return HomeStateCard(
+                  // (11/16 팀장) 서버가 아는 단계를 먼저 — 아래 [이어서 운행]과 같은 답이라 어긋나지 않음.
+                  //   서버에 못 물어봤을 때(연결 끊김)만 경고 기록으로 가늠 (currentStage)
+                  stage: st?.stage ?? currentStage(snapshot.data),
+                  onStart: _startDrive,
+                  idle: !active, // 운행 전이면 '정상' · '안전 운전 중이에요' 없이
+
+                  // 진행 중인 운행이 있으면 운행 시간 · 오늘 졸음 · 휴식 숫자 (readdy 운행 요약)
+                  stats: active ? _stats(st!, snapshot.data) : const [],
+                  // (11/16 팀장) 진행 중인 운행이 있으면 [운행 시작] 자리에 [이어서 운행] + [새로운 운행 시작]
+                  //   (11/16 사용자 요청 3) 두 버튼을 작게
+                  resume: active
+                      ? _ResumeInCard(
+                          state: st!,
+                          onResume: () => _resumeDrive(st),
+                          onNew: _startDrive,
+                        )
+                      : null,
+                );
+              },
             ),
           ),
-          const SizedBox(height: 18),
-          // 최근 경고
-          HomeSectionHeading(
-            title: '최근 경고',
-            trailing: widget.onOpenRecords == null
-                ? null
-                : TextButton(
-                    onPressed: widget.onOpenRecords,
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppColors.textSecondary,
-                      minimumSize: const Size(0, 44),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '전체 보기',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Icon(Icons.chevron_right, size: 18),
-                      ],
-                    ),
-                  ),
-          ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 14),
+          // (11/17 관리자 웹 홈) 숫자 칸 3개 (오늘 경고 · 이번 주 · 긴급) — 누른 칸의 경고 목록이 바로 아래에
           FutureBuilder<List<SleepEvent>?>(
             future: _recent,
             builder: (context, snapshot) {
@@ -317,19 +280,54 @@ class _HomeScreenState extends State<HomeScreen> {
               final events = snapshot.data;
               if (events == null)
                 return const HomeEmptyCard(title: '최근 경고 불러오기는 준비 중이에요');
-              if (events.isEmpty) {
-                return const HomeEmptyCard(
-                  title: '최근 경고가 없어요',
-                  sub: '안전한 운전을 이어가고 있어요',
-                );
-              }
+              // (11/17 사용자 요청) 경고가 하나도 없어도 숫자 칸(오늘 · 이번 주 · 긴급 0건)은 그대로 보여 준다
               final latest = [...events]
                 ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-              return Column(
-                children: [
-                  for (final e in latest.take(_recentCount))
-                    _EventTile(event: e),
-                ],
+              final now = DateTime.now();
+              final dayStart = DateTime(now.year, now.month, now.day);
+              final weekStart = dayStart.subtract(Duration(days: now.weekday % 7)); // 일요일부터
+              final today = latest.where((e) => !e.createdAt.toLocal().isBefore(dayStart)).toList();
+              final week = latest.where((e) => !e.createdAt.toLocal().isBefore(weekStart)).toList();
+              final urgent = latest.where((e) => e.stage >= 3).toList();
+              final lists = [today, week, urgent];
+              final shown = lists[_tab].take(_tabCount).toList();
+              const empties = ['오늘은 경고가 없어요', '이번 주는 경고가 없어요', '긴급 경고가 없어요'];
+              return WebCard(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  children: [
+                    StatTabs(
+                      selected: _tab,
+                      onSelect: (i) => setState(() => _tab = i),
+                      items: [
+                        StatItem('오늘', '${today.length}', '건'),
+                        StatItem('이번 주', '${week.length}', '건'),
+                        StatItem('긴급', '${urgent.length}', '건', alert: urgent.isNotEmpty),
+                      ],
+                    ),
+                    if (shown.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 28),
+                        child: Text(empties[_tab], style: const TextStyle(fontSize: 14, color: AppColors.textMuted)),
+                      ),
+                    for (var i = 0; i < shown.length; i++) ...[
+                      if (i > 0) const Divider(height: 1, thickness: 1, color: AppColors.line),
+                      _EventTile(event: shown[i]),
+                    ],
+                    if (lists[_tab].length > _tabCount && widget.onOpenRecords != null) ...[
+                      const Divider(height: 1, thickness: 1, color: AppColors.line),
+                      TextButton(
+                        onPressed: widget.onOpenRecords,
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.navy,
+                          minimumSize: const Size.fromHeight(48),
+                        ),
+                        child: Text('${lists[_tab].length}건 전체 보기',
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                      ),
+                    ],
+                  ],
+                ),
               );
             },
           ),
@@ -339,11 +337,65 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// [이어서 운행] — 서버가 기억하는 진행 중인 운행 (GET /drive/state). 남색 상태 카드 맨 아래 (11/16 팀장)
+/// 운행 요약 숫자 (11/16 R안 · readdy) — 운행 시간 · 오늘 졸음 · 휴식
+List<(String, String)> _stats(DriveState st, List<SleepEvent>? events) {
+  final h = st.driveMin ~/ 60, m = st.driveMin % 60;
+  final now = DateTime.now();
+  final today = (events ?? const <SleepEvent>[])
+      .where((e) => e.createdAt.year == now.year && e.createdAt.month == now.month && e.createdAt.day == now.day)
+      .length;
+  final rest = st.resting ? '${(st.restLeftSec / 60).ceil()}분' : '—';
+  return [('$h:${m.toString().padLeft(2, '0')}', '운행 시간'), ('$today회', '졸음'), (rest, st.resting ? '휴식 남음' : '휴식')];
+}
+
+/// [이어서 운행] (남색) + [새로운 운행 시작] (회색) — 상태 카드 맨 아래 (11/16 R안, 사용자 요청 3: 버튼 작게)
 class _ResumeInCard extends StatelessWidget {
   final DriveState state;
   final VoidCallback onResume;
-  const _ResumeInCard({required this.state, required this.onResume});
+  final VoidCallback onNew;
+  const _ResumeInCard({required this.state, required this.onResume, required this.onNew});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(_detail, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+        const SizedBox(height: 14),
+        FilledButton(onPressed: onResume, child: const Text('이어서 운행')),
+        const SizedBox(height: 8),
+        FilledButton(
+          onPressed: onNew,
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.fill.withValues(alpha: 0.7),
+            foregroundColor: const Color(0xFF2E333D),
+            minimumSize: const Size.fromHeight(46),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
+          child: const Text('새로운 운행 시작'),
+        ),
+      ],
+    );
+  }
+
+  String get _detail {
+    if (state.resting) {
+      final min = (state.restLeftSec / 60).ceil();
+      return state.restLeftSec <= 0 ? '충분히 쉬었어요. [이어서 운행]을 눌러 주세요' : '쉬는 중이에요 (약 $min분 남음)';
+    }
+    if (state.stage >= 3) return '관리자가 조치하기 전까지 3단계가 이어져요';
+    if (state.stage == 2) return '쉬어야 2단계가 풀려요';
+    return '운행 중이던 상태 그대로 이어서 운행해요';
+  }
+}
+
+/// 예전 [이어서 운행] 흰 상자 (안 씀 — 되돌릴 때 참고)
+// ignore: unused_element
+class _OldResumeInCard extends StatelessWidget {
+  final DriveState state;
+  final VoidCallback onResume;
+  const _OldResumeInCard({required this.state, required this.onResume});
 
   String get _detail {
     if (state.resting) {
@@ -421,6 +473,42 @@ class _EventTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // (11/15) 누르면 경고 기록 상세 (졸음 사진 + AI 분석 결과)
+    // (11/16 R안 · readdy) 왼쪽 단계 색 막대 · 이유(굵게) + 단계 표 · 시각(검정, 사용자 요청 8) · 오른쪽 동그란 꺾쇠
+    // (11/17 관리자 웹 홈 목록 한 줄) 왼쪽 이유 · 시각, 오른쪽 '● n단계 | 이름' 알약 + 꺾쇠
+    return InkWell(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => EventDetailScreen(event: event)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(event.reasonLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                  const SizedBox(height: 2),
+                  Text(event.createdLabel, style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            StageBadge(stage: event.stage),
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right_rounded, size: 20, color: AppColors.textMuted),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 예전 흰 카드 한 줄 (안 씀 — 되돌릴 때 참고)
+  // ignore: unused_element
+  Widget _old(BuildContext context) {
     return GestureDetector(
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => EventDetailScreen(event: event)),
@@ -437,7 +525,7 @@ class _EventTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Image.asset(OwlSays.face(event.stage), width: 42, height: 42),
+            const ImageSlot(label: '캐릭터', width: 42, height: 42, radius: 10),
             const SizedBox(width: 11),
             Expanded(
               child: Column(

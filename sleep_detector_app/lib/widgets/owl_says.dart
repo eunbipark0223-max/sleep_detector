@@ -14,6 +14,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'web_ui.dart';
 
 /// 한국어 줄바꿈을 단어 단위로 — Flutter 는 글자 중간에서도 줄을 바꿔서 "자 / 주", "고정 / 하고" 처럼 끊김.
 ///   단어 안의 글자 사이에 '줄 바꾸지 마' 표시(U+2060 WORD JOINER)를 넣어 띄어쓰기에서만 줄이 바뀌게 한다 (11/11)
@@ -49,7 +50,8 @@ class OwlSays extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Image.asset(owl, width: owlSize, height: owlSize, fit: BoxFit.contain),
+        // (11/17) 캐릭터 그림은 아직 안 넣음 — 자리만 표시
+        ImageSlot(label: '캐릭터 이미지', width: owlSize, height: owlSize),
         const SizedBox(width: 4),
         // 말풍선 꼬리 (부엉이 쪽을 가리킴)
         CustomPaint(size: const Size(14, 24), painter: _TailPainter()),
@@ -92,7 +94,7 @@ class OwlAbove extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Center(child: Image.asset(owl, width: owlSize, height: owlSize, fit: BoxFit.contain)),
+        Center(child: ImageSlot(label: '메인 캐릭터 이미지', width: owlSize, height: owlSize, radius: 20)),
         const SizedBox(height: 6),
         Center(child: CustomPaint(size: const Size(32, 18), painter: _TailUpPainter())),
         Container(

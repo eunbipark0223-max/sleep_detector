@@ -188,7 +188,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   // ── 화면 (11/16 Figma 시안 '졸음운전 감지 앱5' 졸음쉼터 — 디자인만. 위치 · 거리 · 지도 · 길찾기는 위 그대로) ──
-  static const Color _bg = Color(0xFFF8F9FC);
+  static const Color _bg = AppColors.card; // (11/17 R안) 흰 시트
 
   @override
   Widget build(BuildContext context) {
@@ -200,10 +200,10 @@ class _MapScreenState extends State<MapScreen> {
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
         toolbarHeight: 66,
-        titleSpacing: 18,
+        titleSpacing: 20,
         centerTitle: false,
         title: const Text('가까운 졸음쉼터',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.5, color: AppColors.textPrimary)),
+            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.8, color: AppColors.textPrimary)),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -230,8 +230,7 @@ class _MapScreenState extends State<MapScreen> {
     return Container(
       decoration: const BoxDecoration(
         color: _bg,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-        boxShadow: [BoxShadow(color: Color(0x221F2A5C), blurRadius: 24, offset: Offset(0, -6))],
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -246,7 +245,7 @@ class _MapScreenState extends State<MapScreen> {
             child: Row(
               children: [
                 const Text('가까운 쉼터',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: AppColors.textPrimary)),
                 const Spacer(),
                 Text(_roadLoading ? '거리 확인 중' : '현재 위치 기준',
                     style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
@@ -277,24 +276,25 @@ class _MapScreenState extends State<MapScreen> {
     final near = _near[i];
     final a = near.area;
     final selected = _selected == i;
+    // (11/17 R안 · readdy) 연회색 카드 · 모서리 24 · 고른 카드만 남색 테두리
     return Material(
-      color: Colors.white,
+      color: AppColors.background,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: selected ? AppColors.navy : AppColors.cardBorder, width: selected ? 1.6 : 1),
+        borderRadius: BorderRadius.circular(24),
+        side: selected ? const BorderSide(color: AppColors.navy, width: 1.6) : BorderSide.none,
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(24),
         onTap: () => _focus(i),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+          padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
           child: Row(
             children: [
               Container(
                 width: 42,
                 height: 42,
-                decoration: BoxDecoration(color: const Color(0xFFEDF0F8), borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.location_on_outlined, color: AppColors.navy, size: 24),
+                decoration: const BoxDecoration(color: Color(0xFFDBE5F9), shape: BoxShape.circle),
+                child: const Icon(Icons.location_on_rounded, color: AppColors.navy, size: 22),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -307,10 +307,23 @@ class _MapScreenState extends State<MapScreen> {
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
                     const SizedBox(height: 2),
                     // 노선 · 방향 — 가장 가까운 쉼터가 반대편 차로일 수 있어서 꼭 보여 줌
-                    Text([if (a.roadText.isNotEmpty) a.roadText, if (a.toilet == 'Y') '화장실'].join(' · '),
+                    Text(a.roadText,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                    // (11/17 사용자 요청 9) 화장실은 변기(wc) 아이콘으로 — 없으면 흐리게
+                    Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Row(children: [
+                        Icon(Icons.wc, size: 17, color: a.toilet == 'Y' ? AppColors.navy : AppColors.textMuted.withValues(alpha: 0.5)),
+                        const SizedBox(width: 4),
+                        Text(a.toilet == 'Y' ? '화장실' : '화장실 없음',
+                            style: TextStyle(
+                                fontSize: 12.5,
+                                color: a.toilet == 'Y' ? AppColors.textSecondary : AppColors.textMuted,
+                                decoration: a.toilet == 'Y' ? null : TextDecoration.lineThrough)),
+                      ]),
+                    ),
                     const SizedBox(height: 2),
                     Text(near.distanceText,
                         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.navy)),
@@ -325,10 +338,10 @@ class _MapScreenState extends State<MapScreen> {
                   foregroundColor: Colors.white,
                   minimumSize: const Size(0, 44),
                   padding: const EdgeInsets.symmetric(horizontal: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                 ),
-                icon: const Icon(Icons.directions, size: 19),
+                icon: const Icon(Icons.near_me, size: 18),
                 label: const Text('길찾기'),
               ),
             ],

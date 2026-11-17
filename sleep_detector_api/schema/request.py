@@ -32,15 +32,15 @@ EventStatus = Literal["미확인", "확인", "조치완료", "휴식완료"]
 # 비밀번호 규칙 (수업 그대로): 회원가입 · 비밀번호 변경이 같이 쓴다
 def check_password_rules(value: str) -> str:
     if len(value) < 8:
-        raise ValueError("비밀번호는 8자리 이상이어야 합니다.")
+        raise ValueError("비밀번호는 8자리 이상이어야 해요")
     if not re.search(r"[A-Z]", value):
-        raise ValueError("비밀번호에는 대문자가 최소 1개 포함되어야 합니다.")
+        raise ValueError("비밀번호에 대문자를 1개 이상 넣어 주세요")
     if not re.search(r"[a-z]", value):
-        raise ValueError("비밀번호에는 소문자가 최소 1개 포함되어야 합니다.")
+        raise ValueError("비밀번호에 소문자를 1개 이상 넣어 주세요")
     if not re.search(r"[0-9]", value):
-        raise ValueError("비밀번호에는 숫자가 최소 1개 포함되어야 합니다.")
+        raise ValueError("비밀번호에 숫자를 1개 이상 넣어 주세요")
     if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", value):
-        raise ValueError("비밀번호에는 특수문자가 최소 1개 포함되어야 합니다.")
+        raise ValueError("비밀번호에 특수문자를 1개 이상 넣어 주세요")
     return value
 
 
@@ -53,6 +53,11 @@ class SignupRequest(BaseModel):
     phone         : Optional[str]  = Field(None, max_length=30, description="전화번호 (예: 010-1234-5678). 하이픈 형식으로 정리해 저장")
     vehicle_no    : Optional[str]  = Field(None, max_length=30, description="차량번호 (예: 12가 3456). 형식을 맞춰 저장")
     privacy_agreed: Optional[bool] = Field(None, description="개인정보 수집 · 이용 동의. false 로 보내면 가입 거절 (DB 에는 저장하지 않음)")
+    # (11/17 C) 앱 회원가입은 사번 확인 → 전화번호 인증 뒤 가입. emp_no 를 보내면 phone_token(전화 인증 표)도 꼭 있어야 함.
+    #   스크립트 · 관리자 웹처럼 emp_no 없이 가입하는 곳은 예전 그대로
+    emp_no        : Optional[str]  = Field(None, max_length=20, description="사번 (employees 표에 있는 것만)")
+    phone_token   : Optional[str]  = Field(None, max_length=64, description="POST /users/phone/verify 가 준 전화 인증 표")
+    email_token   : Optional[str]  = Field(None, max_length=64, description="POST /users/email/verify 가 준 이메일 인증 표 (emp_no 와 같이 꼭)")
 
     @field_validator("phone")
     def check_signup_phone(cls, value):
@@ -71,6 +76,42 @@ class SignupRequest(BaseModel):
     @field_validator("password")
     def validate_password(cls, value):  # 수업 규칙 그대로 (앱이 422 메시지를 화면에 보여 줌)
         return check_password_rules(value)
+
+
+class EmployeeCheckRequest(BaseModel):
+    """(11/17 C) POST /users/employee/check — 회원가입 첫 단계 사번 확인"""
+    emp_no: str           = Field(..., min_length=1, max_length=20, description="사번")
+    name  : Optional[str] = Field(None, max_length=50, description="이름 (명단에 이름이 있으면 같아야 함)")
+
+
+class PhoneSendRequest(BaseModel):
+    """(11/17 C) POST /users/phone/send — 인증번호 받기 (시연용: 문자 대신 응답으로 번호를 줌)"""
+    phone: str = Field(..., max_length=30)
+
+    @field_validator("phone")
+    def check_phone(cls, value):
+        return format_phone(value)
+
+
+class PhoneVerifyRequest(BaseModel):
+    """(11/17 C) POST /users/phone/verify — 인증번호 확인"""
+    phone: str = Field(..., max_length=30)
+    code : str = Field(..., min_length=4, max_length=10)
+
+    @field_validator("phone")
+    def check_phone(cls, value):
+        return format_phone(value)
+
+
+class EmailSendRequest(BaseModel):
+    """(11/17 C) POST /users/email/send — 이메일 인증번호 받기 (시연용: 메일 대신 응답으로 번호를 줌)"""
+    email: EmailStr
+
+
+class EmailVerifyRequest(BaseModel):
+    """(11/17 C) POST /users/email/verify — 이메일 인증번호 확인"""
+    email: EmailStr
+    code : str = Field(..., min_length=4, max_length=10)
 
 
 class LoginRequest(BaseModel):

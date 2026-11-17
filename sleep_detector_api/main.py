@@ -105,6 +105,13 @@ async def lifespan(app: FastAPI):   # ← app: FastAPI 매개변수 필수!
     except Exception as e:
         print(f"⚠️ DB 초기화 실패(앱은 계속 실행): {type(e).__name__}: {e}")
 
+    # (11/17 C) 사번 가입 — users.emp_no 칸 붙이기 · 시연용 사번 넣기 (이미 있으면 그대로)
+    try:
+        from services import employee_service
+        employee_service.ensure_schema(engine)
+    except Exception as e:
+        print(f"⚠️ 사번 표 준비 실패(앱은 계속 실행): {type(e).__name__}: {e}")
+
     # 서버를 다시 켜도 3단계 · 2단계가 풀리지 않게 DB 경고로 단계를 되살린다 (단계는 메모리에만 있어서 재시작하면 0 이 됐음)
     try:
         from database.db_connection import SessionLocal

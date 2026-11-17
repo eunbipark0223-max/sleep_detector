@@ -32,10 +32,10 @@ import 'package:http/http.dart' as http;
 
 import '../services/auth_service.dart';
 import '../theme.dart';
+import '../widgets/web_ui.dart';
 
 const String _baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://10.0.2.2:8000');
 const Duration _timeout = Duration(seconds: 40); // RAG + Gemini 라 조금 길게
-const Color _chipBg = Color(0xFFE6E9F4); // 수업 primaryLight 자리 (남색 연하게)
 const Color _chipText = AppColors.navy; // 수업 primaryDark 자리
 const List<String> _greetingSuggestions = [
   '연속 운전 기준은?',
@@ -170,8 +170,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // ── 화면 (11/16 Figma 시안 '졸음운전 감지 앱5' 규정 도우미 — 디자인만. 서버 호출 · 대화 흐름은 위 그대로) ──
-  static const Color _bg = Color(0xFFF8F9FC);
-  static const String _owl = 'assets/owl/guide_owl.png';
+  static const Color _bg = AppColors.background; // (11/17 R안) readdy 바탕
 
   bool get _started => _messages.any((m) => m.isMine);
 
@@ -208,7 +207,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _avatar() => ClipOval(child: Image.asset(_owl, width: 40, height: 40, fit: BoxFit.cover));
+  Widget _avatar() => const ImageSlot(label: '캐릭터', width: 40, height: 40, radius: 20); // (11/17) 캐릭터 그림 자리만
 
   // 첫 인사 — 부엉이 + 굵은 제목 · 설명 (서버 인사말 대신 시안 문구)
   Widget _greeting() {
@@ -237,14 +236,13 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  static final BoxDecoration _botBox = BoxDecoration(
-    color: Colors.white,
-    border: Border.all(color: AppColors.cardBorder),
-    borderRadius: const BorderRadius.only(
-      topLeft: Radius.circular(4),
-      topRight: Radius.circular(18),
-      bottomLeft: Radius.circular(18),
-      bottomRight: Radius.circular(18),
+  static const BoxDecoration _botBox = BoxDecoration(
+    color: AppColors.card, // 흰 말풍선 · 테두리 없음 (readdy)
+    borderRadius: BorderRadius.only(
+      topLeft: Radius.circular(6),
+      topRight: Radius.circular(22),
+      bottomLeft: Radius.circular(22),
+      bottomRight: Radius.circular(22),
     ),
   );
 
@@ -261,11 +259,10 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           for (final q in _suggestions)
             Material(
-              color: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14), side: const BorderSide(color: AppColors.cardBorder)),
+              color: AppColors.card,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
               child: InkWell(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(22),
                 onTap: () => _send(q),
                 child: Center(
                   child: Padding(
@@ -284,18 +281,19 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _suggestionRow() {
+    // (11/17 사용자 요청 10) 추천 질문 줄을 입력창에서 조금 위로 — 아래에 여백
     return SizedBox(
-      height: 44,
+      height: 58,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
         children: [
           for (final q in _suggestions)
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: ActionChip(
                 label: Text(q, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _chipText)),
-                backgroundColor: _chipBg,
+                backgroundColor: AppColors.card,
                 side: BorderSide.none,
                 shape: const StadiumBorder(),
                 onPressed: () => _send(q),
@@ -337,10 +335,10 @@ class _ChatScreenState extends State<ChatScreen> {
             decoration: const BoxDecoration(
               color: AppColors.navy,
               borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(18),
-                topRight: Radius.circular(4),
-                bottomLeft: Radius.circular(18),
-                bottomRight: Radius.circular(18),
+                topLeft: Radius.circular(22),
+                topRight: Radius.circular(6),
+                bottomLeft: Radius.circular(22),
+                bottomRight: Radius.circular(22),
               ),
             ),
             child: Text(m.text, style: const TextStyle(fontSize: 15, height: 1.45, color: Colors.white)),
@@ -409,25 +407,23 @@ class _ChatScreenState extends State<ChatScreen> {
                   hintText: '규정에 대해 물어보세요',
                   counterText: '',
                   filled: true,
-                  fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.cardBorder)),
-                  enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.cardBorder)),
+                  fillColor: AppColors.card,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(999), borderSide: BorderSide.none),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(999), borderSide: BorderSide.none),
                   focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.navy, width: 1.5)),
+                      borderRadius: BorderRadius.circular(999), borderSide: const BorderSide(color: AppColors.navy, width: 1.5)),
                 ),
               ),
             ),
             const SizedBox(width: 8),
             Material(
               color: _isSending ? AppColors.textMuted : AppColors.navy,
-              borderRadius: BorderRadius.circular(14),
+              shape: const CircleBorder(),
               child: InkWell(
-                borderRadius: BorderRadius.circular(14),
+                customBorder: const CircleBorder(),
                 onTap: _isSending ? null : () => _send(_inputController.text),
-                child: const SizedBox(width: 50, height: 50, child: Icon(Icons.chevron_right, size: 30, color: Colors.white)),
+                child: const SizedBox(width: 52, height: 52, child: Icon(Icons.arrow_upward_rounded, size: 26, color: Colors.white)),
               ),
             ),
           ],

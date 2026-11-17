@@ -13,12 +13,13 @@
 // ═══════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart'; // 안드로이드,ios 스타일의 기본 디자인 UI 요소가 들어있는 Flutter 공식 핵심 라이브러리
-import '../theme.dart'; // 앱 전체에 적용할 디자인 시스템
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'main_screen.dart';
 import 'signup_screen.dart';
 import '../widgets/auth_ui.dart';
+import '../widgets/google_logo.dart';
+import '../theme.dart';
 
 // StatefulWidget - 클래스가 두개
 // 위젯은 화면을 다시 그릴 때마다 새로 만들어진다. 입력값이 사라진다. 값은 State에 따로 보관
@@ -36,6 +37,8 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  // (11/17 사용자 요청) 구글 계정 고르기 창이 떠 있는 동안 뒤 화면은 그냥 흰색 (입력칸 · 버튼 숨김)
+  bool _googleOpen = false;
   String? _error;
 
   @override
@@ -92,56 +95,48 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
 
   // 구글 로그인 (Firebase → 서버 JWT)
   Future<void> _signInWithGoogle() async {
-    setState(() {_isLoading = true; _error = null;});
+    setState(() {_isLoading = true; _googleOpen = true; _error = null;});
     try {
       // 구글 로그인 3단계 (구글 계정 선택 → Firebase 확인 → 서버 JWT 저장)는
       // D 의 AuthService.loginWithGoogle() 이 한 번에 처리한다 (google_sign_in 7 의 initialize 포함) — 10/15 팀장
       await AuthService.loginWithGoogle();
       if (mounted) _goHome();
-    } catch (e) { // 취소 · 실패 메시지는 AuthService 가 한국어로 만들어 준다
+    } on GoogleCanceled {
+      // (11/17 사용자 요청) 창을 닫은 건 오류가 아님 — 아무 문구도 띄우지 않는다
+    } catch (e) { // 실패 메시지는 AuthService 가 한국어로 만들어 준다
       if (mounted) setState(() => _error = e.toString());
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() {_isLoading = false; _googleOpen = false;});
     }
   }
 
   // ── 화면 (Figma 시안: 로고 · 인사 · 아이콘 입력칸 · 큰 버튼, 디자인만 바꿈 — 기능은 위 함수 그대로) ──
   @override
   Widget build(BuildContext context) {
+    // (11/17 사용자 요청) 화면 전체 흰색 · 카드 없음 · 로고 자리 → 입력칸 → 버튼 → 회원가입 (제목 · 배지 · 권한 안내 글 없음)
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: SingleChildScrollView( // 키보드가 올라와도 아래 버튼까지 스크롤해서 볼 수 있다
-          padding: const EdgeInsets.fromLTRB(22, 34, 22, 22),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Center(child: AuthLogo(size: 82)),
-              const SizedBox(height: 19),
-              const Text('다시 만나 반가워요',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 27, fontWeight: FontWeight.w900, letterSpacing: -1,
-                      color: AppColors.textPrimary)),
-              const SizedBox(height: 6),
-              const Text('졸음을 먼저 알아채 안전을 지켜드려요',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-              const SizedBox(height: 29),
-              _loginForm(),
-              const SizedBox(height: 25),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('처음 오셨나요?', style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-                  TextButton(
-                    onPressed: _isLoading ? null : _openSignup,
-                    style: TextButton.styleFrom(minimumSize: const Size(0, 44)),
-                    child: const Text('회원가입',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.navy)),
+      backgroundColor: AuthUi.page,
+      body: _googleOpen ? const SizedBox.expand() : SafeArea(
+        child: Center(
+          child: SingleChildScrollView( // 키보드가 올라와도 아래 버튼까지 스크롤해서 볼 수 있다
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Center(child: AuthLogo(size: 64)),
+                const SizedBox(height: 36),
+                _loginForm(),
+                const SizedBox(height: 24),
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  const Text('계정이 없나요? ', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  GestureDetector(
+                    onTap: _isLoading ? null : _openSignup,
+                    child: const Text('회원가입하기',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
                   ),
-                ],
-              ),
-            ],
+                ]),
+              ],
+            ),
           ),
         ),
       ),
@@ -154,7 +149,6 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
       children: [
         AuthField(
           label: '이메일',
-          icon: Icons.mail_outline,
           controller: _emailController,
           hint: '이메일을 입력하세요',
           keyboardType: TextInputType.emailAddress,
@@ -164,7 +158,6 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
         const SizedBox(height: 14),
         AuthField(
           label: '비밀번호',
-          icon: Icons.lock_outline,
           controller: _passwordController,
           hint: '비밀번호를 입력하세요',
           password: true,
@@ -174,11 +167,11 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
         ),
         const SizedBox(height: 18),
         if (_error != null) ...[ // 오류 메시지(있을 때만)
-          Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13, fontWeight: FontWeight.w600)),
+          AuthNote(_error!, error: true),
           const SizedBox(height: 12),
         ],
         if (_isLoading)
-          const SizedBox(height: 58, child: Center(child: CircularProgressIndicator()))
+          const SizedBox(height: AuthUi.controlHeight, child: Center(child: CircularProgressIndicator(color: AppColors.navy)))
         else ...[
           AuthButton(text: '로그인', onPressed: _loginWithEmail),
           const SizedBox(height: 14),
@@ -188,22 +181,21 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
             text: 'Google로 계속하기',
             primary: false,
             onPressed: _signInWithGoogle,
-            leading: const Text('G',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFF4285F4))),
+            leading: const GoogleLogo(size: 20), // 구글 공식 G 로고 (관리자 웹과 같게)
           ),
         ],
       ],
     );
   }
 
-  Widget _divider() => const Row(
+  Widget _divider() => Row(
     children: [
-      Expanded(child: Divider(color: AppColors.cardBorder)),
-      Padding(
+      const Expanded(child: Divider(color: AppColors.fill)),
+      const Padding(
         padding: EdgeInsets.symmetric(horizontal: 12),
         child: Text('또는', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
       ),
-      Expanded(child: Divider(color: AppColors.cardBorder)),
+      const Expanded(child: Divider(color: AppColors.fill)),
     ],
   );
 }
