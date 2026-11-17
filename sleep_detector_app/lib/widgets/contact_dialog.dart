@@ -16,7 +16,8 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../theme.dart';
-import 'owl_says.dart'; // keepWords
+import '../utils/phone_format.dart';
+import 'auth_ui.dart';
 
 class ContactRules {
   ContactRules._();
@@ -26,15 +27,17 @@ class ContactRules {
 
   static String? checkPhone(String? v) {
     final digits = (v ?? '').replaceAll(RegExp(r'\D'), '');
-    return digits.length >= 9 && digits.length <= 11 ? null : '전화번호 형식이 올바르지 않아요 (예: 010-1234-5678)';
+    return digits.length >= 9 && digits.length <= 11 ? null : '전화번호 형식이 올바르지 않아요';
   }
 
   static String? checkVehicle(String? v) =>
-      vehicleRule.hasMatch((v ?? '').trim()) ? null : '차량번호 형식이 올바르지 않아요 (예: 12가 3456, 서울 12가 3456)';
+      vehicleRule.hasMatch((v ?? '').trim()) ? null : '차량번호 형식이 올바르지 않아요';
 
-  /// 기사 계정인데 전화번호나 차량번호가 비어 있는지 (관리자 계정은 묻지 않음)
+  /// 구글로 로그인한 기사 계정인데 전화번호나 차량번호가 비어 있는지 (관리자 계정은 묻지 않음)
+  ///   (11/17 사용자 요청) 이메일 가입은 회원가입 때 이미 받았으므로 구글 로그인 때만 묻는다
   static bool missing(Map<String, dynamic>? user) {
     if (user == null || user['role'] == 'admin') return false;
+    if ((user['provider'] ?? '').toString() != 'google') return false;
     String text(String k) => (user[k] ?? '').toString().trim();
     return text('phone').isEmpty || text('vehicle_no').isEmpty;
   }
@@ -104,63 +107,102 @@ class _ContactDialogState extends State<ContactDialog> {
   @override
   Widget build(BuildContext context) {
     final req = widget.required;
+    // (11/17 사용자 요청) 애플 · 관리자 웹 팝업 느낌 — 흰 바탕 · 큰 둥근 모서리 · 가운데 제목 · 회색 입력칸 · 알약 버튼 두 개
     return PopScope(
       canPop: !req, // 필수 입력은 뒤로 가기로 닫히지 않음
-      child: AlertDialog(
-        title: Text(req ? '연락처를 등록해 주세요' : '연락처 · 차량번호'),
-        content: SingleChildScrollView(
+      child: Dialog(
+        backgroundColor: AppColors.card,
+        surfaceTintColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(22, 26, 22, 20),
           child: Form(
             key: _formKey,
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Text(req ? '추가 정보 입력' : '연락처 · 차량번호 수정',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
                 if (req) ...[
-                  Text(keepWords('졸음 경고가 나면 관리자가 바로 연락할 수 있게 전화번호와 차량번호를 꼭 적어 주세요.'), // 단어 중간에서 줄이 안 끊기게
-                      style: const TextStyle(fontSize: 15, height: 1.45, color: AppColors.textPrimary)),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
+                  // (11/17 사용자 요청) 두 줄로 나뉘지 않게 짧은 한 줄로
+                  const Text('졸음 경고 시 관리자 연락에 사용돼요',
+                      maxLines: 1,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13.5, height: 1.5, color: AppColors.textSecondary)),
                 ],
-                TextFormField(
+                const SizedBox(height: 20),
+                AuthField(
+                  label: '전화번호',
                   controller: _phone,
+                  hint: '010-1234-5678',
                   enabled: !_saving,
                   keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.next,
+                  inputFormatters: [PhoneHyphenFormatter()], // 숫자만 쳐도 '-' 자동
+                  onChanged: (_) => setState(() {}),
+                  valid: _tri(_phone.text, ContactRules.checkPhone(_phone.text) == null),
+                  invalidNote: '전화번호 형식이 올바르지 않아요',
                   validator: ContactRules.checkPhone,
-                  decoration: const InputDecoration(labelText: '전화번호', hintText: '010-1234-5678', errorMaxLines: 2),
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
+                const SizedBox(height: 13),
+                AuthField(
+                  label: '차량번호',
                   controller: _vehicle,
+                  hint: '12가 3456',
                   enabled: !_saving,
                   textInputAction: TextInputAction.done,
-                  validator: ContactRules.checkVehicle,
+                  onChanged: (_) => setState(() {}),
                   onFieldSubmitted: (_) => _submit(),
-                  decoration: const InputDecoration(labelText: '차량번호', hintText: '12가 3456', errorMaxLines: 2),
+                  valid: _tri(_vehicle.text, ContactRules.checkVehicle(_vehicle.text) == null),
+                  invalidNote: '차량번호 형식이 올바르지 않아요',
+                  validator: ContactRules.checkVehicle,
                 ),
-                if (_error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(_error!, style: const TextStyle(fontSize: 13, color: AppColors.danger)),
+                if (_error != null) AuthNote(_error!, error: true),
+                const SizedBox(height: 22),
+                Row(children: [
+                  Expanded(
+                    child: _pill(
+                      text: req ? '로그아웃' : '취소',
+                      primary: false,
+                      onTap: _saving
+                          ? null
+                          : () => req ? Navigator.of(context).pop(ContactDialog.logout) : Navigator.of(context).pop(),
+                    ),
                   ),
+                  const SizedBox(width: 10),
+                  Expanded(child: _pill(text: '저장', primary: true, onTap: _saving ? null : _submit, busy: _saving)),
+                ]),
               ],
             ),
           ),
         ),
-        actions: [
-          if (req)
-            TextButton(
-              onPressed: _saving ? null : () => Navigator.of(context).pop(ContactDialog.logout),
-              child: const Text('로그아웃', style: TextStyle(color: AppColors.danger)),
-            )
-          else
-            TextButton(onPressed: _saving ? null : () => Navigator.of(context).pop(), child: const Text('취소')),
-          TextButton(
-            onPressed: _saving ? null : _submit,
-            child: _saving
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('저장'),
-          ),
-        ],
+      ),
+    );
+  }
+
+  static bool? _tri(String text, bool ok) => text.trim().isEmpty ? null : ok;
+
+  // 관리자 웹 팝업 아래 버튼과 같은 알약 — 저장 = 남색, 로그아웃 · 취소 = 흰 바탕 + 회색 테두리
+  Widget _pill({required String text, required bool primary, VoidCallback? onTap, bool busy = false}) {
+    return SizedBox(
+      height: 48,
+      child: TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          backgroundColor: primary ? AppColors.navy : AppColors.card,
+          foregroundColor: primary ? Colors.white : AppColors.textPrimary,
+          disabledBackgroundColor: primary ? AppColors.navy.withValues(alpha: 0.5) : AppColors.card,
+          disabledForegroundColor: primary ? Colors.white : AppColors.textMuted,
+          shape: StadiumBorder(side: primary ? BorderSide.none : const BorderSide(color: AppColors.fill)),
+          textStyle: TextStyle(fontSize: 15, fontWeight: primary ? FontWeight.w600 : FontWeight.w500),
+        ),
+        child: busy
+            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            : Text(text),
       ),
     );
   }

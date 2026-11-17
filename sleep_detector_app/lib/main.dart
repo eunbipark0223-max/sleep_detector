@@ -30,6 +30,13 @@ Future<void> main() async {
   // 🔴 화면 세로 모드 완전 고정
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
+  // (11/17) 맨 위 상태 표시줄 — 회색 띠 없이 화면 색이 그대로 보이게 (투명 + 어두운 아이콘)
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.dark,
+    statusBarBrightness: Brightness.light,
+  ));
+
   runApp(const SleepDetectorApp());
 }
 
@@ -42,6 +49,8 @@ class SleepDetectorApp extends StatelessWidget {
       title: '졸음 가드',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
+      // (11/17 사용자 요청) 화면 끝에서 더 당기면 세로로 늘어나는 효과(안드로이드 stretch) 끄기 — 앱 전체
+      scrollBehavior: const MaterialScrollBehavior().copyWith(overscroll: false),
       // 🔴 에러를 일으키던 const 제거 완료
       home: SplashScreen(),
     );

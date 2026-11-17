@@ -25,7 +25,7 @@ import '../models/sleep_event.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../theme.dart';
-import '../widgets/owl_says.dart';
+import '../widgets/web_ui.dart';
 import '../widgets/home_ui.dart';
 import 'calibration_screen.dart';
 import 'drive_screen.dart';
@@ -67,7 +67,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static const int _recentCount = 3;
+  static const int _tabCount = 5; // 숫자 칸 아래 목록에 보이는 최대 줄 수
+  int _tab = 0; // 0 오늘 경고 · 1 이번 주 · 2 긴급
 
   // (11/16 팀장) 홈의 '출발 준비 (카메라 · 음성 안내)' 줄은 뺐다 — 권한은 [운행 시작] 때 안내창 → 휴대폰 권한 창으로 받음
 
@@ -240,6 +241,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   //   서버에 못 물어봤을 때(연결 끊김)만 경고 기록으로 가늠 (currentStage)
                   stage: st?.stage ?? currentStage(snapshot.data),
                   onStart: _startDrive,
+                  idle: !active, // 운행 전이면 '정상' · '안전 운전 중이에요' 없이
+
                   // 진행 중인 운행이 있으면 운행 시간 · 오늘 졸음 · 휴식 숫자 (readdy 운행 요약)
                   stats: active ? _stats(st!, snapshot.data) : const [],
                   // (11/16 팀장) 진행 중인 운행이 있으면 [운행 시작] 자리에 [이어서 운행] + [새로운 운행 시작]
@@ -256,24 +259,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          // 최근 경고
-          HomeSectionHeading(
-            title: '최근 경고',
-            trailing: widget.onOpenRecords == null
-                ? null
-                : TextButton(
-                    onPressed: widget.onOpenRecords,
-                    style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFF4460A2),
-                      minimumSize: const Size(0, 44),
-                    ),
-                    child: const Text(
-                      '전체 보기',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-          ),
-          const SizedBox(height: 2),
+          // (11/17 관리자 웹 홈) 숫자 칸 3개 (오늘 경고 · 이번 주 · 긴급) — 누른 칸의 경고 목록이 바로 아래에
           FutureBuilder<List<SleepEvent>?>(
             future: _recent,
             builder: (context, snapshot) {
@@ -295,26 +281,53 @@ class _HomeScreenState extends State<HomeScreen> {
               if (events == null)
                 return const HomeEmptyCard(title: '최근 경고 불러오기는 준비 중이에요');
               if (events.isEmpty) {
-                return const HomeEmptyCard(
-                  title: '최근 경고가 없어요',
-                  sub: '안전한 운전을 이어가고 있어요',
-                );
+                // 흰 네모 없이 회색 글자만 — (11/17 사용자 요청) 너무 위에 붙지 않게 아래 빈 곳 가운데쯤
+                return const HomeEmptyCard(title: '최근 경고가 없어요', padding: EdgeInsets.only(top: 170, bottom: 40));
               }
               final latest = [...events]
                 ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-              final shown = latest.take(_recentCount).toList();
-              // (11/16 R안) 흰 카드 하나에 줄로 나눈 목록 — 구분선은 좌우 같은 여백 (사용자 요청 12)
-              return Container(
-                decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(24)),
+              final now = DateTime.now();
+              final dayStart = DateTime(now.year, now.month, now.day);
+              final weekStart = dayStart.subtract(Duration(days: now.weekday % 7)); // 일요일부터
+              final today = latest.where((e) => !e.createdAt.toLocal().isBefore(dayStart)).toList();
+              final week = latest.where((e) => !e.createdAt.toLocal().isBefore(weekStart)).toList();
+              final urgent = latest.where((e) => e.stage >= 3).toList();
+              final lists = [today, week, urgent];
+              final shown = lists[_tab].take(_tabCount).toList();
+              const empties = ['오늘은 경고가 없어요', '이번 주는 경고가 없어요', '긴급 경고가 없어요'];
+              return WebCard(
+                padding: EdgeInsets.zero,
                 child: Column(
                   children: [
+                    StatTabs(
+                      selected: _tab,
+                      onSelect: (i) => setState(() => _tab = i),
+                      items: [
+                        StatItem('오늘 경고', '${today.length}', '건'),
+                        StatItem('이번 주', '${week.length}', '건'),
+                        StatItem('긴급', '${urgent.length}', '건', alert: urgent.isNotEmpty),
+                      ],
+                    ),
+                    if (shown.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 28),
+                        child: Text(empties[_tab], style: const TextStyle(fontSize: 14, color: AppColors.textMuted)),
+                      ),
                     for (var i = 0; i < shown.length; i++) ...[
-                      if (i > 0)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 20),
-                          child: Divider(height: 1, thickness: 1, color: Color(0xFFE5E8EE)),
-                        ),
+                      if (i > 0) const Divider(height: 1, thickness: 1, color: AppColors.line),
                       _EventTile(event: shown[i]),
+                    ],
+                    if (lists[_tab].length > _tabCount && widget.onOpenRecords != null) ...[
+                      const Divider(height: 1, thickness: 1, color: AppColors.line),
+                      TextButton(
+                        onPressed: widget.onOpenRecords,
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.navy,
+                          minimumSize: const Size.fromHeight(48),
+                        ),
+                        child: Text('${lists[_tab].length}건 전체 보기',
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                      ),
                     ],
                   ],
                 ),
@@ -464,49 +477,32 @@ class _EventTile extends StatelessWidget {
   Widget build(BuildContext context) {
     // (11/15) 누르면 경고 기록 상세 (졸음 사진 + AI 분석 결과)
     // (11/16 R안 · readdy) 왼쪽 단계 색 막대 · 이유(굵게) + 단계 표 · 시각(검정, 사용자 요청 8) · 오른쪽 동그란 꺾쇠
-    final c = AppColors.stage(event.stage);
+    // (11/17 관리자 웹 홈 목록 한 줄) 왼쪽 이유 · 시각, 오른쪽 '● n단계 | 이름' 알약 + 꺾쇠
     return InkWell(
-      borderRadius: BorderRadius.circular(24),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => EventDetailScreen(event: event)),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
         child: Row(
           children: [
-            Container(width: 6, height: 44, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3))),
-            const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(children: [
-                    Flexible(
-                      child: Text(event.reasonLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(6)),
-                      child: Text(event.stageLabel,
-                          style: TextStyle(
-                              fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.onStage(event.stage))),
-                    ),
-                  ]),
-                  const SizedBox(height: 4),
-                  Text(event.createdLabel, style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
+                  Text(event.reasonLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                  const SizedBox(height: 2),
+                  Text(event.createdLabel, style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
                 ],
               ),
             ),
-            Container(
-              width: 32,
-              height: 32,
-              decoration: const BoxDecoration(color: AppColors.background, shape: BoxShape.circle),
-              child: const Icon(Icons.chevron_right_rounded, size: 20, color: AppColors.textMuted),
-            ),
+            const SizedBox(width: 8),
+            StageBadge(stage: event.stage),
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right_rounded, size: 20, color: AppColors.textMuted),
           ],
         ),
       ),
@@ -532,7 +528,7 @@ class _EventTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Image.asset(OwlSays.face(event.stage), width: 42, height: 42),
+            const ImageSlot(label: '캐릭터', width: 42, height: 42, radius: 10),
             const SizedBox(width: 11),
             Expanded(
               child: Column(

@@ -93,6 +93,22 @@ flutter:
     - assets/sounds/alarm.wav  # 경고음 (voice_service.alarm, 코드로 직접 만든 소리)
     - assets/owl/              # 부엉이 로고 · 단계별 부엉이 (시작 화면 · 운행 · 경고 화면)
 
+  # (11/17 C) 앱 글꼴 Pretendard — 애플 글꼴(SF Pro · Apple SD Gothic Neo) 느낌의 무료 글꼴 (SIL OFL, assets/fonts/Pretendard-LICENSE.txt)
+  #   theme.dart 의 fontFamily: 'Pretendard' 로 앱 전체에 씀
+  fonts:
+    - family: Pretendard
+      fonts:
+        - asset: assets/fonts/Pretendard-Regular.otf
+          weight: 400
+        - asset: assets/fonts/Pretendard-Medium.otf
+          weight: 500
+        - asset: assets/fonts/Pretendard-SemiBold.otf
+          weight: 600
+        - asset: assets/fonts/Pretendard-Bold.otf
+          weight: 700
+        - asset: assets/fonts/Pretendard-ExtraBold.otf
+          weight: 800
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

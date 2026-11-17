@@ -21,13 +21,16 @@ import 'package:flutter/material.dart';
 class AppColors {
   AppColors._();
 
-  // (11/16 C · R안 = 우리 readdy 디자인, 애플 느낌) 남색 · 바탕 · 글자 색을 readdy 값으로
-  static const Color navy = Color(0xFF1E346B); // 브랜드 (readdy primary-500)
-  static const Color navyDeep = Color(0xFF10214A); // 로그인 · 메뉴 머리 (readdy primary-700)
+  // (11/17 C · 관리자 웹 느낌) 차분한 남색 · 아주 연한 회색 바탕 · 흰 카드 — 팀 관리자 웹(졸음가드 관리자)과 같은 값
+  static const Color navy = Color(0xFF1F2A5C); // 브랜드 · 알약 버튼 · AI 분석 카드 (관리자 웹 남색)
+  static const Color navyDeep = Color(0xFF151D42); // 더 진한 남색 (눌림 · 강조)
   static const Color aiPurple = Color(0xFF6A4CC2); // AI 안내 · 기사 음성 보고 카드
-  static const Color background = Color(0xFFEBEEF3); // 화면 바탕 (readdy background-100)
-  static const Color card = Color(0xFFFCFCFE); // 흰 카드 (readdy background-50)
-  static const Color fill = Color(0xFFDFE2E8); // 회색 버튼 · 구분선 (readdy background-200)
+  static const Color background = Color(0xFFF3F4F8); // 화면 바탕 (관리자 웹 바탕)
+  static const Color card = Color(0xFFFFFFFF); // 흰 카드
+  static const Color fill = Color(0xFFE6E8EF); // 회색 칸 · 구분선
+  static const Color field = Color(0xFFF3F4F8); // 입력칸 바탕 (관리자 웹 로그인 입력칸)
+  static const Color line = Color(0xFFECEEF3); // 목록 줄 사이 얇은 선
+  static const Color live = Color(0xFF1E8E3E); // LIVE 초록 점 · 조치완료 버튼
 
   static const Color normal = Color(0xFF2E9E5B); // 0 정상
   static const Color caution = Color(0xFFF2B01E); // 1 주의
@@ -50,6 +53,14 @@ class AppColors {
 
   static const List<Color> _stageColors = [normal, caution, rest, urgent];
 
+  /// 단계 알약 배지 바탕 (관리자 웹 '● 3단계 | 위험' 배지): 아주 연한 단계 색
+  static const List<Color> _stageTint = [Color(0xFFE6F4EC), Color(0xFFFDF3DC), Color(0xFFFDEBDD), Color(0xFFFCE8E6)];
+  static Color stageTint(int stage) => _stageTint[stage.clamp(0, 3)];
+
+  /// 단계 알약 배지 글자 (바탕 위에서 잘 읽히는 진한 단계 색)
+  static const List<Color> _stageInk = [Color(0xFF1E7A45), Color(0xFF8A5A00), Color(0xFFB4530F), Color(0xFFB3261E)];
+  static Color stageInk(int stage) => _stageInk[stage.clamp(0, 3)];
+
   /// 단계(0~3) → 화면 색. 범위를 벗어나면 가까운 끝 단계 색.
   static Color stage(int stage) => _stageColors[stage.clamp(0, 3)];
 
@@ -60,6 +71,11 @@ class AppColors {
 ThemeData buildAppTheme() {
   return ThemeData(
     useMaterial3: true,
+    fontFamily: 'Pretendard', // (11/17) 애플 글꼴 느낌의 무료 글꼴 (pubspec.yaml fonts)
+    // (11/17 사용자 요청) 뒤로 가기 = 애플처럼 '<' 꺾쇠 (안드로이드 기본 ← 화살표 대신) — 앱 전체
+    actionIconTheme: ActionIconThemeData(
+      backButtonIconBuilder: (context) => const Icon(Icons.arrow_back_ios_new_rounded, size: 22),
+    ),
     colorScheme: ColorScheme.fromSeed(seedColor: AppColors.navy, primary: AppColors.navy),
     scaffoldBackgroundColor: AppColors.background,
     // (11/16 R안) 제목줄은 바탕과 같은 연회색 · 진한 글자 (애플 느낌), 그림자 없음
@@ -76,7 +92,17 @@ ThemeData buildAppTheme() {
       style: FilledButton.styleFrom(
         backgroundColor: AppColors.navy,
         minimumSize: const Size.fromHeight(52),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: const StadiumBorder(), // 관리자 웹처럼 양 끝이 완전히 둥근 알약 버튼
+        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.textPrimary,
+        backgroundColor: AppColors.card,
+        side: const BorderSide(color: AppColors.fill),
+        minimumSize: const Size.fromHeight(52),
+        shape: const StadiumBorder(),
         textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
     ),

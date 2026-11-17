@@ -1,18 +1,20 @@
 // ═══════════════════════════════════════════════════════════════
-// screens/signup_screen.dart — 회원가입 (이름 · 이메일 · 비밀번호 · 전화번호 · 차량번호 · 개인정보 동의)
+// screens/signup_screen.dart — 회원가입 (사번 확인 → 정보 입력 · 전화번호 인증 → 개인정보 동의)
 // ═══════════════════════════════════════════════════════════════
-// 담당: D   |   우선: P0
+// 담당: D → C (11/17 사번 · 전화 인증)   |   우선: P0
 //
 // [이 파일이 하는 일]
-//   - 로그인 화면의 [회원가입] 탭을 누르면 열리는 가입 화면
-//   - 입력 → 칸마다 형식 검사(서버와 같은 규칙) → 개인정보 동의 체크 → AuthService.signup → 서버가 users 에 저장
-//   - 가입에 성공하면 이메일을 들고 로그인 화면으로 돌아간다 (Navigator.pop(email)) — 로그인 화면이 이메일 칸을 채워 줌
+//   1단계 사번 확인 : 회사 명단에 있는 사번만 다음으로 (POST /users/employee/check)
+//   2단계 정보 입력 : 이름 · 이메일 · 비밀번호(규칙 체크 표시) · 비밀번호 확인 · 전화번호 인증 · 차량번호 · 동의
+//     - 전화번호: [인증번호 받기] → 6자리 입력 → [확인] (POST /users/phone/send · /users/phone/verify)
+//       시연용 서버는 문자를 보내지 않고 인증번호를 화면 아래에 보여 준다
+//     - 인증한 뒤 전화번호를 고치면 다시 인증
+//   가입에 성공하면 이메일을 들고 로그인 화면으로 돌아간다 (Navigator.pop(email))
 //
-// [서버 약속] POST /users/signup {email, password, name, phone, vehicle_no, privacy_agreed}
-//   - 전화번호는 '010-1234-5678', 차량번호는 '12가 3456' · '서울 12가 3456' 모양으로 서버가 정리해 저장
+// [서버 약속] POST /users/signup {email, password, name, phone, vehicle_no, privacy_agreed, emp_no, phone_token}
 //   - 이 화면의 검사는 빨리 알려 주려는 것이고, 최종 검사는 서버가 한다 (서버가 틀리다고 하면 그 문구를 그대로 보여 줌)
-//   - 개인정보 동의는 서버 DB 에 칸을 늘리지 않아서 저장하지 않고, '동의해야 가입' 만 서버가 확인한다
 //
+// [모양] (11/17 사용자 요청) 화면 전체 흰색 · 입력칸 아이콘 없음 · 인사 문구 없음
 // [고칠 곳] 동의 문구는 아래 _consentText — 팀에서 확정한 문구로 바꿀 것 (보관 기간 등)
 // ═══════════════════════════════════════════════════════════════
 
@@ -21,6 +23,7 @@ import 'package:flutter/services.dart';
 
 import '../services/auth_service.dart';
 import '../theme.dart';
+import '../utils/phone_format.dart';
 import '../widgets/auth_ui.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -36,20 +39,38 @@ class _SignupScreenState extends State<SignupScreen> {
   static final RegExp _vehicleRule = RegExp(r'^(?:[가-힣]{2,4}\s*)?\d{2,3}\s*[가-힣]\s*\d{4}$');
   static final RegExp _specialRule = RegExp(r'[!@#$%^&*(),.?":{}|<>]');
 
+  /// 비밀번호 규칙 (화면 체크 표시용) — 서버 check_password_rules 와 같은 5가지
+  static final List<(String, bool Function(String))> _pwRules = [
+    ('8자 이상', (p) => p.length >= 8),
+    ('대문자', (p) => RegExp(r'[A-Z]').hasMatch(p)),
+    ('소문자', (p) => RegExp(r'[a-z]').hasMatch(p)),
+    ('숫자', (p) => RegExp(r'[0-9]').hasMatch(p)),
+    ('특수문자', (p) => _specialRule.hasMatch(p)),
+  ];
+
   static const String _consentText =
       '졸음 가드는 회원가입과 졸음 경고 대응을 위해 아래 개인정보를 수집 · 이용해요.\n\n'
-      '• 수집 항목: 이름, 이메일, 비밀번호(암호화해서 저장), 전화번호, 차량번호\n'
+      '• 수집 항목: 사번, 이름, 이메일, 비밀번호(암호화해서 저장), 전화번호, 차량번호\n'
       '• 이용 목적: 로그인 등 계정 관리, 졸음 경고가 났을 때 관리자가 기사님께 연락\n'
       '• 보관 기간: 서비스를 이용하는 동안\n\n'
       '동의하지 않으면 회원가입을 할 수 없어요.';
 
   final _formKey = GlobalKey<FormState>();
+  final _empNoInput = TextEditingController();
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _passwordConfirm = TextEditingController();
   final _phone = TextEditingController();
   final _vehicle = TextEditingController();
+
+  // 1단계 — 확인된 사번 (null 이면 아직 사번 확인 화면)
+  String? _empNo;
+  String? _empError;
+
+  // 이메일 · 전화번호 인증 상태 (시연용 서버는 메일 · 문자 대신 인증번호를 화면에 보여 줌)
+  final _emailV = _Verify();
+  final _phoneV = _Verify();
 
   bool _agreed = false;
   bool _agreeError = false; // 동의 안 하고 눌렀을 때 체크박스 아래에 안내
@@ -58,39 +79,148 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   void dispose() {
-    _name.dispose();
-    _email.dispose();
-    _password.dispose();
-    _passwordConfirm.dispose();
-    _phone.dispose();
-    _vehicle.dispose();
+    for (final c in [_empNoInput, _name, _email, _password, _passwordConfirm, _phone, _vehicle, _emailV.code, _phoneV.code]) {
+      c.dispose();
+    }
     super.dispose();
   }
 
-  // ── 칸별 검사 (문제 없으면 null) ─────────────────────────────
-  String? _checkName(String? v) => (v ?? '').trim().isEmpty ? '이름을 입력하세요' : null;
+  // 칸에 글을 칠 때마다 오른쪽 체크 · X 를 다시 그린다
+  void _refresh(String _) => setState(() {});
 
-  String? _checkEmail(String? v) => _emailRule.hasMatch((v ?? '').trim()) ? null : '이메일 형식이 올바르지 않아요';
+  /// 칸 오른쪽 표시: 아무것도 안 쳤으면 null(표시 없음) · 맞으면 true(체크) · 틀리면 false(X)
+  static bool? _tri(String text, bool ok) => text.trim().isEmpty ? null : ok;
+
+  /// 비밀번호가 틀렸을 때만 칸 아래에 보여 주는 규칙
+  static const String _pwRuleText = '대문자, 숫자, 특수문자를 포함하여 8자 이상 입력해 주세요';
+
+  // 이름 = 글자(한글 · 영문)와 띄어쓰기만, 숫자 · 기호 없음
+  static final RegExp _nameRule = RegExp(r'^[가-힣a-zA-Z ]+$');
+  bool get _nameOk => _nameRule.hasMatch(_name.text.trim());
+
+  // ── 칸별 검사 (문제 없으면 null) ─────────────────────────────
+  String? _checkName(String? v) {
+    final n = (v ?? '').trim();
+    if (n.isEmpty) return '이름을 입력하세요';
+    return _nameRule.hasMatch(n) ? null : '이름은 한글이나 영문으로 입력하세요';
+  }
+
+  String? _checkEmail(String? v) {
+    if (!_emailRule.hasMatch((v ?? '').trim())) return '이메일 형식이 올바르지 않아요';
+    if (_emailV.token == null) return '이메일 인증을 해 주세요';
+    return null;
+  }
 
   String? _checkPassword(String? v) {
     final p = v ?? '';
-    if (p.length < 8) return '비밀번호는 8자리 이상이어야 해요';
-    if (!RegExp(r'[A-Z]').hasMatch(p)) return '대문자를 1개 이상 넣어 주세요';
-    if (!RegExp(r'[a-z]').hasMatch(p)) return '소문자를 1개 이상 넣어 주세요';
-    if (!RegExp(r'[0-9]').hasMatch(p)) return '숫자를 1개 이상 넣어 주세요';
-    if (!_specialRule.hasMatch(p)) return '특수문자를 1개 이상 넣어 주세요 (! @ # \$ % ^ & * 등)';
-    return null;
+    final miss = [for (final r in _pwRules) if (!r.$2(p)) r.$1];
+    return miss.isEmpty ? null : _pwRuleText;
   }
 
   String? _checkPasswordConfirm(String? v) => v == _password.text ? null : '비밀번호가 일치하지 않아요';
 
+  bool _phoneFormatOk(String v) {
+    final digits = v.replaceAll(RegExp(r'\D'), '');
+    return digits.length >= 9 && digits.length <= 11;
+  }
+
   String? _checkPhone(String? v) {
-    final digits = (v ?? '').replaceAll(RegExp(r'\D'), '');
-    return digits.length >= 9 && digits.length <= 11 ? null : '전화번호 형식이 올바르지 않아요 (예: 010-1234-5678)';
+    if (!_phoneFormatOk(v ?? '')) return '전화번호 형식이 올바르지 않아요';
+    if (_phoneV.token == null) return '전화번호 인증을 해 주세요';
+    return null;
   }
 
   String? _checkVehicle(String? v) =>
-      _vehicleRule.hasMatch((v ?? '').trim()) ? null : '차량번호 형식이 올바르지 않아요 (예: 12가 3456, 서울 12가 3456)';
+      _vehicleRule.hasMatch((v ?? '').trim()) ? null : '차량번호 형식이 올바르지 않아요';
+
+  // ── 1단계: 사번 확인 ─────────────────────────────────────────
+  Future<void> _checkEmpNo() async {
+    final raw = _empNoInput.text.trim();
+    if (raw.isEmpty) {
+      setState(() => _empError = '사번을 입력하세요');
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _loading = true;
+      _empError = null;
+    });
+    try {
+      final no = await AuthService.checkEmployee(raw);
+      if (mounted) {
+        setState(() {
+          _empNo = no;
+          _empNoInput.text = no; // 2단계 '사번' 칸에 서버가 정리한 사번 그대로
+        });
+      }
+    } on AuthException catch (e) {
+      if (mounted) setState(() => _empError = e.message);
+    } catch (_) {
+      if (mounted) setState(() => _empError = '사번을 확인하지 못했어요. 잠시 뒤 다시 시도해 주세요');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  // ── 이메일 · 전화번호 인증 (공용) ─────────────────────────────
+  Future<void> _sendCode(_Verify v, String value, Future<String?> Function(String) send) async {
+    setState(() {
+      v.busy = true;
+      v.msg = null;
+    });
+    try {
+      final demo = await send(value);
+      if (!mounted) return;
+      setState(() {
+        v.sent = true;
+        v.sentTo = value;
+        v.demo = demo;
+        v.code.clear();
+      });
+    } on AuthException catch (e) {
+      if (mounted) setState(() => v.msg = e.message);
+    } catch (_) {
+      if (mounted) setState(() => v.msg = '인증번호를 보내지 못했어요. 잠시 뒤 다시 시도해 주세요');
+    } finally {
+      if (mounted) setState(() => v.busy = false);
+    }
+  }
+
+  Future<void> _verifyCode(_Verify v, String value, Future<String> Function(String, String) verify) async {
+    if (v.code.text.trim().length < 4) {
+      setState(() => v.msg = '인증번호를 입력하세요');
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    setState(() {
+      v.busy = true;
+      v.msg = null;
+    });
+    try {
+      final token = await verify(value, v.code.text.trim());
+      if (!mounted) return;
+      setState(() {
+        v.token = token;
+        v.verifiedValue = value;
+        v.sent = false;
+        v.demo = null;
+      });
+    } on AuthException catch (e) {
+      if (mounted) setState(() => v.msg = e.message);
+    } catch (_) {
+      if (mounted) setState(() => v.msg = '인증하지 못했어요. 잠시 뒤 다시 시도해 주세요');
+    } finally {
+      if (mounted) setState(() => v.busy = false);
+    }
+  }
+
+  // 번호 · 주소를 고치거나 지우면 처음으로 — 인증번호 칸이 사라지고 버튼은 다시 [인증번호 받기]
+  void _onVerifyChanged(_Verify v, String value) {
+    setState(() {
+      final now = value.trim();
+      if ((v.sent && now != v.sentTo) || (v.token != null && now != v.verifiedValue)) v.reset();
+    });
+  }
 
   // ── 가입 ────────────────────────────────────────────────────
   Future<void> _submit() async {
@@ -112,6 +242,9 @@ class _SignupScreenState extends State<SignupScreen> {
         phone: _phone.text.trim(),
         vehicleNo: _vehicle.text.trim(),
         privacyAgreed: _agreed,
+        empNo: _empNo,
+        phoneToken: _phoneV.token,
+        emailToken: _emailV.token,
       );
       if (mounted) Navigator.of(context).pop(_email.text.trim());
     } on AuthException catch (e) {
@@ -136,139 +269,257 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  // ── 화면 (Figma 시안: 인사 · 아이콘 입력칸 · 둥근 동의 체크 · 큰 버튼, 디자인만 바꿈 — 검사 · 가입은 위 함수 그대로) ──
+  // ── 화면 ─────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: AppColors.textPrimary,
-        surfaceTintColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        toolbarHeight: 66,
-        leading: IconButton(
-          icon: const Icon(Icons.chevron_left, size: 30),
-          tooltip: '뒤로 가기',
-          onPressed: () => Navigator.of(context).maybePop(),
+    // 2단계에서 뒤로 가기(<) = 1단계 사번 입력으로 (사번을 바꾸는 유일한 길)
+    void back() {
+      if (_empNo != null && !_loading) {
+        setState(() => _empNo = null);
+      } else {
+        Navigator.of(context).maybePop();
+      }
+    }
+
+    return PopScope(
+      canPop: _empNo == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) back();
+      },
+      child: Scaffold(
+        backgroundColor: AuthUi.page,
+        appBar: AppBar(
+          backgroundColor: AuthUi.page,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          leading: BackButton(onPressed: back),
+          title: const Text('회원가입'),
+          centerTitle: true,
         ),
-        title: const Text('회원가입',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.5,
-                color: AppColors.textPrimary)),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(22, 17, 22, 20),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text('안전 운전을 시작해 볼까요?',
-                    style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900, letterSpacing: -0.8,
-                        color: AppColors.textPrimary)),
-                const SizedBox(height: 4),
-                const Text('꼭 필요한 정보만 알려 주세요.',
-                    style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-                const SizedBox(height: 21),
-                AuthField(
-                  label: '이름',
-                  icon: Icons.person_outline,
-                  controller: _name,
-                  hint: '이름을 입력하세요',
-                  enabled: !_loading,
-                  height: 53,
-                  textInputAction: TextInputAction.next,
-                  validator: _checkName,
-                ),
-                const SizedBox(height: 13),
-                AuthField(
-                  label: '이메일',
-                  icon: Icons.mail_outline,
-                  controller: _email,
-                  hint: '이메일을 입력하세요',
-                  enabled: !_loading,
-                  height: 53,
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.next,
-                  validator: _checkEmail,
-                ),
-                const SizedBox(height: 13),
-                AuthField(
-                  label: '비밀번호',
-                  icon: Icons.lock_outline,
-                  controller: _password,
-                  hint: '비밀번호를 입력하세요',
-                  helper: '대소문자·숫자·특수문자 포함 8자리 이상',
-                  password: true,
-                  enabled: !_loading,
-                  height: 53,
-                  textInputAction: TextInputAction.next,
-                  validator: _checkPassword,
-                ),
-                const SizedBox(height: 13),
-                AuthField(
-                  label: '비밀번호 확인',
-                  icon: Icons.lock_outline,
-                  controller: _passwordConfirm,
-                  hint: '다시 입력하세요',
-                  password: true,
-                  enabled: !_loading,
-                  height: 53,
-                  textInputAction: TextInputAction.next,
-                  validator: _checkPasswordConfirm,
-                ),
-                const SizedBox(height: 13),
-                AuthField(
-                  label: '전화번호',
-                  icon: Icons.phone_outlined,
-                  controller: _phone,
-                  hint: '010-1234-5678',
-                  enabled: !_loading,
-                  height: 53,
-                  keyboardType: TextInputType.phone,
-                  textInputAction: TextInputAction.next,
-                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9\-]'))],
-                  validator: _checkPhone,
-                ),
-                const SizedBox(height: 13),
-                AuthField(
-                  label: '차량번호',
-                  icon: Icons.local_shipping_outlined,
-                  controller: _vehicle,
-                  hint: '12가 3456',
-                  enabled: !_loading,
-                  height: 53,
-                  textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) => _submit(),
-                  validator: _checkVehicle,
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  '졸음 경고가 나면 관리자가 이 연락처로 연락해요.',
-                  style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-                ),
-                const SizedBox(height: 10),
-                _consentRow(),
-                if (_error != null) ...[
-                  const SizedBox(height: 8),
-                  Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 13, fontWeight: FontWeight.w600)),
-                ],
-                const SizedBox(height: 14),
-                if (_loading)
-                  const SizedBox(height: 58, child: Center(child: CircularProgressIndicator()))
-                else
-                  AuthButton(text: '가입하기', onPressed: _submit),
-              ],
-            ),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            child: _empNo == null ? _empStep() : _form(),
           ),
         ),
       ),
     );
   }
 
-  // 동의 줄 (Figma .check-row — 둥근 네모 체크 · 글 · 오른쪽 화살표 = 내용 보기)
+  // 1단계 — 사번 확인
+  Widget _empStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _StepDots(step: 1),
+        const SizedBox(height: 24),
+        AuthField(
+          label: '사번',
+          controller: _empNoInput,
+          hint: '사번을 입력하세요',
+          enabled: !_loading,
+          keyboardType: TextInputType.visiblePassword, // 숫자 · 영문 모두
+          textInputAction: TextInputAction.done,
+          onFieldSubmitted: (_) => _checkEmpNo(),
+        ),
+        if (_empError != null) AuthNote(_empError!, error: true),
+        const SizedBox(height: 20),
+        if (_loading)
+          const SizedBox(height: AuthUi.controlHeight, child: Center(child: CircularProgressIndicator(color: AppColors.navy)))
+        else
+          AuthButton(text: '사번 확인', onPressed: _checkEmpNo),
+        const SizedBox(height: 18),
+        _loginLink(),
+      ],
+    );
+  }
+
+  // 2단계 — 정보 입력
+  Widget _form() {
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _StepDots(step: 2),
+          const SizedBox(height: 24), // 1단계와 같은 간격 — 넘어갈 때 '사번' 칸이 움직이지 않게
+          // 확인된 사번 — 다른 칸과 같은 모양, 바꿀 수 없어서 흐리게 (비활성처럼). 바꾸려면 위 < 로 1단계로
+          AuthField(
+            label: '사번',
+            controller: _empNoInput,
+            readOnly: true,
+            valid: true,
+            height: 53,
+          ),
+          const SizedBox(height: 13),
+          AuthField(
+            label: '이름',
+            controller: _name,
+            hint: '이름을 입력하세요',
+            enabled: !_loading,
+            height: 53,
+            textInputAction: TextInputAction.next,
+            onChanged: _refresh,
+            valid: _tri(_name.text, _nameOk),
+            invalidNote: '이름은 한글이나 영문으로 입력하세요',
+            validator: _checkName,
+          ),
+          const SizedBox(height: 13),
+          _verifyBlock(
+            label: '이메일',
+            controller: _email,
+            v: _emailV,
+            hint: '이메일을 입력하세요',
+            formatOk: (s) => _emailRule.hasMatch(s),
+            invalidNote: '이메일 형식이 올바르지 않아요',
+            demoWord: '메일',
+            send: AuthService.sendEmailCode,
+            verify: AuthService.verifyEmailCode,
+            validator: _checkEmail,
+            keyboardType: TextInputType.emailAddress,
+          ),
+          const SizedBox(height: 13),
+          AuthField(
+            label: '비밀번호',
+            controller: _password,
+            hint: '비밀번호를 입력하세요',
+            password: true,
+            enabled: !_loading,
+            height: 53,
+            textInputAction: TextInputAction.next,
+            onChanged: _refresh,
+            valid: _tri(_password.text, _checkPassword(_password.text) == null),
+            invalidNote: _pwRuleText, // 틀릴 때만 규칙을 알려 줌
+            validator: _checkPassword,
+          ),
+          const SizedBox(height: 13),
+          AuthField(
+            label: '비밀번호 확인',
+            controller: _passwordConfirm,
+            hint: '다시 입력하세요',
+            password: true,
+            enabled: !_loading,
+            height: 53,
+            textInputAction: TextInputAction.next,
+            onChanged: _refresh,
+            valid: _tri(_passwordConfirm.text, _passwordConfirm.text == _password.text),
+            invalidNote: '비밀번호가 일치하지 않아요',
+            validator: _checkPasswordConfirm,
+          ),
+          const SizedBox(height: 13),
+          _verifyBlock(
+            label: '전화번호',
+            controller: _phone,
+            v: _phoneV,
+            hint: '010-1234-5678',
+            formatOk: _phoneFormatOk,
+            invalidNote: '전화번호 형식이 올바르지 않아요',
+            demoWord: '문자',
+            send: AuthService.sendPhoneCode,
+            verify: AuthService.verifyPhoneCode,
+            validator: _checkPhone,
+            keyboardType: TextInputType.phone,
+            inputFormatters: [PhoneHyphenFormatter()], // 숫자만 쳐도 '-' 자동
+          ),
+          const SizedBox(height: 13),
+          AuthField(
+            label: '차량번호',
+            controller: _vehicle,
+            hint: '12가 3456',
+            enabled: !_loading,
+            height: 53,
+            textInputAction: TextInputAction.done,
+            onChanged: _refresh,
+            valid: _tri(_vehicle.text, _vehicleRule.hasMatch(_vehicle.text.trim())),
+            invalidNote: '차량번호 형식이 올바르지 않아요',
+            validator: _checkVehicle,
+          ),
+          const SizedBox(height: 10),
+          _consentRow(),
+          if (_error != null) AuthNote(_error!, error: true),
+          const SizedBox(height: 14),
+          if (_loading)
+            const SizedBox(height: AuthUi.controlHeight, child: Center(child: CircularProgressIndicator(color: AppColors.navy)))
+          else
+            AuthButton(text: '가입하기', onPressed: _submit),
+          const SizedBox(height: 18),
+          _loginLink(),
+        ],
+      ),
+    );
+  }
+
+  // 인증 칸 공용 — [값 칸 + 인증번호 받기 / 재전송] → [인증번호 칸 + 확인]
+  //   체크 = 인증까지 끝남 · X = 모양이 틀림 · 표시 없음 = 아직 안 침 / 모양은 맞고 인증 전
+  //   [인증번호 받기] 는 모양이 맞을 때만, 값을 고치거나 지우면 처음 상태로 (_onVerifyChanged)
+  Widget _verifyBlock({
+    required String label,
+    required TextEditingController controller,
+    required _Verify v,
+    required String hint,
+    required bool Function(String) formatOk,
+    required String invalidNote,
+    required String demoWord, // '메일' · '문자'
+    required Future<String?> Function(String) send,
+    required Future<String> Function(String, String) verify,
+    required FormFieldValidator<String> validator,
+    TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
+  }) {
+    final value = controller.text.trim();
+    final verified = v.token != null && value == v.verifiedValue;
+    final ok = formatOk(value);
+    final busy = v.busy || _loading;
+    final bool? valid = verified ? true : (value.isNotEmpty && !ok ? false : null);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AuthField(
+          label: label,
+          controller: controller,
+          hint: hint,
+          enabled: !_loading,
+          keyboardType: keyboardType,
+          textInputAction: TextInputAction.next,
+          inputFormatters: inputFormatters,
+          onChanged: (s) => _onVerifyChanged(v, s),
+          validator: validator,
+          valid: valid,
+          invalidNote: invalidNote,
+          suffix: verified || !ok
+              ? null
+              : AuthTinyButton(text: v.sent ? '재전송' : '인증번호 받기', onPressed: busy ? null : () => _sendCode(v, value, send)),
+        ),
+        if (v.sent && !verified) ...[
+          const SizedBox(height: 10),
+          AuthField(
+            label: '인증번호',
+            controller: v.code,
+            hint: '6자리 숫자',
+            enabled: !_loading,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
+            onFieldSubmitted: (_) => _verifyCode(v, value, verify),
+            suffix: AuthTinyButton(text: '확인', onPressed: busy ? null : () => _verifyCode(v, value, verify)),
+          ),
+          if (v.demo != null)
+            AuthNote('인증번호: ${v.demo}  ($demoWord 대신 보여 드려요 · 5분 안에 입력)', color: AppColors.textSecondary),
+        ],
+        if (v.msg != null) AuthNote(v.msg!, error: true),
+      ],
+    );
+  }
+
+  Widget _loginLink() => Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        const Text('이미 계정이 있나요? ', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+        GestureDetector(
+          onTap: _loading ? null : () => Navigator.of(context).maybePop(),
+          child: const Text('로그인하기',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        ),
+      ]);
+
+  // 동의 줄 — 둥근 네모 체크 · 글 · 오른쪽 화살표 = 내용 보기
   Widget _consentRow() {
     void toggle() => setState(() {
           _agreed = !_agreed;
@@ -292,11 +543,9 @@ class _SignupScreenState extends State<SignupScreen> {
                         width: 24,
                         height: 24,
                         decoration: BoxDecoration(
-                          color: _agreed ? AppColors.navy : Colors.white,
+                          color: _agreed ? AppColors.navy : Colors.transparent,
                           border: Border.all(
-                              color: _agreed
-                                  ? AppColors.navy
-                                  : (_agreeError ? AppColors.danger : AppColors.cardBorder),
+                              color: _agreed ? AppColors.navy : (_agreeError ? AuthUi.error : AppColors.textMuted),
                               width: 1.5),
                           borderRadius: BorderRadius.circular(7),
                         ),
@@ -305,8 +554,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       const SizedBox(width: 9),
                       const Expanded(
                         child: Text('(필수) 개인정보 수집 및 이용에 동의합니다',
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
-                                color: AppColors.textSecondary)),
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
                       ),
                     ],
                   ),
@@ -320,10 +568,71 @@ class _SignupScreenState extends State<SignupScreen> {
             ],
           ),
         ),
-        if (_agreeError)
-          const Text('개인정보 수집 · 이용에 동의해야 가입할 수 있어요',
-              style: TextStyle(color: AppColors.danger, fontSize: 12, fontWeight: FontWeight.w600)),
+        if (_agreeError) const AuthNote('개인정보 수집 · 이용에 동의해야 가입할 수 있어요', error: true),
       ],
     );
+  }
+}
+
+/// 위 단계 표시 — ① 사번 확인 ─ ② 정보 입력
+class _StepDots extends StatelessWidget {
+  final int step;
+  const _StepDots({required this.step});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget dot(int n, String text) {
+      final on = step >= n;
+      return Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          width: 22,
+          height: 22,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: on ? AppColors.navy : AppColors.fill, shape: BoxShape.circle),
+          child: Text('$n',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: on ? Colors.white : AppColors.textMuted)),
+        ),
+        const SizedBox(width: 6),
+        Text(text,
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: step == n ? FontWeight.w700 : FontWeight.w500,
+                color: on ? AppColors.textPrimary : AppColors.textMuted)),
+      ]);
+    }
+
+    return Row(children: [
+      dot(1, '사번 확인'),
+      Expanded(
+        child: Container(
+          height: 1,
+          margin: const EdgeInsets.symmetric(horizontal: 10),
+          color: AppColors.fill,
+        ),
+      ),
+      dot(2, '정보 입력'),
+    ]);
+  }
+}
+
+/// 이메일 · 전화번호 인증 한 가지의 상태
+class _Verify {
+  final code = TextEditingController(); // 인증번호 칸
+  bool sent = false; // 인증번호를 받았는지 (받았으면 인증번호 칸이 보임)
+  String? sentTo; // 인증번호를 받은 값 (고치면 처음으로)
+  String? demo; // 시연용 서버가 돌려준 인증번호
+  String? token; // 인증 성공 표 — 가입할 때 서버에 같이 보냄
+  String? verifiedValue; // 인증한 값
+  String? msg; // 칸 아래 오류
+  bool busy = false;
+
+  void reset() {
+    sent = false;
+    sentTo = null;
+    demo = null;
+    token = null;
+    verifiedValue = null;
+    msg = null;
+    code.clear();
   }
 }

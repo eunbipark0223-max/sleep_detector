@@ -161,6 +161,13 @@ class User(Base):
         String(20),
         nullable=True,
     )
+    # (11/17 C) 회사 사번 — 앱 회원가입은 사번 확인부터 (employees 표에 있는 사번만 가입 가능, 한 사번 = 한 계정).
+    #   이미 만들어진 DB 에는 main.py 가 서버를 켤 때 이 칸을 자동으로 붙인다 (services/employee_service.ensure_schema)
+    emp_no: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+        unique=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         server_default=func.now(),
@@ -169,4 +176,20 @@ class User(Base):
 
     sleep_events: Mapped[list["SleepEvent"]] = relationship(
         back_populates="user",
+    )
+
+
+class Employee(Base):
+    """(11/17 C) 회사에 등록된 기사 사번 — 이 표에 있는 사번만 앱에 가입할 수 있다.
+
+    관리자가 미리 넣어 둔다 (시연용 사번은 서버를 켤 때 표가 비어 있으면 자동으로 들어감).
+    """
+    __tablename__ = "employees"
+
+    emp_no: Mapped[str] = mapped_column(String(20), primary_key=True)
+    name: Mapped[str | None] = mapped_column(String(50), nullable=True)  # 비워 두면 이름은 확인하지 않음
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        nullable=False,
     )

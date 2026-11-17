@@ -35,6 +35,7 @@ class UserResponse(BaseModel):
     role: str  # user / admin
     phone: Optional[str] = None        # 기사 연락처 (관리자가 경고를 보고 전화할 때). 안 적었으면 null
     vehicle_no: Optional[str] = None   # 차량번호. 안 적었으면 null
+    emp_no: Optional[str] = None       # 사번 (11/17 C · 사번으로 가입한 기사만)
 
 
 class LoginResponse(BaseModel):

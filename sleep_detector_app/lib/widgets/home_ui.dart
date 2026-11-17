@@ -13,7 +13,7 @@ import 'package:flutter/material.dart';
 import '../models/sleep_event.dart';
 import '../stage_texts.dart';
 import '../theme.dart';
-import 'owl_says.dart';
+import 'web_ui.dart';
 
 /// 남색 '지금 상태' 카드 (시안 .current-state-card)
 class HomeStateCard extends StatelessWidget {
@@ -26,10 +26,13 @@ class HomeStateCard extends StatelessWidget {
   final Widget? resume;
   // (11/16 R안) 운행 요약 숫자 — (값, 이름) 예: ('1:20', '운행 시간'). 비면 안 보임
   final List<(String, String)> stats;
+  // (11/17) 아직 운행을 시작하지 않음 — 0단계면 상태 글 없이 캐릭터 + [운행 시작] 만
+  final bool idle;
   const HomeStateCard({
     super.key,
     required this.stage,
     required this.onStart,
+    this.idle = false,
     this.startLabel = '운행 시작',
     this.resume,
     this.stats = const [],
@@ -45,29 +48,53 @@ class HomeStateCard extends StatelessWidget {
 
   // (11/16 R안 · readdy 홈 카드) 흰 카드 · 단계 점 + 이름 · 큰 글 · 운행 요약 숫자 · 버튼 (부엉이 · 그라데이션 · 그림자 없음)
   Widget _readdy(int s, String big) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-      decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(24)),
+    // (11/17 사용자 요청) 운행 전 · 정상이면 '정상' 배지 · '안전 운전 중이에요' 없이 캐릭터 자리 + [운행 시작] 만
+    if (idle && s == 0) {
+      return WebCard(
+        padding: const EdgeInsets.fromLTRB(22, 24, 22, 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Center(child: ImageSlot(label: '메인 캐릭터 이미지', width: 120, height: 120, radius: 22)),
+            const SizedBox(height: 22),
+            resume ??
+                FilledButton.icon(
+                  onPressed: onStart,
+                  icon: const Icon(Icons.photo_camera_outlined, size: 20),
+                  label: Text(startLabel),
+                ),
+          ],
+        ),
+      );
+    }
+    // (11/17 관리자 웹 느낌) 흰 카드 · 단계 알약 배지 · 큰 글 · 오른쪽 캐릭터 그림 자리
+    return WebCard(
+      padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(children: [
-            Container(width: 10, height: 10, decoration: BoxDecoration(color: AppColors.stage(s), shape: BoxShape.circle)),
-            const SizedBox(width: 8),
-            Text(SleepEvent.stageLabels[s],
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('지금 상태', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                const SizedBox(height: 8),
+                StageBadge(stage: s, fontSize: 13),
+                const SizedBox(height: 12),
+                Text(big,
+                    maxLines: 3,
+                    style: const TextStyle(
+                        fontSize: 24, height: 1.3, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: AppColors.textPrimary)),
+              ]),
+            ),
+            const SizedBox(width: 12),
+            const ImageSlot(label: '메인 캐릭터 이미지', width: 92, height: 92, radius: 18),
           ]),
-          const SizedBox(height: 12),
-          Text(big,
-              maxLines: 3,
-              style: const TextStyle(
-                  fontSize: 27, height: 1.3, fontWeight: FontWeight.w700, letterSpacing: -0.8, color: AppColors.textPrimary)),
           if (stats.isNotEmpty) ...[
             const SizedBox(height: 22),
             IntrinsicHeight(
               child: Row(children: [
                 for (var i = 0; i < stats.length; i++) ...[
-                  if (i > 0) const VerticalDivider(width: 24, thickness: 1, color: Color(0xFFE5E8EE)),
+                  if (i > 0) const VerticalDivider(width: 24, thickness: 1, color: AppColors.line),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(stats[i].$1,
@@ -249,12 +276,7 @@ class HomeStateCard extends StatelessWidget {
                         ],
                         shape: BoxShape.circle,
                       ),
-                      child: Image.asset(
-                        OwlSays.body(s),
-                        width: 150,
-                        height: 150,
-                        fit: BoxFit.contain,
-                      ),
+                      child: const ImageSlot(label: '메인 캐릭터 이미지', width: 140, height: 140),
                     ),
                   ],
                 ),
@@ -530,54 +552,33 @@ class HomeEmptyCard extends StatelessWidget {
   final String? sub;
   final String? actionText;
   final VoidCallback? onAction;
+  final EdgeInsetsGeometry padding; // 위아래 여백 (홈 '최근 경고가 없어요' 는 아래쪽 빈 곳 가운데쯤으로)
   const HomeEmptyCard({
     super.key,
     required this.title,
     this.sub,
     this.actionText,
     this.onAction,
+    this.padding = const EdgeInsets.symmetric(vertical: 36),
   });
 
   @override
   Widget build(BuildContext context) {
-    // (11/16 R안) 흰 카드 (모서리 24, 테두리 · 부엉이 없음)
-    return Container(
-      constraints: const BoxConstraints(minHeight: 82),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Row(
+    // (11/17 사용자 요청) 흰 네모 없이 회색 바탕 위에 회색 글자만 (가운데)
+    return Padding(
+      padding: padding,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                if (sub != null) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    sub!,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          if (actionText != null)
+          Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, color: AppColors.textMuted)),
+          if (sub != null) ...[
+            const SizedBox(height: 4),
+            Text(sub!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: AppColors.textMuted)),
+          ],
+          if (actionText != null) ...[
+            const SizedBox(height: 6),
             TextButton(onPressed: onAction, child: Text(actionText!)),
+          ],
         ],
       ),
     );

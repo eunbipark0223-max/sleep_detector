@@ -7,6 +7,10 @@
 //     + 기사님께 드린 안내 + 음성 퀴즈 · 휴식 · 3단계 응답 기록 + 위치
 //   - 관리자용 '권장 조치'(기사에게 연락 …)는 기사님께는 보여 주지 않음
 //   - 사진은 GET /events/{id}/photo (로그인한 본인만) — 토큰을 붙여 받아 화면에만 보여 줌 (폰에 저장 안 함)
+//
+// [모양] (11/17 C · 관리자 웹 경고 상세 팝업과 같게)
+//   사진 칸 → 큰 시각 '17:44' + 단계 알약 → 아이콘 줄(위치 · 지도에서 보기) → 남색 AI 분석 카드
+//   → 기사님의 대처 → 시간 기록 줄(단계 색 세로 막대)
 // ═══════════════════════════════════════════════════════════════
 import 'dart:typed_data';
 
@@ -16,6 +20,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/sleep_event.dart';
 import '../services/api_service.dart';
 import '../theme.dart';
+import '../widgets/web_ui.dart';
 
 class EventDetailScreen extends StatefulWidget {
   final SleepEvent event;
@@ -26,7 +31,7 @@ class EventDetailScreen extends StatefulWidget {
 }
 
 class _EventDetailScreenState extends State<EventDetailScreen> {
-  static const Color _bg = Color(0xFFF8F9FC);
+  static const Color _bg = AppColors.background;
   late final Future<Uint8List?> _photo =
       widget.event.photoUrl == null ? Future.value(null) : ApiService.fetchEventPhoto(widget.event.photoUrl!);
 
@@ -40,19 +45,25 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       .replaceAll(RegExp(r'(?<![가-힣])기사(?:님)?(?:에게|께)'), '기사님께')
       .replaceAll(RegExp(r'(?<![가-힣])기사(?:님)?의'), '기사님의');
 
-  String get _dateTime {
+  static String _two(int n) => n.toString().padLeft(2, '0');
+
+  /// 큰 시각 '17:44'
+  String get _time {
     final t = e.createdAt.toLocal();
-    if (t.year < 2000) return '시각 없음';
-    String two(int n) => n.toString().padLeft(2, '0');
-    final ampm = t.hour < 12 ? '오전' : '오후';
-    final h = t.hour % 12 == 0 ? 12 : t.hour % 12;
-    return '${t.month}월 ${t.day}일 $ampm $h:${two(t.minute)}';
+    if (t.year < 2000) return '--:--';
+    return '${_two(t.hour)}:${_two(t.minute)}';
+  }
+
+  /// 시각 옆 작은 날짜 '11/17'
+  String get _date {
+    final t = e.createdAt.toLocal();
+    if (t.year < 2000) return '';
+    return '${t.month}/${t.day}';
   }
 
   @override
   Widget build(BuildContext context) {
     final s = e.stage.clamp(0, 3);
-    final c = AppColors.stage(s);
     final situation = _forDriver(_s(r['situation']).isNotEmpty ? _s(r['situation']) : e.summary);
     final reason = _forDriver(_s(r['stage_reason']));
     final regulation = _s(r['regulation']);
@@ -61,6 +72,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     final wake = r['wake'] is Map ? Map<String, dynamic>.from(r['wake']) : null;
     final eye = r['eye'] is Map ? Map<String, dynamic>.from(r['eye']) : null;
     final closedSec = eye?['closed_sec'];
+    final hasPlace = e.latitude != null && e.longitude != null;
 
     return Scaffold(
       backgroundColor: _bg,
@@ -70,137 +82,139 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
         centerTitle: true,
-        title: const Text('경고 기록', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+        title: Row(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 8, height: 8, decoration: BoxDecoration(color: AppColors.stage(s), shape: BoxShape.circle)),
+          const SizedBox(width: 8),
+          const Text('경고 기록', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+        ]),
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1, thickness: 1, color: AppColors.line),
+        ),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
         children: [
-          // 머리 (11/16 R안 · 사용자 요청 13·15): 단계 연한 색 카드 — '● n단계 · 이름' · 큰 종류 · 시각.
-          //   사진 카드와 겹치지 않게 아래에 간격을 둠, 부엉이 · 남색 없음
-          Container(
-            padding: const EdgeInsets.fromLTRB(22, 18, 22, 20),
-            decoration: BoxDecoration(color: AppColors.stagePastel(s), borderRadius: BorderRadius.circular(24)),
+          WebCard(
+            padding: const EdgeInsets.all(16),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(children: [
-                  Container(width: 10, height: 10, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
-                  const SizedBox(width: 8),
-                  Text('$s단계 · ${e.stageLabel}',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
-                ]),
-                const SizedBox(height: 8),
-                Text(e.reasonLabel,
-                    style: const TextStyle(
-                        fontSize: 30, height: 1.2, fontWeight: FontWeight.w800, letterSpacing: -0.8, color: AppColors.textPrimary)),
-                const SizedBox(height: 4),
-                Text(_dateTime, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // 졸음 사진 (관리자 웹과 같은 사진)
-          _card(
-            padding: EdgeInsets.zero,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: AspectRatio(
-                aspectRatio: 4 / 3,
-                child: FutureBuilder<Uint8List?>(
-                  future: _photo,
-                  builder: (context, snap) {
-                    if (snap.connectionState != ConnectionState.done) {
-                      return const ColoredBox(
-                          color: Color(0xFFEDF0F8), child: Center(child: CircularProgressIndicator()));
-                    }
-                    final bytes = snap.data;
-                    if (bytes == null) {
-                      return const ColoredBox(
-                        color: Color(0xFFEDF0F8),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.photo_camera_outlined, size: 34, color: AppColors.textMuted),
-                            SizedBox(height: 6),
-                            Text('사진이 없어요', style: TextStyle(fontSize: 14, color: AppColors.textMuted)),
-                          ],
-                        ),
-                      );
-                    }
-                    return Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true);
-                  },
+                // 졸음 사진 (관리자 웹과 같은 사진) — 없으면 연회색 칸에 '캡처 사진이 없어요'
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: AspectRatio(
+                    aspectRatio: 4 / 3,
+                    child: FutureBuilder<Uint8List?>(
+                      future: _photo,
+                      builder: (context, snap) {
+                        if (snap.connectionState != ConnectionState.done) {
+                          return const ColoredBox(
+                              color: AppColors.field, child: Center(child: CircularProgressIndicator()));
+                        }
+                        final bytes = snap.data;
+                        if (bytes == null) {
+                          return const ColoredBox(
+                            color: AppColors.field,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.photo_camera, size: 30, color: Color(0xFF8A90A6)),
+                                SizedBox(height: 8),
+                                Text('캡처 사진이 없어요', style: TextStyle(fontSize: 13, color: AppColors.textMuted)),
+                              ],
+                            ),
+                          );
+                        }
+                        return Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true);
+                      },
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(height: 18),
+
+                // 큰 시각 · 날짜 · 오른쪽 단계 알약
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(_time,
+                        style: const TextStyle(
+                            fontSize: 30, height: 1.1, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                    const SizedBox(width: 6),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(_date, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                    ),
+                    const Spacer(),
+                    Flexible(child: StageBadge(stage: s, text: e.reasonLabel)),
+                  ],
+                ),
+
+                // 위치 줄 — 관리자 웹처럼 아이콘 + '지도에서 보기' 파란 글씨
+                if (hasPlace) ...[
+                  const SizedBox(height: 12),
+                  const Divider(height: 1, thickness: 1, color: AppColors.line),
+                  InkWell(
+                    onTap: () => launchUrl(
+                        Uri.parse('https://map.kakao.com/link/map/경고 위치,${e.latitude},${e.longitude}'),
+                        mode: LaunchMode.externalApplication),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const Icon(Icons.location_on, size: 19, color: AppColors.textSecondary),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            const Text('경고가 난 곳',
+                                style: TextStyle(fontSize: 14, color: AppColors.textPrimary)),
+                            const SizedBox(height: 3),
+                            Text('지도에서 보기',
+                                style: TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w600, color: Colors.blue.shade700)),
+                          ]),
+                        ),
+                      ]),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           const SizedBox(height: 14),
 
-          // AI 분석 결과
-          _card(
+          // AI 분석 결과 — 관리자 웹처럼 남색으로 꽉 찬 카드 + 흰 글씨
+          Container(
+            padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
+            decoration: BoxDecoration(color: AppColors.navy, borderRadius: BorderRadius.circular(22)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
-                  children: [
-                    Icon(Icons.smart_toy_outlined, size: 22, color: AppColors.navy),
-                    SizedBox(width: 8),
-                    Text('AI 분석 결과',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
-                    SizedBox(width: 6),
-                    Text('자동 분석 · 참고용', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                  ],
-                ),
+                const Text('AI 분석 결과',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
                 // (11/16 사용자 요청 16) '눈 감김 시간은 짧았어요' 대신 실제 눈 감은 시간으로
-                _row(
+                _aiRow(
                     '무슨 일이 있었나요?',
                     closedSec is num && closedSec > 0
                         ? situation.replaceAll(RegExp(r'눈 감(김|긴) 시간은 짧았어요\.?'),
                             '눈 감긴 시간은 ${closedSec.toStringAsFixed(1)}초였어요.')
                         : situation),
-                _row('왜 이 단계인가요?', reason),
-                if (closedSec is num && closedSec > 0) _row('눈을 감은 시간', '약 ${closedSec.toStringAsFixed(1)}초'),
-                _row('참고한 법규', regulation),
+                _aiRow('왜 이 단계인가요?', reason),
+                if (closedSec is num && closedSec > 0) _aiRow('눈을 감은 시간', '약 ${closedSec.toStringAsFixed(1)}초'),
+                _aiRow('참고한 법규', regulation),
+                _aiRow('기사님께 전달한 안내', e.guidance),
               ],
             ),
           ),
 
-          // 기사님께 드린 안내
-          if (e.guidance.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            _card(
-              color: const Color(0xFFEDF0F8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.campaign_outlined, color: AppColors.navy, size: 24),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('앱이 드린 안내', // (11/16 사용자 요청 14) '그때 드린 안내' → 더 분명하게
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.textSecondary)),
-                        const SizedBox(height: 4),
-                        Text(e.guidance,
-                            style: const TextStyle(fontSize: 16, height: 1.45, color: AppColors.textPrimary)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-
           // 기록: 퀴즈 · 3단계 응답 · 휴식
           if (quiz.isNotEmpty || wake != null || (rest != null && rest['started'] != null)) ...[
             const SizedBox(height: 14),
-            _card(
+            WebCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('기사님의 대처', // (11/16 사용자 요청 14) '그 뒤 기록' → 더 분명하게
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
+                  const Text('기사님의 대처',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
                   for (final q in quiz)
                     _row(
                         '음성 퀴즈',
@@ -219,38 +233,33 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             ),
           ],
 
-          // 위치
-          if (e.latitude != null && e.longitude != null) ...[
-            const SizedBox(height: 14),
-            OutlinedButton.icon(
-              onPressed: () => launchUrl(
-                  Uri.parse('https://map.kakao.com/link/map/경고 위치,${e.latitude},${e.longitude}'),
-                  mode: LaunchMode.externalApplication),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.navy,
-                backgroundColor: Colors.white,
-                side: const BorderSide(color: AppColors.cardBorder, width: 1.5),
-                minimumSize: const Size.fromHeight(52),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-              ),
-              icon: const Icon(Icons.location_on_outlined),
-              label: const Text('경고가 난 곳 지도에서 보기'),
-            ),
-          ],
+          // 시간 기록 한 줄 (관리자 웹 팝업 맨 아래)
+          const SizedBox(height: 14),
+          WebCard(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+            child: TimelineRow(time: _time, stage: s, title: e.reasonLabel),
+          ),
         ],
       ),
     );
   }
 
-  // (11/16 R안) 흰 카드 · 모서리 24 · 테두리 없음
-  Widget _card({required Widget child, EdgeInsets padding = const EdgeInsets.all(20), Color color = AppColors.card}) =>
-      Container(
-        padding: padding,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(24)),
-        child: child,
-      );
+  // 남색 AI 카드 안 한 줄 — 위 작은 연한 글씨(질문) · 아래 흰 글씨(답)
+  Widget _aiRow(String label, String value) {
+    if (value.trim().isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 12.5, color: Colors.white.withValues(alpha: 0.65))),
+          const SizedBox(height: 4),
+          Text(value,
+              style: const TextStyle(fontSize: 15, height: 1.45, fontWeight: FontWeight.w600, color: Colors.white)),
+        ],
+      ),
+    );
+  }
 
   Widget _row(String label, String value) {
     if (value.trim().isEmpty) return const SizedBox.shrink();
@@ -259,9 +268,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.textMuted)),
+          Text(label, style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontSize: 16, height: 1.45, color: AppColors.textPrimary)),
+          Text(value, style: const TextStyle(fontSize: 15, height: 1.45, color: AppColors.textPrimary)),
         ],
       ),
     );

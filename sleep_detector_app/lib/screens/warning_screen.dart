@@ -35,6 +35,7 @@ import '../services/api_service.dart';
 import '../services/voice_service.dart';
 import '../stage_texts.dart';
 import '../theme.dart';
+import '../widgets/web_ui.dart';
 import '../widgets/stage_layout.dart';
 import 'map_screen.dart';
 import 'quiz_screen.dart';
@@ -660,11 +661,10 @@ class _WarningScreenState extends State<WarningScreen> {
 
   // 단계별 부엉이 (0 초록 · 1 노랑 · 2 주황 · 3 빨강, 11/09 그림: 장수연님)
   //   큰 그림 = 몸 전체 (카메라가 없을 때), 작은 배지 = 얼굴
-  String get _owlBody => 'assets/owl/owl_stage${_stage.clamp(0, 3)}.png';
 
   // 맨 위 그림 — 운행 중이면 카메라 화면(내 얼굴) + 오른쪽 아래 부엉이 배지, 카메라가 없으면 큰 부엉이
   Widget _topVisual(Color bg, Color fg) {
-    final bigIcon = Center(child: Image.asset(_owlBody, fit: BoxFit.contain, semanticLabel: '$_stage단계'));
+    const bigIcon = Center(child: ImageSlot(label: '메인 캐릭터 이미지', width: 180, height: 180, radius: 24)); // (11/17) 그림 자리만
     final cam = widget.camera;
     if (cam == null) return bigIcon;
     return ValueListenableBuilder<CameraController?>(
