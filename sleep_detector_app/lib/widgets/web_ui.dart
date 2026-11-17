@@ -69,8 +69,14 @@ class StageBadge extends StatelessWidget {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Container(width: 6, height: 6, decoration: BoxDecoration(color: AppColors.stage(s), shape: BoxShape.circle)),
         const SizedBox(width: 6),
-        Text(s == 0 ? name : '$s단계 | $name',
-            style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w600, color: AppColors.stageInk(s))),
+        // 자리가 좁으면 넘치지 않고 '…' 로 줄임 (긴 이유 이름 · 좁은 화면)
+        Flexible(
+          child: Text(s == 0 ? name : '$s단계 | $name',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+              style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w600, color: AppColors.stageInk(s))),
+        ),
       ]),
     );
   }

@@ -61,12 +61,15 @@ class _NoticeScreenState extends State<NoticeScreen> {
             children: [
               WebCard(
                 padding: EdgeInsets.zero,
-                child: Column(children: [
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22), // 안 읽은 줄 바탕이 카드 모서리 밖으로 안 나가게
+                  child: Column(children: [
                   for (var i = 0; i < events.length; i++) ...[
                     if (i > 0) const Divider(height: 1, thickness: 1, indent: 18, endIndent: 18, color: AppColors.line),
                     _NoticeRow(event: events[i], isNew: seen == null || events[i].createdAt.isAfter(seen)),
                   ],
-                ]),
+                  ]),
+                ),
               ),
             ],
           );
@@ -97,7 +100,10 @@ class _NoticeRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = event.stage.clamp(0, 3);
     final body = event.guidance.trim().isNotEmpty ? event.guidance.trim() : event.summary.trim();
-    return InkWell(
+    // (11/17) 안 읽은 알림 = 연한 남색 바탕 + 왼쪽 남색 점 + 굵은 제목
+    return Material(
+      color: isNew ? AppColors.navy.withValues(alpha: 0.05) : Colors.transparent,
+      child: InkWell(
       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => EventDetailScreen(event: event))),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 14, 14, 14),
@@ -107,9 +113,9 @@ class _NoticeRow extends StatelessWidget {
             width: 10,
             child: isNew
                 ? Padding(
-                    padding: const EdgeInsets.only(top: 15),
+                    padding: const EdgeInsets.only(top: 14),
                     child: Container(
-                        width: 6, height: 6, decoration: const BoxDecoration(color: AppColors.navy, shape: BoxShape.circle)),
+                        width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.navy, shape: BoxShape.circle)),
                   )
                 : null,
           ),
@@ -149,6 +155,7 @@ class _NoticeRow extends StatelessWidget {
             ]),
           ),
         ]),
+      ),
       ),
     );
   }

@@ -289,6 +289,9 @@ class AuthService {
       await clearEyeThreshold();
     } catch (_) {}
     try {
+      await _storage.delete(key: _noticeSeenKey); // (11/17) 다른 계정으로 들어오면 알림을 처음부터 '안 읽음' 으로
+    } catch (_) {}
+    try {
       await FirebaseAuth.instance.signOut();
     } catch (_) {}
     try {

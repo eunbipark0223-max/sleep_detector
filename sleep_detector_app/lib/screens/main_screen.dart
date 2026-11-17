@@ -16,6 +16,8 @@
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
@@ -58,6 +60,16 @@ class _MainScreenState extends State<MainScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _requireContact());
     _loadUnread(); // 알림 종 빨간 숫자
+    // (11/17) 안 읽은 알림 숫자를 30초마다 다시 센다 (운행 중 생긴 경고 · 관리자 처리도 바로 반영)
+    _unreadTimer = Timer.periodic(const Duration(seconds: 30), (_) => _loadUnread());
+  }
+
+  Timer? _unreadTimer;
+
+  @override
+  void dispose() {
+    _unreadTimer?.cancel();
+    super.dispose();
   }
 
   void _setName(Map<String, dynamic>? user) {
@@ -380,7 +392,13 @@ class _MainScreenState extends State<MainScreen> {
           ? _homeBar() // 홈은 로고 자리만
           : _homeBar(_titles[_index]), // 운행 기록 · 규정 도우미 · MY = 왼쪽 큰 제목
       body: _index == _myTab ? _myPage() : _page(_index),
-      bottomNavigationBar: _TabBar(index: _index, onTap: (i) => setState(() => _index = i)),
+      bottomNavigationBar: _TabBar(
+        index: _index,
+        onTap: (i) {
+          setState(() => _index = i);
+          if (i == 0) _loadUnread(); // 홈으로 돌아오면 알림 숫자 다시
+        },
+      ),
     );
   }
 }

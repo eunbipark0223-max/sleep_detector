@@ -280,10 +280,7 @@ class _HomeScreenState extends State<HomeScreen> {
               final events = snapshot.data;
               if (events == null)
                 return const HomeEmptyCard(title: '최근 경고 불러오기는 준비 중이에요');
-              if (events.isEmpty) {
-                // 흰 네모 없이 회색 글자만 — (11/17 사용자 요청) 너무 위에 붙지 않게 아래 빈 곳 가운데쯤
-                return const HomeEmptyCard(title: '최근 경고가 없어요', padding: EdgeInsets.only(top: 170, bottom: 40));
-              }
+              // (11/17 사용자 요청) 경고가 하나도 없어도 숫자 칸(오늘 · 이번 주 · 긴급 0건)은 그대로 보여 준다
               final latest = [...events]
                 ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
               final now = DateTime.now();
@@ -303,7 +300,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       selected: _tab,
                       onSelect: (i) => setState(() => _tab = i),
                       items: [
-                        StatItem('오늘 경고', '${today.length}', '건'),
+                        StatItem('오늘', '${today.length}', '건'),
                         StatItem('이번 주', '${week.length}', '건'),
                         StatItem('긴급', '${urgent.length}', '건', alert: urgent.isNotEmpty),
                       ],

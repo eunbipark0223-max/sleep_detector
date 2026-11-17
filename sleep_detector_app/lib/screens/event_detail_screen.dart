@@ -145,8 +145,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(_date, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
                     ),
-                    const Spacer(),
-                    Flexible(child: StageBadge(stage: s, text: e.reasonLabel)),
+                    // 남은 자리를 다 배지에 줌 (Spacer 와 나눠 쓰면 배지 자리가 반으로 줄어 넘쳤음)
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Align(alignment: Alignment.centerRight, child: StageBadge(stage: s, text: e.reasonLabel)),
+                    ),
                   ],
                 ),
 
