@@ -429,6 +429,10 @@ def seed_more() -> None:
     make(by_name["이서윤"], 2, "perclos", now - timedelta(minutes=20), "미확인")
     make(by_name["최도윤"], 1, "microsleep", now - timedelta(minutes=8), "미확인")
     make(by_name["정예린"], 1, "rest_overdue", now - timedelta(minutes=35), "미확인")
+    # 지금 주행 중인 기사 (관리자 홈 '주행 중 기사' 시험용): 연속 운전 분을 다르게
+    for who, minutes in [("박정민", 140), ("서준호", 95), ("이서윤", 62), ("최도윤", 38), ("정예린", 121), ("강민서", 12)]:
+        st = state_of(by_name[who])
+        st.update({"drive_start": time.time() - minutes * 60, "last_ping": time.time(), "ended": False, "demo_driving": True})
 
 
 def reset_all() -> None:
@@ -529,10 +533,19 @@ async def login(request: Request):
     return login_response(add_user(email, email.split("@")[0], "admin" if email.startswith("admin") else "user"))
 
 
+@app.get("/users/google/config")
+def google_config():
+    # 진짜 서버는 .env 의 FIREBASE_* 값을 돌려줌. 모의 서버는 구글 창을 열 수 없으니 mock=true 로 알려서 시험용 관리자로 바로 로그인
+    return {"enabled": True, "mock": True, "apiKey": "", "authDomain": "", "projectId": "mock", "appId": ""}
+
+
 @app.post("/users/google")
 async def login_google(request: Request):
-    await read_body(request)
-    return login_response(USERS[1])
+    body = await read_body(request)
+    email = str(body.get("email") or "").strip()
+    if email.startswith("admin"):          # 관리자 웹 구글 로그인 시험 (진짜 서버는 관리자 계정이면 id_token 을 검증함)
+        return login_response(add_user(email, str(body.get("name") or "관리자"), "admin"))
+    return login_response(USERS[1])        # 기사 앱 시험: 예전처럼 시험용 기사(1번)
 
 
 @app.get("/users/me")
@@ -553,9 +566,17 @@ def update_me(body: ProfileUpdate, user: dict = Depends(current_user)):
     return me(user)
 
 
-# 비밀번호 변경 — 새 비밀번호 규칙은 진짜 서버와 같음. 모의 서버는 비밀번호를 저장하지 않아서(로그인이 비밀번호를 보지 않음) 지금 비밀번호는 검사하지 않는다
+# 비밀번호 변경 — 새 비밀번호 규칙은 진짜 서버와 같음. 모의 서버는 로그인이 비밀번호를 보지 않아서, 처음 바꿀 때는 지금 비밀번호를 검사하지 않고
+# 한 번 바꾼 뒤부터는 그 비밀번호와 맞는지 본다 (관리자 설정 화면의 '비밀번호 불일치' 시험용. 서버를 다시 켜면 처음 상태)
+_PASSWORDS: dict = {}   # user_id → 마지막으로 바꾼 비밀번호
+
+
 @app.put("/users/me/password")
 def change_my_password(body: PasswordChange, user: dict = Depends(current_user)):
+    saved = _PASSWORDS.get(user["id"])
+    if saved is not None and body.current_password != saved:
+        raise HTTPException(status_code=400, detail="지금 비밀번호가 맞지 않아요")
+    _PASSWORDS[user["id"]] = body.new_password
     return {"success": True}
 
 
@@ -945,7 +966,11 @@ def admin_users(admin: dict = Depends(require_admin)):
     out = []
     for u in USERS.values():
         mine = [e for e in EVENTS if e["user_id"] == u["id"]]
-        out.append({**u, "event_count": len(mine), "last_event_at": max((e["created_at"] for e in mine), default=None)})
+        st = STATES.get(u["id"]) or {}
+        last = st.get("last_ping")
+        driving = bool(last) and not st.get("ended") and (bool(st.get("demo_driving")) or time.time() - last <= 120)   # 진짜 서버와 같음: 마지막 ping 2분 안
+        out.append({**u, "event_count": len(mine), "last_event_at": max((e["created_at"] for e in mine), default=None),
+                    "driving": driving, "drive_min": drive_min_of(st) if driving else 0})
     return out
 
 
@@ -1110,7 +1135,7 @@ def dev_reset():
 #                          · report(객체: situation · stage_reason · regulation · recommended_action · location · eye · driving_quiz · rest)
 #                          · photo_url · latitude · longitude · created_at     (목록은 배열, 최신순)
 #   /admin/events 한 줄    위와 같고 + user_name · user_email · user_phone · user_vehicle_no · address · urgent  (전화 · 차량이 없으면 '')
-#   /admin/users 한 줄     {id · email · name · role · phone · vehicle_no · event_count · last_event_at}  (phone · vehicle_no 없으면 null)
+#   /admin/users 한 줄     {id · email · name · role · phone · vehicle_no · event_count · last_event_at · driving · drive_min}  (phone · vehicle_no 없으면 null)
 #   PATCH /users/me        {phone?, vehicle_no?} → 내 정보 (빠진 칸은 그대로, '' 면 지움, 형식이 틀리면 422)
 #   PATCH 요청/응답        {status} → {success, id, status, stage_reset}     status: 미확인 · 확인 · 조치완료 · 휴식완료 (아니면 422)
 #   관리자 전용            PATCH /events/{id}/status · /admin/*  — role 이 admin 이 아니면 403 (mock 은 이메일이 admin 으로 시작하면 admin)
