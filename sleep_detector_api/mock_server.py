@@ -8,6 +8,9 @@
 #   - 진짜 서버와 같은 주소 · 같은 JSON 칸 이름으로 대답해서 C(앱) 가 서버 없이도 화면을 만들 수 있게 한다
 #   - 구현한 API (기획안 9장 · 각 router 파일 맨 위 주석 그대로)
 #       POST /users/signup · /users/login · /users/google  ·  GET · PATCH /users/me (PATCH = 전화번호 · 차량번호)
+#       POST /admin/signup/check · /admin/signup   관리자 회원가입 (11/17): 회사가 정한 '인증된 사번'(모의 기본 20240001~20240005)만, 한 사번은 한 번만
+#       POST /users/me/email/request · /users/me/email/confirm   이메일 변경 (11/17): 새 이메일 + 지금 비밀번호 → 6자리 인증번호 → 확인. 구글 계정은 거절.
+#                          모의라서 메일은 안 보내고 서버 화면(로그)에 인증번호를 찍고, 응답의 dev_code 로도 알려 준다 (진짜 서버는 메일로만 보내고 dev_code 는 주지 않음)
 #       POST /detect                       졸음 의심 사진 1장 + reason · closed_sec · perclos · eye_open_prob · latitude · longitude (Form)
 #       POST /drive/start · /drive/calibrate · /drive/ping · /drive/rest · /drive/resume
 #       GET  /drive/state · POST /drive/end   앱을 껐다 켰을 때 [이어서 운행] (진짜 서버와 같은 모양)
@@ -53,9 +56,9 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 
-from schema.request import PasswordChange, ProfileUpdate, format_phone, format_vehicle_no   # 전화번호 · 차량번호 형식 검사는 진짜 서버와 같은 것을 쓴다
+from schema.request import PasswordChange, ProfileUpdate, check_password_rules, format_phone, format_vehicle_no   # 전화번호 · 차량번호 형식 검사는 진짜 서버와 같은 것을 쓴다
 
 # ── 기준 숫자 (진짜 서버는 config.py 에서 가져옴) ──────────────────
 WINDOW_SEC = int(os.getenv("MOCK_WINDOW_SEC", "60"))          # 1단계 자동 해제 · 졸음 횟수를 세는 구간 (진짜 600)
@@ -407,8 +410,8 @@ def seed_more() -> None:
     spots = [(37.4021, 127.1088), (37.4105, 127.1190), (37.3950, 127.1100), (37.4300, 127.1300), (36.9921, 127.9246)]
     rng = random.Random(7)
 
-    def make(user_id: int, stage: int, reason: str, when: datetime, status: str) -> None:
-        lat, lng = rng.choice(spots)
+    def make(user_id: int, stage: int, reason: str, when: datetime, status: str, r: Optional[random.Random] = None) -> None:
+        lat, lng = (r or rng).choice(spots)
         ai = make_ai_text(stage, reason, min(stage + 1, 3), 2.0, 0.3, 120, lat, lng)
         if reason == "no_response":
             ai["report"]["situation"] = "운전 중 음성 퀴즈에 2번 답하지 못함"
@@ -433,6 +436,15 @@ def seed_more() -> None:
     for who, minutes in [("박정민", 140), ("서준호", 95), ("이서윤", 62), ("최도윤", 38), ("정예린", 121), ("강민서", 12)]:
         st = state_of(by_name[who])
         st.update({"drive_start": time.time() - minutes * 60, "last_ping": time.time(), "ended": False, "demo_driving": True})
+    # (11/17) 지난달 경고 — 관리자 졸음 경고 화면 요약 카드의 '지난달보다' 비교 시험용. 따로 씨앗(11)을 써서 위 값들(이번 주 경고 · 위치)은 그대로.
+    rng_old = random.Random(11)
+    prev_last = now.replace(day=1) - timedelta(days=1)          # 지난달 마지막 날
+    for u in users:
+        for _ in range(rng_old.randint(2, 4)):
+            stage = rng_old.choice([1, 1, 1, 2, 2, 3])
+            reason = rng_old.choice(["microsleep", "perclos"]) if stage < 3 else "no_response"
+            when = prev_last.replace(day=rng_old.randint(1, prev_last.day), hour=rng_old.randint(0, 23), minute=rng_old.randint(0, 59), second=0, microsecond=0)
+            make(u["id"], stage, reason, when, "조치완료" if stage == 3 else ("휴식완료" if stage == 2 else "확인"), rng_old)
 
 
 def reset_all() -> None:
@@ -544,14 +556,18 @@ async def login_google(request: Request):
     body = await read_body(request)
     email = str(body.get("email") or "").strip()
     if email.startswith("admin"):          # 관리자 웹 구글 로그인 시험 (진짜 서버는 관리자 계정이면 id_token 을 검증함)
-        return login_response(add_user(email, str(body.get("name") or "관리자"), "admin"))
+        existed = any(str(u["email"]).lower() == email.lower() for u in USERS.values())
+        google_admin = add_user(email, str(body.get("name") or "관리자"), "admin")
+        if not existed:
+            google_admin["provider"] = "google"                  # 구글로 새로 만든 계정만 표시 (설정에서 이메일 변경 불가). 이미 있던 이메일 계정은 그대로 둠 (진짜 서버는 이때 409)
+        return login_response(google_admin)
     return login_response(USERS[1])        # 기사 앱 시험: 예전처럼 시험용 기사(1번)
 
 
 @app.get("/users/me")
 def me(user: dict = Depends(current_user)):
     photo = PHOTOS.get(user["id"])
-    return {**user, "provider": "email", "photo_url": photo["name"] if photo else None}
+    return {**user, "provider": user.get("provider", "email"), "photo_url": photo["name"] if photo else None}
 
 
 # 내 전화번호 · 차량번호 — 진짜 서버(routers/user.py)와 같은 규칙 (schema.request 의 검사를 그대로 씀): 빠진 칸은 그대로, ''면 지움
@@ -578,6 +594,135 @@ def change_my_password(body: PasswordChange, user: dict = Depends(current_user))
         raise HTTPException(status_code=400, detail="지금 비밀번호가 맞지 않아요")
     _PASSWORDS[user["id"]] = body.new_password
     return {"success": True}
+
+
+# 관리자 회원가입 (11/17) — 회사가 따로 정해 둔 '인증된 사번'(숫자) 목록에 있는 번호만 가입할 수 있고, 한 사번으로는 한 번만 가입한다.
+#   모의 서버의 인증된 사번: MOCK_EMPLOYEE_NOS 환경변수(쉼표로 구분), 없으면 20240001 ~ 20240005.
+#   사번 알아맞히기를 막으려고 같은 접속에서 10분에 5번 틀리면 잠시 막는다. 진짜 서버는 목록을 .env 나 별도 파일에서 읽고, 쓴 사번 기록이 필요함 (칸 추가는 팀과 정함)
+EMPLOYEE_NOS = {s.strip() for s in os.getenv("MOCK_EMPLOYEE_NOS", "20240001,20240002,20240003,20240004,20240005").split(",") if s.strip()}
+_EMP_USED: dict = {}      # 사번 → 가입한 user_id
+_EMP_FAILS: dict = {}     # 접속 주소 → 틀린 시각들
+
+
+class EmployeeCheck(BaseModel):
+    employee_no: str
+
+
+class AdminSignupRequest(BaseModel):
+    employee_no: str
+    name: str = Field(..., min_length=1, max_length=50)
+    email: EmailStr
+    password: str
+
+
+def _check_employee(raw: str, request: Request) -> str:
+    no = re.sub(r"\s", "", str(raw or ""))
+    if not re.fullmatch(r"\d{4,12}", no):
+        raise HTTPException(status_code=400, detail="사번은 숫자 4~12자리로 입력해 주세요")
+    who = request.client.host if request.client else "?"
+    now = time.time()
+    fails = [t for t in _EMP_FAILS.get(who, []) if now - t < 600]
+    if len(fails) >= 5:
+        raise HTTPException(status_code=429, detail="사번을 너무 많이 틀렸어요. 10분 뒤에 다시 시도해 주세요")
+    if no not in EMPLOYEE_NOS:
+        fails.append(now); _EMP_FAILS[who] = fails
+        raise HTTPException(status_code=400, detail="등록되지 않은 사번이에요")
+    if no in _EMP_USED:
+        raise HTTPException(status_code=409, detail="이미 가입에 쓰인 사번이에요")
+    return no
+
+
+@app.post("/admin/signup/check")
+def admin_signup_check(body: EmployeeCheck, request: Request):
+    _check_employee(body.employee_no, request)
+    return {"success": True}
+
+
+@app.post("/admin/signup")
+def admin_signup(body: AdminSignupRequest, request: Request):
+    no = _check_employee(body.employee_no, request)
+    try:
+        check_password_rules(body.password)            # 진짜 서버와 같은 비밀번호 규칙 (한국어 문구)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    email = str(body.email).strip().lower()
+    if any(str(u["email"]).lower() == email for u in USERS.values()):
+        raise HTTPException(status_code=409, detail="이미 사용중인 이메일입니다")
+    user = add_user(email, body.name.strip(), "admin")
+    user["employee_no"] = no                          # 사번은 관리자 계정에만 붙음 (기사 화면에는 내보내지 않음)
+    _EMP_USED[no] = user["id"]
+    _PASSWORDS[user["id"]] = body.password            # 모의 로그인은 비밀번호를 안 보지만, 비밀번호 변경 시험이 되게 기억해 둠
+    return {"success": True}
+
+
+# 이메일 변경 (11/17) — 이메일로 가입한 계정만. 새 이메일 + 지금 비밀번호 → 6자리 인증번호(10분 · 5번까지) → 확인하면 users.email 이 바뀜.
+# 모의 서버라 메일은 안 보내고 서버 화면(로그)에 인증번호를 찍는다. 응답의 dev_code 는 모의 서버에서만 (진짜 서버는 메일로만 알려 줌). 인증번호는 메모리에만 보관 (DB 칸 추가 없음)
+EMAIL_CODE_TTL_SEC = 600
+EMAIL_CODE_RESEND_SEC = int(os.getenv("MOCK_EMAIL_RESEND_SEC", "20"))     # 다시 받기 간격 (진짜는 60초로 하면 됨. 시험하기 좋게 20초)
+EMAIL_CODE_MAX_TRIES = 5
+_EMAIL_CODES: dict = {}   # user_id → {email, code, expires, sent_at, tries}
+
+
+class EmailChangeRequest(BaseModel):
+    new_email: EmailStr
+    current_password: str
+
+
+class EmailChangeConfirm(BaseModel):
+    new_email: EmailStr
+    code: str
+
+
+def _email_taken(email: str, my_id: int) -> bool:
+    return any(str(u["email"]).lower() == email and u["id"] != my_id for u in USERS.values())
+
+
+@app.post("/users/me/email/request")
+def request_email_change(body: EmailChangeRequest, user: dict = Depends(current_user)):
+    if user.get("provider") == "google":
+        raise HTTPException(status_code=400, detail="구글 계정은 이메일을 바꿀 수 없어요")
+    saved = _PASSWORDS.get(user["id"])
+    if saved is not None and body.current_password != saved:
+        raise HTTPException(status_code=400, detail="지금 비밀번호가 맞지 않아요")
+    new_email = str(body.new_email).strip().lower()
+    if new_email == str(user["email"]).lower():
+        raise HTTPException(status_code=400, detail="지금과 같은 이메일이에요")
+    if _email_taken(new_email, user["id"]):
+        raise HTTPException(status_code=409, detail="이미 사용중인 이메일입니다")
+    now = time.time()
+    prev = _EMAIL_CODES.get(user["id"])
+    if prev and now - prev["sent_at"] < EMAIL_CODE_RESEND_SEC:
+        raise HTTPException(status_code=429, detail=f"잠시 뒤에 다시 받아 주세요 ({int(EMAIL_CODE_RESEND_SEC - (now - prev['sent_at'])) + 1}초)")
+    code = f"{random.randint(0, 999999):06d}"
+    _EMAIL_CODES[user["id"]] = {"email": new_email, "code": code, "expires": now + EMAIL_CODE_TTL_SEC, "sent_at": now, "tries": 0}
+    print(f"[모의 메일] {new_email} 로 보낸 인증번호: {code} (10분 안에 입력)")
+    return {"success": True, "expires_in": EMAIL_CODE_TTL_SEC, "dev_code": code}
+
+
+@app.post("/users/me/email/confirm")
+def confirm_email_change(body: EmailChangeConfirm, user: dict = Depends(current_user)):
+    if user.get("provider") == "google":
+        raise HTTPException(status_code=400, detail="구글 계정은 이메일을 바꿀 수 없어요")
+    new_email = str(body.new_email).strip().lower()
+    entry = _EMAIL_CODES.get(user["id"])
+    if not entry or entry["email"] != new_email:
+        raise HTTPException(status_code=400, detail="먼저 인증번호를 받아 주세요")
+    if time.time() > entry["expires"]:
+        _EMAIL_CODES.pop(user["id"], None)
+        raise HTTPException(status_code=400, detail="인증번호가 만료됐어요. 다시 받아 주세요")
+    if body.code.strip() != entry["code"]:
+        entry["tries"] += 1
+        left = EMAIL_CODE_MAX_TRIES - entry["tries"]
+        if left <= 0:
+            _EMAIL_CODES.pop(user["id"], None)
+            raise HTTPException(status_code=400, detail="인증번호가 맞지 않아요. 인증번호를 다시 받아 주세요")
+        raise HTTPException(status_code=400, detail=f"인증번호가 맞지 않아요 (남은 횟수 {left}번)")
+    if _email_taken(new_email, user["id"]):                       # 받는 사이에 다른 사람이 쓴 경우
+        _EMAIL_CODES.pop(user["id"], None)
+        raise HTTPException(status_code=409, detail="이미 사용중인 이메일입니다")
+    user["email"] = new_email
+    _EMAIL_CODES.pop(user["id"], None)
+    return me(user)
 
 
 # 프로필 사진 — 진짜 서버(routers/user.py)와 같은 규칙: 확장자 · 5MB · 사진 받기는 로그인 토큰이 있어야 함 (메모리에만 보관)

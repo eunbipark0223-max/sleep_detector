@@ -1,0 +1,190 @@
+<!--
+═══════════════════════════════════════════════════════════════
+static/admin_signup.html — 관리자 회원가입 화면 (11/17)
+담당: D
+
+[이 파일이 하는 일]
+  - 회사가 따로 정해 둔 '인증된 사번'(숫자)을 가진 사람만 관리자 계정을 만들 수 있다.
+    1) 사번 입력 → [사번 확인] → POST /admin/signup/check  (목록에 없으면 "등록되지 않은 사번이에요", 이미 가입에 쓰였으면 "이미 가입에 쓰인 사번이에요")
+    2) 확인되면 이름 · 이메일 · 비밀번호 칸이 부드럽게 펼쳐짐 → [가입하기] → POST /admin/signup (서버가 사번을 한 번 더 확인) → 로그인 화면으로
+  - 사번 목록은 서버에만 있다 (이 파일 · api.js 에는 없음). 모의 서버의 시험용 사번은 20240001 ~ 20240005
+  - 화면 모양은 로그인 화면(admin_login.html)과 같은 값 · 같은 애플 느낌의 선택 표시
+═══════════════════════════════════════════════════════════════
+-->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>관리자 가입 | 졸음 가드 관리자</title>
+  <link rel="icon" type="image/png" href="img/favicon.png">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <style>
+    :root {
+      --fg-300: #B5BACB; --fg-400: #8A90A5; --fg-500: #666C85; --fg-700: #3A4157; --fg-950: #1F2430;
+      --bg-50: #FFFFFF; --bg-100: #F3F5FA; --bg-200: #E1E5F0;
+      --pr-50: #F1F3FA; --pr-700: #1F2A5C; --pr-800: #141C42; --rd-50: #FDEEEC; --rd-600: #B3261E; --ok-700: #17653A;
+      --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+      --fs-headline: 22px; --fs-body: 13px; --fs-cap: 12px; --ease: cubic-bezier(.32, .72, 0, 1);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--bg-100); color: var(--fg-950);
+           font-family: var(--font); font-size: var(--fs-body); line-height: 1.5; letter-spacing: -.005em; -webkit-font-smoothing: antialiased; word-break: keep-all; }
+    form { width: min(400px, 100%); padding: 40px 32px 28px; background: var(--bg-50); border-radius: 22px; box-shadow: 0 1px 2px rgba(16, 19, 25, .03); }
+    .logo { display: block; width: 48px; height: 48px; margin: 0 auto 16px; border-radius: 12px; }
+    .pill { display: block; width: fit-content; margin: 0 auto 12px; padding: 4px 10px; border-radius: 999px; background: var(--pr-50); color: var(--pr-700); font-size: var(--fs-cap); font-weight: 500; }
+    h1 { margin-bottom: 4px; font-size: var(--fs-headline); font-weight: 600; letter-spacing: -.035em; line-height: 1.2; text-align: center; }
+    p.sub { margin-bottom: 24px; color: var(--fg-500); text-align: center; }
+    .field { margin-top: 16px; }
+    label.l { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: var(--fs-cap); font-weight: 500; color: var(--fg-700); }
+    input { width: 100%; height: 40px; padding: 0 14px; border: 1px solid transparent; border-radius: 10px; background: var(--bg-100); font: inherit; letter-spacing: inherit; color: inherit; outline: none; transition: box-shadow .25s var(--ease), background .2s; }
+    input:focus { background: var(--bg-50); box-shadow: 0 0 0 3.5px rgba(112, 145, 214, .26), 0 0 0 1px rgba(112, 145, 214, .95); }
+    input.bad { background: var(--rd-50); }
+    input.bad:focus { box-shadow: 0 0 0 3.5px rgba(217, 48, 37, .14), 0 0 0 1px rgba(217, 48, 37, .5); }
+    input[readonly] { color: var(--fg-500); }
+    /* 칸 아래 한 줄 문구: 비었을 땐 접혀 있다가 생길 때 부드럽게 펴짐 */
+    .note { display: grid; grid-template-rows: 1fr; text-align: right; font-size: var(--fs-cap); font-weight: 500; transition: grid-template-rows .32s var(--ease), opacity .25s ease; }
+    .note:has(> span:empty) { grid-template-rows: 0fr; opacity: 0; }
+    .note > span { min-height: 0; overflow: hidden; padding-top: 6px; }
+    .note .err { color: var(--rd-600); } .note .ok { color: var(--ok-700); } .note .idle { color: var(--fg-400); font-weight: 400; }
+    .rules { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 12px; margin-top: 6px; color: var(--fg-400); font-size: var(--fs-cap); }
+    .rule { display: inline-flex; align-items: center; gap: 4px; transition: color .2s; }
+    .rule i { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1.2px #C9CEE0; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; font-style: normal; color: #fff; transition: background .2s, box-shadow .2s; }
+    .rule.ok { color: var(--fg-950); } .rule.ok i { background: #2E9E5B; box-shadow: none; }
+    .reveal { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .45s var(--ease), opacity .3s ease; }
+    .reveal.open { grid-template-rows: 1fr; opacity: 1; }
+    .reveal > .in { min-height: 0; overflow: hidden; }
+    button.main { display: block; width: 100%; height: 44px; margin-top: 20px; border: 0; border-radius: 999px; background: var(--pr-700); color: #fff; font: inherit; font-weight: 600; letter-spacing: inherit; cursor: pointer; transition: background .15s, opacity .2s, transform .2s var(--ease); }
+    button.main:hover:not(:disabled) { background: var(--pr-800); }
+    button.main:active:not(:disabled) { transform: scale(.97); }
+    button.main:disabled { opacity: .4; cursor: default; }
+    button.main[hidden] { display: none; }            /* display:block 이 hidden 속성을 덮어쓰지 않게 → 사번 확인이 끝나면 버튼이 사라짐 */
+    button:focus-visible { outline: 2px solid #7091D6; outline-offset: 2px; }
+    .link { padding: 0; border: 0; background: none; color: var(--pr-700); font: inherit; font-size: var(--fs-cap); font-weight: 500; cursor: pointer; }
+    .link:hover { text-decoration: underline; }
+    #msg { min-height: 20px; margin-top: 14px; font-size: var(--fs-cap); font-weight: 500; color: var(--rd-600); text-align: center; }
+    .alt { margin-top: 6px; font-size: var(--fs-cap); color: var(--fg-500); text-align: center; }
+    .alt a { color: var(--pr-700); font-weight: 500; text-decoration: none; }
+    .alt a:hover { text-decoration: underline; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  </style>
+</head>
+<body>
+  <form id="signupForm" novalidate>
+    <img class="logo" src="img/logo.png" alt="졸음 가드 로고 (올빼미)" width="48" height="48">
+    <span class="pill">관리자 가입</span>
+    <h1>관리자 계정 만들기</h1>
+    <p class="sub">회사에서 받은 사번으로 확인해요</p>
+
+    <div class="field" style="margin-top: 0">
+      <label class="l" for="empNo">사번 <button type="button" class="link" id="empRedo" hidden>다시 입력</button></label>
+      <input id="empNo" type="text" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="숫자만 입력">
+      <div class="note"><span id="empNote"></span></div>
+    </div>
+    <button class="main" type="button" id="empCheck" disabled>사번 확인</button>
+
+    <div class="reveal" id="rest" inert>
+      <div class="in">
+        <div class="field">
+          <label class="l" for="name">이름</label>
+          <input id="name" type="text" maxlength="50" autocomplete="name">
+        </div>
+        <div class="field">
+          <label class="l" for="email">이메일</label>
+          <input id="email" type="email" autocomplete="username" placeholder="로그인에 쓸 이메일">
+          <div class="note"><span id="emailNote"></span></div>
+        </div>
+        <div class="field">
+          <label class="l" for="pw">비밀번호</label>
+          <input id="pw" type="password" autocomplete="new-password">
+          <div class="rules" id="rules"></div>
+        </div>
+        <div class="field">
+          <label class="l" for="pw2">비밀번호 확인</label>
+          <input id="pw2" type="password" autocomplete="new-password">
+          <div class="note"><span id="pw2Note"></span></div>
+        </div>
+        <button class="main" type="submit" id="submit" disabled>가입하기</button>
+      </div>
+    </div>
+
+    <div id="msg" role="alert"></div>
+    <p class="alt">이미 계정이 있나요? <a href="admin_login.html">로그인</a></p>
+  </form>
+
+  <script src="js/api.js?v=20261117c"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const RULES = [['대문자', /[A-Z]/], ['소문자', /[a-z]/], ['숫자', /[0-9]/], ['특수문자', /[!@#$%^&*(),.?":{}|<>]/], ['8자 이상', /^[\s\S]{8,}$/]];   // 서버(check_password_rules)와 같은 규칙
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    let verified = '';                                   // 서버가 확인해 준 사번 (확인되기 전에는 빈 글자)
+    $('rules').append(...RULES.map(([label]) => { const s = document.createElement('span'); s.className = 'rule'; s.innerHTML = '<i>✓</i>'; s.append(label); return s; }));
+
+    function note(id, text, kind) { const el = $(id); el.textContent = text || ''; el.className = text ? kind : ''; }
+    function setReveal(open) { const el = $('rest'); el.classList.toggle('open', open); if (open) el.removeAttribute('inert'); else el.setAttribute('inert', ''); }
+
+    // ── 1단계: 사번 ─────────────────────────────────────────
+    $('empNo').addEventListener('input', () => {
+      const el = $('empNo'); el.value = el.value.replace(/\D/g, '').slice(0, 12); el.classList.remove('bad');
+      note('empNote', '');
+      $('empCheck').disabled = el.value.length < 4;
+    });
+    async function checkEmp() {
+      const no = $('empNo').value.trim(), btn = $('empCheck');
+      if (no.length < 4) return;
+      btn.disabled = true; btn.textContent = '확인 중…'; $('msg').textContent = '';
+      try {
+        await checkEmployeeNo(no);
+        verified = no;
+        $('empNo').readOnly = true; note('empNote', '✓ 등록된 사번이에요', 'ok');
+        $('empRedo').hidden = false; btn.hidden = true;
+        setReveal(true); setTimeout(() => $('name').focus({ preventScroll: true }), 160);
+        updateSubmit();
+      } catch (err) {
+        $('empNo').classList.add('bad'); note('empNote', err.message === 'Not Found' ? '이 서버는 아직 관리자 가입을 지원하지 않아요' : err.message, 'err');
+        btn.disabled = false;
+      } finally { btn.textContent = '사번 확인'; }
+    }
+    $('empCheck').addEventListener('click', checkEmp);
+    $('empNo').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); if (!$('empNo').readOnly) checkEmp(); } });
+    $('empRedo').addEventListener('click', () => {      // 사번을 다시 입력하면 아래 칸은 접힘
+      verified = ''; setReveal(false);
+      ['name', 'email', 'pw', 'pw2'].forEach((id) => { $(id).value = ''; $(id).classList.remove('bad'); });
+      ['emailNote', 'pw2Note'].forEach((id) => note(id, ''));
+      checkPw();
+      const el = $('empNo'); el.readOnly = false; el.value = ''; note('empNote', ''); $('empRedo').hidden = true; $('empCheck').hidden = false; $('empCheck').disabled = true; el.focus();
+      updateSubmit();
+    });
+
+    // ── 2단계: 이름 · 이메일 · 비밀번호 (쓰는 대로 검사 문구가 바뀜) ─────────────
+    function checkPw() {
+      const v = $('pw').value; document.querySelectorAll('#rules .rule').forEach((el, i) => el.classList.toggle('ok', RULES[i][1].test(v)));
+      const v2 = $('pw2').value, bad = !!v2 && v !== v2;
+      note('pw2Note', !v2 ? '' : bad ? '비밀번호 불일치' : '비밀번호 일치', bad ? 'err' : 'ok'); $('pw2').classList.toggle('bad', bad);
+    }
+    function checkEmail() {
+      const v = $('email').value.trim(), bad = !!v && !EMAIL_RE.test(v);
+      note('emailNote', bad ? '이메일 형식이 아니에요' : '', 'err'); $('email').classList.toggle('bad', bad);
+    }
+    function updateSubmit() {
+      const pwOk = RULES.every(([, re]) => re.test($('pw').value));
+      $('submit').disabled = !(verified && $('name').value.trim() && EMAIL_RE.test($('email').value.trim()) && pwOk && $('pw').value === $('pw2').value);
+    }
+    $('rest').addEventListener('input', (ev) => { if (ev.target.id === 'email') checkEmail(); if (ev.target.id === 'pw' || ev.target.id === 'pw2') checkPw(); updateSubmit(); });
+
+    $('signupForm').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if ($('submit').disabled) return;
+      const btn = $('submit'), msg = $('msg'); btn.disabled = true; btn.textContent = '가입 중…'; msg.textContent = '';
+      try {
+        await adminSignup({ employee_no: verified, name: $('name').value.trim(), email: $('email').value.trim(), password: $('pw').value });
+        location.href = 'admin_login.html?joined=1';
+      } catch (err) {
+        msg.textContent = err.message === 'Not Found' ? '이 서버는 아직 관리자 가입을 지원하지 않아요.' : err.message;
+        btn.textContent = '가입하기'; updateSubmit();
+      }
+    });
+  </script>
+</body>
+</html>

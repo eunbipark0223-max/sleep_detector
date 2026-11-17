@@ -131,6 +131,42 @@ function changeMyPassword(currentPassword, newPassword) {
   return apiFetch('/users/me/password', { method: 'PUT', body: { current_password: currentPassword, new_password: newPassword } });
 }
 
+// ── 관리자 회원가입 (11/17): 회사가 따로 정한 '인증된 사번'(숫자)만 가입할 수 있다. [사번 확인] 으로 먼저 알아보고, 가입 때 서버가 한 번 더 확인 ──
+function checkEmployeeNo(employeeNo) { return apiFetch('/admin/signup/check', { method: 'POST', body: { employee_no: employeeNo } }); }
+function adminSignup(fields) { return apiFetch('/admin/signup', { method: 'POST', body: fields }); }      // {employee_no, name, email, password}
+
+// ── 이메일 변경 (11/17): 새 이메일 + 지금 비밀번호 → 인증번호(6자리)를 새 이메일로 받음 → 확인. 이메일로 가입한 계정만 ──
+function requestEmailChange(newEmail, currentPassword) {
+  return apiFetch('/users/me/email/request', { method: 'POST', body: { new_email: newEmail, current_password: currentPassword } });
+}
+function confirmEmailChange(newEmail, code) {
+  return apiFetch('/users/me/email/confirm', { method: 'POST', body: { new_email: newEmail, code: code } });      // 성공하면 바뀐 내 정보(/users/me 와 같은 모양)
+}
+
+// ── 내 프로필 사진 (11/17): 서버에 저장 (users.photo_url · POST/GET/DELETE /users/me/photo) → 다른 브라우저에서 로그인해도 그대로 ──
+async function uploadMyPhoto(blob) {
+  const form = new FormData();
+  form.append('file', blob, 'profile.jpg');
+  const token = getToken();
+  let res;
+  try { res = await fetch('/users/me/photo', { method: 'POST', headers: token ? { Authorization: 'Bearer ' + token } : {}, body: form }); }
+  catch (e) { throw new Error('서버에 연결할 수 없어요'); }
+  if (res.status === 401) { clearToken(); location.href = 'admin_login.html'; throw new Error('로그인이 필요합니다'); }
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* 본문이 없는 응답 */ }
+  if (!res.ok) throw new Error((data && typeof data.detail === 'string' && data.detail) || '사진을 올리지 못했어요 (' + res.status + ')');
+  return data;
+}
+function deleteMyPhoto() { return apiFetch('/users/me/photo', { method: 'DELETE' }); }
+async function fetchMyPhotoUrl() {                  // 사진이 없으면 null (서버 404). 있으면 브라우저 안 임시 주소(blob:)
+  const token = getToken();
+  const res = await fetch('/users/me/photo', { headers: token ? { Authorization: 'Bearer ' + token } : {}, cache: 'no-store' });
+  if (res.status === 404) return null;
+  if (res.status === 401) { clearToken(); location.href = 'admin_login.html'; throw new Error('로그인이 필요합니다'); }
+  if (!res.ok) throw new Error('사진을 불러올 수 없어요 (' + res.status + ')');
+  return URL.createObjectURL(await res.blob());
+}
+
 // ── 처리 상태 변경: 미확인 / 확인 / 조치완료 / 휴식완료. 조치완료면 서버가 3단계를 푼다 ──
 function updateEventStatus(eventId, status) {
   return apiFetch('/events/' + eventId + '/status', { method: 'PATCH', body: { status: status } });

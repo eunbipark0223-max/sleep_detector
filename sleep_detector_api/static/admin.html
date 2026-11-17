@@ -27,7 +27,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
   - 통계 #stats: 시간대별 경고 · 기사 상태 · 주간 경고 추이 · 경고 분석(단계별/종류별) 를 한 줄로. 이미 받은 경고 · 기사 목록 · 서버 /admin/stats/* 로 계산 (서버에 없는 값은 만들지 않음)
   - 긴급 알림: 새 3단계 · "음성 응답 없음"이 생기면 알림음(삐 3번) + 탭 제목 깜빡임 + 알림 띠. 알림음은 프로필 메뉴의 스위치로 켜고 끔. 종 배지 · 사이드바 배지는 미처리 긴급 건수
     (브라우저는 화면을 한 번 누르기 전에는 소리를 막아서, 그때는 알림 띠에 안내가 나옴)
-  - 졸음 경고: 둥근 탭(전체 · 미확인 · 긴급 · 휴게 미준수 · 음성 응답 없음 · 3단계) + 표 + 검색. 미처리 긴급이 있으면 '긴급' 탭으로 열림. 좌우 화살표로 탭 이동
+  - 졸음 경고: 둥근 탭(전체 · 미확인 · 1단계 | 주의 · 2단계 | 휴식 권고 · 3단계 | 위험(3단계 전부) · 긴급(그중 조치완료 안 한 것만), 11/17 단계로 나눔) + 표 + 검색. 미처리 긴급이 있으면 '긴급' 탭으로 열림. 좌우 화살표로 탭 이동
     · 3단계 / "음성 응답 없음" 미처리 줄은 연한 빨강 + 그 줄에 [조치완료]. 줄을 누르면 경고 상세 패널
     · 경고 상세 패널: 기사님 이름 · 단계 배지 → 종류 · 시각 · 위치 · 차량번호 · 연락처 · 처리 상태 → 지금 할 일 · AI 분석 결과 · 음성 퀴즈 기록 · 사진 → [전화 연결] [조치완료]
       (눈 측정값 · 좌표 숫자는 보여 주지 않음. LLM · RAG · Agent 같은 용어는 쓰지 않음. 모의 값 표시 · 안내 문구는 11/16 사용자 지시로 모두 뺌)
@@ -84,7 +84,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       --fw-r: 400; --fw-m: 500; --fw-sb: 600;
       --ls-display: -.055em; --ls-title: -.04em; --ls-headline: -.035em; --ls-sub: -.01em; --ls-body: -.005em;
       /* 모서리 · 그림자 */
-      --r-sm: 10px; --r-md: 14px; --r-card: 22px; --r-sheet: 24px; --r-pill: 999px;
+      --r-sm: 10px; --r-md: 14px; --r-block: 20px; --r-card: 22px; --r-sheet: 24px; --r-pill: 999px;      /* --r-block: 상세 창 안의 덩어리(사진 · AI 분석 · 퀴즈 · 달력 바탕 · 지금 보는 경고 줄)는 모두 같은 둥글기 (11/17: 전에는 12 · 14 · 16 · 18 · 22 로 제각각이었음) */
       --shadow-card: 0 0 0 .5px rgba(0, 0, 0, .06), 0 2px 14px rgba(0, 0, 0, .045);       /* 애플 카드: 얇은 테두리 + 넓고 옅은 그림자 */
       --shadow-seg: 0 1px 3px rgba(16, 19, 25, .1);
       --shadow-sheet: -20px 0 60px -24px rgba(16, 19, 25, .35);
@@ -102,9 +102,10 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     ul, ol { list-style: none; }
     :focus-visible { outline: 3px solid rgba(31, 42, 92, .38); outline-offset: 1px; }          /* 포커스 링: 애플 파랑 대신 우리 남색 */
     ::selection { background: rgba(31, 42, 92, .18); }
-    html { scroll-behavior: smooth; }
+    html { scroll-behavior: smooth; scrollbar-gutter: stable; }      /* 스크롤바 자리를 늘 비워 둠 (11/17): 목록이 길어져 스크롤바가 생기거나 짧아져 사라질 때마다 화면 전체 폭이 10px 줄었다 늘었다 하던 것 막음 */
     * { scrollbar-width: thin; scrollbar-color: rgba(60, 60, 67, .28) transparent; }
-    button:active:not(:disabled):not(.drawer-scrim):not(.stat):not(.seg-btn), a.pill:active, a.sbtn:active { transform: scale(.97); }
+    /* 눌렀을 때 97% 로 살짝 줄어드는 효과는 '진짜 동작 버튼'(.btn · .sbtn · a.pill)에만 (11/17). 전에는 모든 버튼에 걸려서 달력 날짜 · 정렬 · 이전/다음 달 · 아이콘 · 스위치 · 메뉴 항목 · 복사 · 닫기까지 눌릴 때마다 작아졌음 */
+    .btn:active:not(:disabled), .sbtn:active:not(:disabled), a.pill:active, a.sbtn:active { transform: scale(.97); }
     /* 상세 창 뒤의 어두운 바탕도 버튼이라, 위 '눌리는 효과'가 걸리면 바깥을 누르는 순간 화면 전체가 97% 로 줄어들며 가장자리에 균열(밝은 띠)이 생겼다. 절대 줄어들지 않게 막는다 */
     .drawer-scrim, .drawer-scrim:active { transform: none !important; }
     .pill, .btn, .sbtn, .seg-btn, .icon-btn, .profile-btn, .sheet-close { transition: background .2s var(--ease), color .2s var(--ease), transform .2s var(--ease), box-shadow .2s var(--ease); }
@@ -173,13 +174,24 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     .notif-pop { padding: 0; overflow: hidden; }
     .np-head { padding: 14px 16px 10px; font-size: var(--fs-sub); letter-spacing: var(--ls-sub); }
     #notifList { max-height: 360px; overflow-y: auto; padding: 0 6px 6px; }
-    .np-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: start; gap: 4px 10px; padding: 10px; border-radius: 10px; text-decoration: none; transition: background .12s; }
+    .np-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; padding: 12px 10px; border-radius: 10px; text-decoration: none; transition: background .12s; }
     .np-item:hover { background: rgba(120, 124, 135, .12); }
-    .np-dot { width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--pr-400); }
+    .np-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pr-400); }
+    .np-item.urgent:not(.read) .np-main b { color: var(--rd-600); }      /* 긴급 경고 글자는 빨강 (읽으면 옅은 회색으로) */
+    .np-item.s1:not(.read) .np-dot { background: var(--st1); }      /* 단계 알림은 단계 색 (안 읽은 것만): 1단계 노랑 · 2단계 주황 · 3단계 빨강. 글자는 같은 색의 진한 쪽 */
+    .np-item.s1:not(.read) .np-main b { color: var(--st1-ink); }
+    .np-item.s2:not(.read) .np-dot { background: var(--st2); }
+    .np-item.s2:not(.read) .np-main b { color: var(--st2-ink); }
+    .np-item.s3:not(.read) .np-dot { background: var(--rd-500); }
+    .np-item.s3:not(.read) .np-main b { color: var(--rd-700); }
     .np-item.urgent .np-dot { background: var(--rd-500); }
-    .np-main { min-width: 0; }
-    .np-main b { display: block; font-weight: var(--fw-sb); }
-    .np-main span { display: block; font-size: var(--fs-cap); color: var(--fg-500); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* 이미 열어 본 알림 (11/17): 색 점은 빈 동그라미로, 글자는 가볍고 옅게 */
+    .np-item.read .np-dot, .np-item.urgent.read .np-dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--fg-300); }
+    .np-item.read .np-main b { font-weight: var(--fw-m); color: var(--fg-500); }
+    .np-item.read .np-main small, .np-item.read .np-time { color: var(--fg-300); }
+    .np-main { min-width: 0; display: flex; align-items: center; gap: 8px; }      /* 제목 + 작은 기사 이름을 같은 가운데 줄에 (11/17) */
+    .np-main b { flex: none; font-weight: var(--fw-sb); white-space: nowrap; }
+    .np-main small { min-width: 0; font-size: var(--fs-cap); font-weight: var(--fw-r); color: var(--fg-500); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .np-time { font-size: var(--fs-cap); color: var(--fg-400); white-space: nowrap; }
     .np-empty { padding: 28px 16px 32px; text-align: center; color: var(--fg-400); }
     .menu-pop[hidden] { display: none; }
@@ -202,6 +214,8 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     .content:focus { outline: none; }
     .view { display: none; }
     .view.active { display: flex; flex-direction: column; gap: 24px; animation: viewIn .45s var(--ease) both; }     /* 화면이 바뀔 때 살짝 떠오르며 나타남 */
+    @keyframes rowIn { from { opacity: 0; } to { opacity: 1; } }
+    .row-in { animation: rowIn .45s var(--ease) both; }      /* 새로 생긴 줄만 제자리에서 서서히 나타남 (11/17: 위로 튀어 오르던 움직임은 뺌) */
     @keyframes viewIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
     .page-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; }
     .page-title { font-size: var(--fs-title); font-weight: var(--fw-sb); letter-spacing: var(--ls-title); line-height: 1; }
@@ -266,9 +280,11 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     .stat-ring::after { content: ''; position: absolute; left: 0; right: 0; bottom: -.5px; height: 3px; background: var(--pr-600); }
     .stat .stat-label { transition: color .3s var(--ease); }
     .stat[aria-pressed="true"] .stat-label { color: var(--fg-950); }
-    #statDetail .sd-row:first-child { border-top: 0; }
-    .sd-row { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-top: .5px solid rgba(16, 19, 25, .1); text-decoration: none; transition: background .12s; }
+    #statDetail .sd-row:first-child { box-shadow: none; }
+    /* 줄 사이 선은 테두리 대신 안쪽 그림자로 (테두리는 첫 줄만 없어서 첫 줄이 1px 낮았음). 줄 높이는 44px 로 모두 같게 (11/17) */
+    .sd-row { display: flex; align-items: center; gap: 12px; box-sizing: border-box; height: 44px; padding: 0 20px; box-shadow: inset 0 1px 0 rgba(16, 19, 25, .1); text-decoration: none; transition: background .12s; }      /* 홈의 목록 줄(주행 중 기사 · 오늘 경고 · 긴급 경고 …)은 모두 높이 44px · 좌우 20px · 같은 선 (11/17) */
     .sd-row:hover { background: rgba(120, 124, 135, .08); }
+    .sd-row > .who-dot { flex: none; margin-right: -4px; }      /* 이름 앞 상태 동그라미 (줄 간격 12px 에서 4px 당겨 8px) */
     .sd-main { flex: 1; min-width: 0; }
     .sd-main b { display: block; font-weight: var(--fw-m); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sd-main.sd-inline { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 24px; }
@@ -284,9 +300,9 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
 
 
     /* 긴급 경고 줄: [기사 · 차량번호 · 주소] [단계 · 몇 분 전] [전화] [조치완료] › */
-    .u-row { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-top: .5px solid var(--sep); transition: background .15s; cursor: pointer; }
-    .u-row:first-child { border-top: 0; }
-    .u-row:hover { background: rgba(120, 124, 135, .07); }
+    .u-row { display: flex; align-items: center; gap: 12px; box-sizing: border-box; height: 44px; padding: 0 20px; box-shadow: inset 0 1px 0 rgba(16, 19, 25, .1); transition: background .12s; cursor: pointer; }      /* 위 .sd-row 와 같은 모양 (11/17) */
+    .u-row:first-child { box-shadow: none; }
+    .u-row:hover { background: rgba(120, 124, 135, .08); }
     .u-main { flex: 1; min-width: 0; }
     .u-name { display: block; width: fit-content; max-width: 100%; font-weight: var(--fw-m); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .u-name:hover { text-decoration: underline; }
@@ -295,9 +311,9 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     .u-flag { font-size: var(--fs-cap); font-weight: var(--fw-m); color: var(--rd-600); }
     .u-ago { font-size: var(--fs-cap); color: var(--fg-400); }
     .u-actions { display: flex; gap: 6px; }
-    .u-chev { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex: none; border-radius: 50%; color: var(--fg-300); text-decoration: none; transition: background .15s, color .15s; }
-    .u-chev:hover { background: var(--bg-100); color: var(--fg-700); }
-    @media (max-width: 760px) { .u-row { flex-wrap: wrap; } .u-main { flex-basis: 100%; } .u-kind { justify-items: start; text-align: left; } }
+    .u-chev { display: flex; flex: none; color: var(--fg-300); text-decoration: none; transition: color .15s; }      /* .sd-chev 와 같은 크기 · 위치 (11/17: 28px 동그라미 눌림 효과는 뺌) */
+    .u-chev:hover { color: var(--fg-700); }
+    @media (max-width: 760px) { .u-kind { justify-items: start; text-align: left; } }      /* 좁은 화면에서 줄을 바꾸던 규칙은 뺌 (줄에 이름 + › 만 남아서, 11/17) */
     .pill { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 14px 0 12px; border: 0; border-radius: var(--r-pill); background: var(--bg-100); color: var(--fg-800); font-size: var(--fs-cap); font-weight: var(--fw-m); text-decoration: none; white-space: nowrap; transition: background .15s; }
     .pill:hover { background: var(--bg-200); }
     /* 애플의 '옅은 색 채움' 버튼: 색을 뺀 바탕 + 진한 글자 (너무 시끄럽지 않게) */
@@ -357,11 +373,32 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     .search input { width: 100%; height: 32px; padding: 0 12px 0 32px; border: 1px solid transparent; border-radius: var(--r-pill); background: var(--bg-100); font-size: var(--fs-cap); outline: none; transition: border-color .15s, background .15s; }
     .search input::placeholder { color: var(--fg-400); }
     .search input:focus { border-color: var(--pr-300); background: var(--bg-50); }
+    /* 정렬 고르기 (11/17): 검색 칸 왼쪽의 알약 모양 선택 상자. 졸음 경고 · 기사 관리 두 표 위에 있음 */
+    .head-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .sort { position: relative; display: block; }
+    /* 애플 모양 선택 메뉴: 알약 버튼(위아래 화살표) + 유리처럼 비치는 팝오버(고른 항목에 체크, 살짝 커지며 나타남). 카드가 가장자리를 잘라서 메뉴는 body 에 붙임 */
+    .dd-btn { display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 8px 0 14px; border: 1px solid transparent; border-radius: var(--r-pill); background: var(--bg-100); color: var(--fg-700); font: inherit; font-size: var(--fs-cap); font-weight: var(--fw-m); cursor: pointer; transition: background .15s, border-color .15s; }
+    .dd-btn:hover { background: rgba(120, 124, 135, .16); }
+    .dd-btn[aria-expanded="true"] { background: rgba(120, 124, 135, .24); color: var(--fg-950); }      /* 열려 있을 때: 파란 테두리 대신 한 단계 진한 회색 알약 (11/17) */
+    .dd-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(16, 19, 25, .16); }      /* 키보드로 왔을 때만 옅은 회색 고리 */
+    .dd-btn svg { color: var(--fg-400); }
+    .dd-btn[aria-expanded="true"] svg { color: var(--fg-700); }
+    .dd-menu { position: fixed; z-index: 90; margin: 0; padding: 4px; list-style: none; border-radius: 12px; font-size: var(--fs-cap);      /* 글자 크기 · 너비를 위 버튼과 맞춤 (11/17): 버튼과 같은 12px, 너비는 버튼 너비 이상으로만 (JS 가 버튼 너비를 넣음) */ background: rgba(255, 255, 255, .86); -webkit-backdrop-filter: saturate(180%) blur(24px); backdrop-filter: saturate(180%) blur(24px);
+               box-shadow: 0 16px 48px rgba(16, 19, 25, .18), 0 0 0 .5px rgba(16, 19, 25, .1); transform-origin: top right; animation: popIn .18s var(--ease) both; }
+    .dd-menu[hidden] { display: none; }
+    .dd-item { display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 12px 0 8px; border-radius: 8px; color: var(--fg-950); white-space: nowrap; cursor: pointer; outline: none; user-select: none; }
+    .dd-item svg { flex: none; visibility: hidden; color: var(--pr-600); }
+    .dd-item[aria-selected="true"] { font-weight: var(--fw-m); }
+    .dd-item[aria-selected="true"] svg { visibility: visible; }
+    .dd-item:hover, .dd-item:focus-visible { background: rgba(120, 124, 135, .12); }
     .result-count { padding: 10px 20px 0; font-size: var(--fs-cap); color: var(--fg-400); }
     .table-wrap { overflow-x: auto; }
-    .tbl { width: 100%; min-width: 640px; border-collapse: collapse; text-align: left; }
+    .tbl { width: 100%; min-width: calc(var(--cols, 5) * 150px); table-layout: fixed; border-collapse: collapse; text-align: left; }      /* 칸 폭을 모두 같게 (11/17): 내용 길이에 따라 칸이 들쭉날쭉하고 기사 관리의 두 표가 서로 안 맞던 것을 고정 배분으로. 좁아지면 칸당 150px 아래로는 안 줄고 옆으로 스크롤 */
+    #view-hazards .tbl { --cols: 6; }
+    #view-drivers .tbl { --cols: 5; }
     .tbl th { padding: 10px 12px; font-size: var(--fs-cap); font-weight: var(--fw-m); color: var(--fg-500); white-space: nowrap; }          /* 애플 표 머리: 대문자 · 넓은 자간 없이 옅은 회색 */
-    .tbl td { padding: 12px; vertical-align: middle; }
+    .tbl td { padding: 12px; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; }
+    .tbl tbody td { height: 52px; padding-top: 0; padding-bottom: 0; }      /* 졸음 경고 · 기사 관리 표의 줄 높이를 모두 52px 로 (11/17) */
     .tbl th:first-child, .tbl td:first-child { padding-left: 20px; }
     .tbl th:last-child, .tbl td:last-child { padding-right: 20px; }
     .tbl th.end, .tbl td.end { text-align: right; }                 /* 맨 오른쪽 칸 = 상태 배지 */
@@ -408,7 +445,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     @keyframes sheetIn { from { opacity: 0; transform: translateY(16px) scale(.94); } to { opacity: 1; transform: none; } }
     @keyframes sheetOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(8px) scale(.97); } }
     .sheet-photo { padding: 20px 24px 0; }
-    .sheet-photo .photo { aspect-ratio: 16 / 9; border-radius: 18px; }
+    .sheet-photo .photo { aspect-ratio: 16 / 9; border-radius: var(--r-block); }
     .sheet-photo .photo.empty { flex-direction: column; gap: 8px; color: var(--fg-400); }
     .sheet-photo .cap { text-align: center; }
     .sheet-photo .cap { margin-top: 8px; font-size: var(--fs-cap); color: var(--fg-400); }
@@ -422,6 +459,8 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     .who-dot.s0 { --c: var(--ok-500); --cs: rgba(46, 158, 91, .18); } .who-dot.s1 { --c: var(--st1); --cs: rgba(242, 176, 30, .22); }
     .who-dot.s2 { --c: var(--st2); --cs: rgba(242, 140, 40, .22); } .who-dot.s3 { --c: var(--rd-500); --cs: rgba(217, 48, 37, .2); }
     .who-dot.off { --c: var(--fg-300); --cs: rgba(138, 144, 165, .2); }
+    .who-cell { display: inline-flex; align-items: center; }      /* 표에서 점 + 이름을 가운데 맞춤으로 나란히 */
+    .tbl .who-dot, .sd-row > .who-dot { width: 6px; height: 6px; box-shadow: none; vertical-align: middle; position: relative; top: -1px; }      /* top -1px: 한글 글자 가운데에 맞추려고 (측정 0.75px 아래로 어긋났음) */      /* 목록(표 · 펼침 목록)의 이름 앞 점: '긴급 경고' 옆 점(.ping 6px)과 같은 크기, 바깥 고리 없음 (11/17). 상세 창 이름 앞 점은 그대로 */
     .sheet-suffix { margin-left: 4px; font-size: var(--fs-cap); font-weight: var(--fw-r); letter-spacing: 0; color: var(--fg-400); }
     .sheet-head-end { display: flex; align-items: center; gap: 8px; flex: none; }
     .sheet-sub { margin-top: 6px; text-align: center; font-size: var(--fs-cap); color: var(--fg-400); font-variant-numeric: tabular-nums; }
@@ -446,27 +485,63 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     .cal-nav button:hover:not(:disabled) { background: var(--bg-100); color: var(--fg-950); }
     .cal-nav button:disabled { opacity: .3; cursor: default; }
     .cal-nav .prev svg { transform: rotate(180deg); }
-    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 4px; border-radius: var(--r-block); background: var(--bg-100); text-align: center; }      /* F안 (11/17): 연한 회색 바탕 위에서 누른 날만 흰 카드가 떠오름 (탭 스위치와 같은 느낌) */
     .cal-wd { padding: 4px 0 6px; font-size: var(--fs-cap); color: var(--fg-400); }
-    .cal-day { position: relative; height: 44px; border: 0; border-radius: 12px; background: none; font: inherit; font-size: var(--fs-body); color: var(--fg-950); font-variant-numeric: tabular-nums; cursor: pointer; transition: background .15s, color .15s; }
-    .cal-day:hover:not(.sel):not(:disabled) { background: var(--bg-100); }
+    .cal-day { position: relative; height: 44px; border: 0; border-radius: calc(var(--r-block) - 4px); background: none; font: inherit; font-size: var(--fs-body); color: var(--fg-950); font-variant-numeric: tabular-nums; cursor: pointer; transition: background .15s, color .15s; }
+    .cal-day:hover:not(.sel):not(:disabled) { background: rgba(120, 124, 135, .12); }
     .cal-day:disabled { color: var(--fg-300); cursor: default; }
     .cal-day.today:not(.sel) { color: var(--pr-600); font-weight: var(--fw-sb); }
-    .cal-day.sel { background: var(--pr-700); color: #fff; font-weight: var(--fw-sb); }
+    .cal-day.sel { background: var(--bg-50); color: var(--pr-700); font-weight: var(--fw-sb); box-shadow: 0 1px 3px rgba(16, 19, 25, .14), 0 0 0 .5px rgba(16, 19, 25, .05); }
     .cal-dots { position: absolute; left: 0; right: 0; bottom: 6px; display: flex; justify-content: center; gap: 3px; }
     .cal-dots i { width: 5px; height: 5px; border-radius: 50%; }
-    .cal-day.sel .cal-dots i { background: #fff !important; }
     .cal.list-only { padding-top: 4px; }
+    /* 졸음 경고 맨 위 날짜별 달력 (11/17): 위 기사 상세 달력과 같은 모양, 날짜를 누르면 아래 표가 그날 경고만 보임 */
+    .hz-top { display: grid; grid-template-columns: minmax(0, 460px) minmax(0, 1fr); gap: 24px; align-items: stretch; }      /* 달력은 460px 그대로 두고 오른쪽 빈 자리에 요약 카드 (11/17) */
+    @media (max-width: 960px) { .hz-top { grid-template-columns: minmax(0, 1fr); } }
+    .hz-cal { padding: 20px 24px 22px; }      /* 가로 460px(위 grid), 기사 상세 달력과 같은 칸 · 점 크기 */
+    .hz-sum { display: flex; flex-direction: column; padding: 20px 28px 24px; }
+    .hz-sum .cal-head { margin-bottom: 0; min-height: 32px; }      /* 오른쪽 '지난달보다' 알약이 있든 없든 머리 높이가 같게 (있을 때만 카드가 3~4px 커지던 것 막음) */
+    /* 도넛 + 범례 (11/17, A안): 통계 화면의 도넛(.donut-fig · .legend)과 같은 모양을 카드 가운데에 크게 */
+    .hz-sum-body { flex: 1; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 24px 64px; padding-top: 4px; }
+    .hz-sum-body .donut-fig, .hz-sum-body .donut-fig svg { width: 172px; height: 172px; margin: 0; }
+    .hz-sum-body .donut-fig { flex: none; }
+    /* 글자는 홈 맨 위 4칸과 같은 규칙 (11/17): 이름 12px · 500 · 옅은 회색 / 큰 숫자 34px · 700 · 단위는 작은 12px / 목록 글자 13px · 500 */
+    .hz-sum .donut-center .stat-value { margin-top: 0; font-size: var(--fs-display); color: var(--fg-950); }
+    .hz-sum .donut-center .stat-value > span { margin: 0; font-size: inherit; color: inherit; }      /* 숫자를 감싼 안쪽 span 이 위의 '.donut-center span'(12px · 회색) 에 걸려 작아졌던 것 막음 */      /* 가운데는 큰 숫자 + 작은 '건' 만 (위의 '경고' 글자는 뺌, 11/17) */
+    .hz-sum-body { gap: 24px 32px; }      /* 스크롤바 자리를 비워 두면서 카드가 10px 좁아져도(1500px 화면 기준 694px) 도넛과 타일이 한 줄에 들어가게 40 → 32px */
+    #driverPanel > .card-head:first-child { border-bottom: 0; padding-bottom: 4px; }      /* 제목 줄과 탭 줄 사이 선은 뺌 */
+    .hz-tiles { flex: 0 1 auto; max-width: 100%; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }      /* 타일은 좁게(136px) 도넛 가까이에 모음 (11/17: 가로로 길게 퍼지던 것을 줄임) */
+    .hz-tile { flex: none; width: 136px; display: flex; flex-direction: column; gap: 4px; padding: 13px 12px 12px; border-radius: 16px; }
+    .hz-delta { flex: none; padding: 4px 10px; border-radius: var(--r-pill); font-size: var(--fs-cap); font-weight: var(--fw-m); white-space: nowrap; }
+    .hz-delta.up { background: var(--rd-50); color: var(--rd-700); }
+    .hz-delta.down { background: var(--ok-50); color: var(--ok-800); }
+    .hz-delta.same { background: var(--bg-100); color: var(--fg-700); }
+    .hz-tile.s1 { background: var(--st1-bg); color: var(--st1-ink); }
+    .hz-tile.s2 { background: var(--st2-bg); color: var(--st2-ink); }
+    .hz-tile.s3 { background: var(--rd-50); color: var(--rd-700); }
+    .hz-tile .t { font-size: var(--fs-cap); font-weight: var(--fw-m); white-space: nowrap; }
+    .hz-tile .v { display: flex; align-items: baseline; gap: 2px; margin-top: 6px; font-size: var(--fs-headline); font-weight: 700; letter-spacing: var(--ls-headline); line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .hz-tile .v small { font-size: var(--fs-cap); font-weight: var(--fw-m); letter-spacing: 0; }
+    .hz-tile .p { font-size: var(--fs-cap); font-weight: var(--fw-m); font-variant-numeric: tabular-nums; opacity: .75; }
+    .hz-cal .cal-head { min-height: 32px; }
+    .hz-clear { margin-right: 8px; padding: 5px 12px; border: 0; border-radius: var(--r-pill); background: var(--bg-100); color: var(--fg-700); font: inherit; font-size: var(--fs-cap); font-weight: var(--fw-m); cursor: pointer; transition: background .15s; }
+    .hz-clear:hover { background: rgba(120, 124, 135, .16); }
+    .hz-tools { display: flex; align-items: center; }
     .day-list { list-style: none; }
-    .cal-grid + .day-list { margin-top: 16px; padding-top: 8px; border-top: .5px solid var(--sep); }      /* 달력과 목록 사이 선 */
-    .cal-grid + .day-empty { margin-top: 16px; border-top: .5px solid var(--sep); }
+    @keyframes dayIn { from { opacity: 0; } to { opacity: 1; } }
+    .day-anim { animation: dayIn .45s var(--ease) both; }      /* 날을 옮기면 그날 경고 내역이 줄마다 조금씩 늦게 서서히 나타남 (11/17) */
+    @keyframes selIn { from { opacity: .45; } to { opacity: 1; } }      /* 크기는 줄이지 않고 투명도만 (11/17: 전에는 90%로 줄었다 커졌음) */
+    .cal-day.sel-in { animation: selIn .35s var(--ease) both; }
+    .cal-grid + .day-list { margin-top: 14px; padding-top: 0; }      /* 달력 아래 선은 뺌 (11/17: 회색 바탕이 이미 구분해 줌) */
+    .cal-grid + .day-empty { margin-top: 6px; }
     .day-ev { display: grid; grid-template-columns: 44px 3px minmax(0, 1fr); gap: 12px; align-items: stretch; padding: 8px 0; color: inherit; text-decoration: none; }
     .ev-t { padding-top: 2px; text-align: right; font-size: var(--fs-cap); color: var(--fg-500); font-variant-numeric: tabular-nums; }
     .ev-bar { border-radius: 2px; background: var(--c); }
     .ev-main b { display: block; font-weight: var(--fw-m); color: var(--fg-950); }
     .ev-main small { display: block; font-size: var(--fs-cap); color: var(--fg-400); }
     .day-ev:hover .ev-main b { text-decoration: underline; }
-    .day-ev.now { margin: 0 -10px; padding: 8px 10px; border-radius: 12px; background: var(--bg-100); }      /* 지금 열어 본 경고 */
+    .day-ev.now { border-radius: 16px; background: var(--bg-100); }      /* 높이 52px 짜리 줄이라 큰 덩어리(20px)와 같게 하면 알약처럼 보여서 16px (11/17) */      /* 지금 열어 본 경고: 왼쪽 · 오른쪽 끝이 위의 카드(사진 · AI 분석 · 퀴즈)와 똑같이 (11/17: 전에는 양쪽으로 10px 튀어나왔음) */
+    .cal.list-only .day-ev { padding: 8px 17px; }      /* 카드 안 글자(테두리 1px + 안쪽 16px)와 같은 위치에 시각 · 막대 · 글자가 서게. 현재 줄 · 다른 줄 모두 같게 */
     .day-ev.now .ev-main b { font-weight: var(--fw-sb); }
     .day-empty { padding: 18px 0 4px; text-align: center; color: var(--fg-400); }
     .info-row { display: flex; align-items: flex-start; gap: 12px; padding: 14px 0; border-bottom: .5px solid var(--sep); }
@@ -477,12 +552,12 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     .info-row a:hover { text-decoration: underline; }
     .info-row .copyable { margin: -2px -6px; white-space: nowrap; word-break: keep-all; }
     /* AI 분석 결과: 남색 바탕 + 흰 글씨 카드 (앱 브랜드 남색) */
-    .ai-card { padding: 22px 24px 24px; border-radius: 22px; background: var(--pr-700); color: #fff; }
+    .ai-card { padding: 22px 24px 24px; border-radius: var(--r-block); background: var(--pr-700); color: #fff; }
     .ai-card h4 { margin-bottom: 16px; font-size: var(--fs-sub); font-weight: var(--fw-sb); letter-spacing: var(--ls-sub); color: #fff; }
     .ai-card .r-label { color: rgba(255, 255, 255, .62); }
     .ai-card .r-value { color: #fff; }
     .sheet-sec { padding: 0 24px 20px; }
-    .sec-box { padding: 0 16px; border: 1px solid var(--bg-200); border-radius: var(--r-md); }
+    .sec-box { padding: 0 16px; border: 1px solid var(--bg-200); border-radius: var(--r-block); }
     .sec-head { display: flex; align-items: baseline; justify-content: space-between; padding: 14px 0 12px; border-bottom: .5px solid var(--sep); }      /* 제목 아래 선 */
     .sec-head h4 { font-size: var(--fs-body); font-weight: var(--fw-sb); }
     .sec-head small { font-size: var(--fs-cap); color: var(--fg-400); }
@@ -532,8 +607,8 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     .set-grid .card-title { margin-bottom: 20px; }
     .field { display: grid; gap: 6px; margin-bottom: 16px; }
     .field label { font-size: var(--fs-cap); font-weight: var(--fw-m); color: var(--fg-700); }
-    .field input { width: 100%; height: 40px; padding: 0 14px; border: 1px solid transparent; border-radius: var(--r-sm); background: var(--bg-100); font-size: var(--fs-body); outline: none; transition: border-color .2s var(--ease), background .2s var(--ease); }
-    .field input:focus { border-color: var(--pr-300); background: var(--bg-50); }
+    .field input { width: 100%; height: 40px; padding: 0 14px; border: 1px solid transparent; border-radius: var(--r-sm); background: var(--bg-100); font-size: var(--fs-body); outline: none; transition: box-shadow .25s var(--ease), border-color .2s var(--ease), background .2s var(--ease); }
+    .field input:focus { background: var(--bg-50); box-shadow: 0 0 0 3.5px rgba(112, 145, 214, .26), 0 0 0 1px rgba(112, 145, 214, .95); }      /* 애플 느낌 (11/17): 로그인 화면과 같은 한 겹. 어두운 남색 대신 밝은 푸른 빛으로 가볍게 (얇은 선 + 부드러운 빛무리) */
     .field input:disabled { color: var(--fg-400); }
     .hint { font-size: var(--fs-cap); color: var(--fg-400); text-align: right; }      /* 작은 안내 글은 오른쪽에 붙임 */
     .form-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: auto; padding-top: 12px; }
@@ -547,7 +622,44 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     .rule .ck { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border: 1.5px solid var(--bg-300); border-radius: 50%; color: transparent; transition: background .2s, border-color .2s, color .2s; }
     .rule.ok { color: var(--ok-700); } .rule.ok .ck { background: var(--ok-500); border-color: var(--ok-500); color: #fff; }
     .match { min-height: 16px; font-weight: var(--fw-m); } .match.err { color: var(--rd-600); } .match.ok { color: var(--ok-700); }
+    .match.idle { color: var(--fg-400); font-weight: var(--fw-r); }      /* 입력 전 안내(빈칸 저장 시 삭제)는 옅게 */
+    /* 설정에서 안 쳤을 때 ↔ 쳤을 때 크기가 확 바뀌지 않게 (11/17): 칸 아래 한 줄 문구는 비었을 땐 접혀 있다가 생길 때 부드럽게 펴지고, 이메일 변경 칸도 같은 방식으로 펼쳐짐 */
+    .field > .hint { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .32s var(--ease), opacity .25s ease; }
+    .field > .hint:has(> .match:empty) { grid-template-rows: 0fr; opacity: 0; }
+    .field > .hint > .match { min-height: 0; overflow: hidden; }
+    .reveal { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .4s var(--ease), opacity .3s ease; }
+    .reveal.open { grid-template-rows: 1fr; opacity: 1; }
+    .reveal > .reveal-in { min-height: 0; overflow: hidden; }
+    .field label.with-action { display: flex; align-items: center; justify-content: space-between; }
+    .link-btn { padding: 0; border: 0; background: none; color: var(--pr-600); font: inherit; font-size: var(--fs-cap); font-weight: var(--fw-m); cursor: pointer; }
+    .link-btn:hover { text-decoration: underline; }
+    /* 이메일 변경 패널 (11/17, 애플 설정 앱 느낌): 연한 회색 묶음 안에 [라벨 + 입력] 줄과 가는 구분선. 선택한 줄만 흰 카드로 살짝 떠오르고, 입력칸에 테두리 · 빛무리는 없음. 큰 알약 버튼은 입력이 맞을 때만 켜짐 */
+    .ec-wrap { margin: 0 0 16px; }
+    .ec-pad { padding-top: 10px; }
+    .ec-group { padding: 4px; border-radius: var(--r-block); background: var(--bg-100); }
+    .ec-row { position: relative; display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 0 14px; border-radius: 16px; cursor: text; transition: background .25s var(--ease), box-shadow .25s var(--ease); }
+    .ec-row + .ec-row::before { content: ''; position: absolute; left: 14px; right: 14px; top: -1px; height: .5px; background: rgba(16, 19, 25, .12); transition: opacity .2s; }
+    .ec-row:focus-within { background: var(--bg-50); box-shadow: 0 1px 3px rgba(16, 19, 25, .12), 0 0 0 .5px rgba(16, 19, 25, .05); }
+    .ec-row:focus-within::before, .ec-row:focus-within + .ec-row::before { opacity: 0; }
+    .ec-row:has(input.bad) { background: var(--rd-50); }
+    .ec-lab { flex: none; width: 86px; font-size: var(--fs-body); font-weight: var(--fw-m); color: var(--fg-800); }
+    .ec-row input { flex: 1; min-width: 0; height: 44px; padding: 0; border: 0; background: transparent; box-shadow: none; font: inherit; font-size: var(--fs-body); color: var(--fg-950); outline: none; }
+    .ec-row input::placeholder { color: var(--fg-300); }
+    .ec-row input:disabled { color: var(--fg-400); }
+    .ec-note { display: grid; grid-template-rows: 1fr; padding: 0 18px; font-size: var(--fs-cap); transition: grid-template-rows .32s var(--ease), opacity .25s ease; }
+    .ec-note:has(> .match:empty) { grid-template-rows: 0fr; opacity: 0; }
+    .ec-note > .match { min-height: 0; overflow: hidden; padding-top: 6px; }
+    .ec-primary { width: 100%; height: 44px; border-radius: 999px; font-weight: var(--fw-sb); }
+    .ec-primary:disabled { opacity: .4; cursor: default; }
+    .ec-actions { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 14px; margin-top: 10px; }
+    .ec-link { padding: 6px 2px; border: 0; background: none; color: var(--pr-600); font: inherit; font-size: var(--fs-cap); font-weight: var(--fw-m); cursor: pointer; }
+    .ec-link:disabled { color: var(--fg-300); cursor: default; }
+    .ec-wrap .form-msg { min-height: 0; max-height: 0; margin: 0; overflow: hidden; opacity: 0; transition: max-height .3s var(--ease), opacity .25s ease, margin .3s var(--ease); }
+    .ec-wrap .form-msg.ok, .ec-wrap .form-msg.err { max-height: 60px; margin: 10px 0 0; opacity: 1; }
+    #ecCodeMatch.idle { font-variant-numeric: tabular-nums; }
+    #setPhoneMatch.ok::before { content: '✓'; margin-right: 4px; }
     .field input.bad { border-color: var(--rd-400); background: var(--rd-50); }
+    .field input.bad:focus { background: var(--rd-50); box-shadow: 0 0 0 4px rgba(217, 48, 37, .14), 0 0 0 1px rgba(217, 48, 37, .5); }      /* 잘못된 칸을 선택했을 때는 빛무리도 빨강 */
     .form-msg { min-height: 20px; margin: 0 0 12px; font-size: var(--fs-cap); font-weight: var(--fw-m); }
     .form-msg.err { color: var(--rd-600); }
     .form-msg.ok { color: var(--ok-700); }
@@ -673,16 +785,23 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         <!-- 졸음 경고 -->
         <section class="view" id="view-hazards" aria-labelledby="t-hazards">
           <div class="page-head"><h1 class="page-title" id="t-hazards" tabindex="-1">졸음 경고</h1><div class="head-stats" id="hazardsMeta"></div></div>
+          <div class="hz-top">      <!-- 11/17: 날짜를 누르면 아래 표가 그날 경고만 보임. 달력 오른쪽 빈 자리에는 고른 날(없으면 이번 달) 요약 -->
+            <section class="card hz-cal" id="hazardCal" aria-label="날짜별 경고 달력"></section>
+            <section class="card hz-sum" id="hazardSum" aria-label="고른 날 경고 요약"></section>
+          </div>
           <div class="card" id="hazardPanel" role="tabpanel">
             <div class="card-head">
               <div class="seg" id="hazardTabs" role="tablist" aria-label="경고 종류"></div>
-              <label class="search"><span class="visually-hidden">경고 검색 (기사 이름, 차량번호, 주소, 종류, 번호)</span><span data-icon="search" data-size="14" aria-hidden="true"></span><input id="hazardSearch" type="search" placeholder="검색" autocomplete="off"></label>
+              <div class="head-tools">
+                <div class="sort" id="hazardSortBox"></div>
+                <label class="search"><span class="visually-hidden">경고 검색 (기사 이름, 차량번호, 주소, 종류, 번호)</span><span data-icon="search" data-size="14" aria-hidden="true"></span><input id="hazardSearch" type="search" placeholder="검색" autocomplete="off"></label>
+              </div>
             </div>
             <p class="visually-hidden" id="hazardCount" aria-live="polite"></p>
             <div class="table-wrap" role="region" aria-label="졸음 경고 표, 가로로 스크롤할 수 있어요" tabindex="0">
               <table class="tbl">
                 <caption class="visually-hidden">졸음 경고</caption>
-                <thead><tr><th scope="col">기사</th><th scope="col">위험도</th><th scope="col">위치</th><th scope="col">시각</th><th scope="col" class="end">처리</th></tr></thead>
+                <thead><tr><th scope="col">기사</th><th scope="col">위험도</th><th scope="col">차량번호</th><th scope="col">위치</th><th scope="col">시각</th><th scope="col" class="end">처리</th></tr></thead>
                 <tbody id="hazardBody"></tbody>
               </table>
             </div>
@@ -693,19 +812,34 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         <section class="view" id="view-drivers" aria-labelledby="t-drivers">
           <div class="page-head"><h1 class="page-title" id="t-drivers" tabindex="-1">기사 관리</h1><div class="head-stats" id="driversMeta"></div></div>
           <div class="card" id="driverPanel" role="tabpanel">
+            <div class="card-head"><h2 class="card-title" id="driverOnTitle">운행 중</h2></div>      <!-- 11/17: 아래 '운행 안 함' 카드와 짝이 되는 제목. 탭은 이 안에서 전체 · 단계별 -->
             <div class="card-head">
               <div class="seg" id="driverTabs" role="tablist" aria-label="기사 상태"></div>
-              <label class="search"><span class="visually-hidden">기사 검색</span><span data-icon="search" data-size="14" aria-hidden="true"></span><input id="driverSearch" type="search" placeholder="검색" autocomplete="off"></label>
+              <div class="head-tools">
+                <div class="sort" id="driverSortBox"></div>
+                <label class="search"><span class="visually-hidden">기사 검색</span><span data-icon="search" data-size="14" aria-hidden="true"></span><input id="driverSearch" type="search" placeholder="검색" autocomplete="off"></label>
+              </div>
             </div>
             <p class="visually-hidden" id="driverCount" aria-live="polite"></p>
             <div class="table-wrap" role="region" aria-label="기사 표, 가로로 스크롤할 수 있어요" tabindex="0">
               <table class="tbl">
                 <caption class="visually-hidden">기사</caption>
-                <thead><tr><th scope="col">기사</th><th scope="col">연락처</th><th scope="col">오늘 경고</th><th scope="col">누적 경고</th><th scope="col" class="end">상태</th></tr></thead>
+                <thead><tr><th scope="col">기사</th><th scope="col">차량번호</th><th scope="col">연락처</th><th scope="col">오늘 경고</th><th scope="col">누적 경고</th></tr></thead>
                 <tbody id="driverBody"></tbody>
               </table>
             </div>
           </div>
+          <!-- 운행 안 함 기사는 위 표에 섞지 않고 아래에 따로 (11/17). 탭과 상관없이 늘 보이고, 검색어만 같이 적용됨. 없으면 숨김 -->
+          <section class="card" id="driverOffCard" aria-labelledby="driverOffTitle" hidden>
+            <div class="card-head"><h2 class="card-title" id="driverOffTitle">운행 안 함</h2></div>
+            <div class="table-wrap" role="region" aria-label="운행 안 함 기사 표, 가로로 스크롤할 수 있어요" tabindex="0">
+              <table class="tbl">
+                <caption class="visually-hidden">운행 안 함 기사</caption>
+                <thead><tr><th scope="col">기사</th><th scope="col">차량번호</th><th scope="col">연락처</th><th scope="col">오늘 경고</th><th scope="col">누적 경고</th></tr></thead>
+                <tbody id="driverOffBody"></tbody>
+              </table>
+            </div>
+          </section>
         </section>
 
         <!-- 내 정보 (오른쪽 위 프로필 메뉴에서) -->
@@ -733,18 +867,19 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
   </dialog>
 
   <div id="toast" aria-hidden="true"></div>
-  <script src="js/api.js?v=20261117"></script>
+  <script src="js/api.js?v=20261117c"></script>
   <script>
     const REASON_LABEL = { microsleep: '미세수면', perclos: '피로 누적', rest_overdue: '휴게 미준수', no_response: '음성 응답 없음' };
     const QUIZ_LABEL = { repeat: '따라 말하기', add: '덧셈', reverse: '거꾸로 말하기' };
-    const STAGE_NAME = ['정상 운행', '경고', '휴식 권고', '위험'];      // 화면에 쓰는 이름 (11/16): 1 = 경고 · 2 = 휴식 권고 · 3 = 위험. '단계' 글자는 쓰지 않음
+    const STAGE_WORD = ['정상 운행', '주의', '휴식 권고', '위험'];      // 단계 이름만 (문장 안에서 쓸 때): 1 = 주의 · 2 = 휴식 권고 · 3 = 위험 (11/17 1단계 이름 '경고' → '주의')
+    const STAGE_NAME = ['정상 운행', '1단계 | 주의', '2단계 | 휴식 권고', '3단계 | 위험'];      // 배지 · 탭 · 그래프 글자 (11/17 사용자 요청: 'N단계 | 이름'). 여기 한 곳만 고치면 배지 · 탭 · 그래프 · 알림에 모두 반영됨. 종류가 붙는 배지는 'N단계 | 종류'
     const FILTERS = [
       ['all', '전체', () => true],
       ['unchecked', '미확인', (e) => e.status === '미확인'],
-      ['urgent', '긴급', (e) => isOpenUrgent(e)],
-      ['rest', '휴게 미준수', (e) => e.reason === 'rest_overdue'],
-      ['noreply', '음성 응답 없음', (e) => e.reason === 'no_response'],
-      ['s3', '위험', (e) => e.stage === 3],       // '긴급' 과 겹치므로 맨 뒤 (조치완료된 옛 3단계까지 보려고 남겨 둠)
+      ['s1', STAGE_NAME[1], (e) => e.stage === 1],
+      ['s2', STAGE_NAME[2], (e) => e.stage === 2],
+      ['s3', STAGE_NAME[3], (e) => e.stage === 3],      // 3단계 전부 (조치완료한 것도 포함). 긴급은 이 중 아직 [조치완료]를 안 누른 것만 (11/17 다시 나눔)
+      ['urgent', '긴급', (e) => isOpenUrgent(e)],      // 11/17 탭을 단계로 나눔: 긴급 = 3단계 (미처리만). 옛 '휴게 미준수' · '음성 응답 없음' · '위험 3단계' 탭은 뺌 (표의 종류 칸에는 그대로 보임, 조치완료된 3단계는 '전체' 에서)
     ];
     const VIEWS = ['dashboard', 'hazards', 'drivers', 'stats', 'profile', 'event', 'driver'];
 
@@ -765,6 +900,8 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       robot: 'M20 9V7c0-1.1-.9-2-2-2h-3c0-1.66-1.34-3-3-3S9 3.34 9 5H6c-1.1 0-2 .9-2 2v2c-1.66 0-3 1.34-3 3s1.34 3 3 3v4c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-4c1.66 0 3-1.34 3-3s-1.34-3-3-3zM7.5 11.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5S9.83 13 9 13s-1.5-.67-1.5-1.5zM16 17H8v-2h8v2zm-1-4c-.83 0-1.5-.67-1.5-1.5S14.17 10 15 10s1.5.67 1.5 1.5S15.83 13 15 13z',
       pin: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
       phone: 'M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z',
+      unfold: 'M12 5.83L15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9 12 5.83zm0 12.34L8.83 15l-1.41 1.41L12 21l4.59-4.59L15.17 15 12 18.17z',
+      car: 'M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z',
       mail: 'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z',
       alert: 'M11 15h2v2h-2zm0-8h2v6h-2zm.99-5C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z',
       copy: 'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z',
@@ -876,11 +1013,14 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     const hasCoord = (e) => e.latitude != null && e.longitude != null;
     const where = (e) => e.address || (hasCoord(e) ? '주소 확인 실패 · ' + Number(e.latitude).toFixed(4) + ', ' + Number(e.longitude).toFixed(4) : '위치 정보 없음');
     const byPriority = (a, b) => (noWake(b) - noWake(a)) || (isOpenUrgent(b) - isOpenUrgent(a)) || (new Date(b.created_at) - new Date(a.created_at));
+    // 졸음 경고 표 정렬 (11/17): 긴급 먼저(기본, 위 byPriority) · 단계순(높은 단계 먼저, 같으면 지금과 가까운 시각이 먼저) · 시간순(지금과 가까운 시각이 먼저)
+    const byTime = (a, b) => (new Date(b.created_at) - new Date(a.created_at)) || (b.id - a.id);
+    const HAZARD_SORTS = { urgent: byPriority, stage: (a, b) => (stageNum(b.stage) - stageNum(a.stage)) || byTime(a, b), time: byTime };
 
     // ── 상태 ─────────────────────────────────────────────────
     let events = [], users = [], stageStats = [], hourStats = [];
     let connLost = false, lastOkAt = null, refreshing = false;
-    let view = 'dashboard', routeId = null, filter = 'all', driverFilter = 'all', driverQuery = '', hazardQuery = '';
+    let view = 'dashboard', routeId = null, filter = 'all', driverFilter = 'all', driverQuery = '', hazardQuery = '', hazardSort = 'urgent', driverSort = 'danger', hazardDay = '', hzCal = { y: 0, m: 0 };      // hazardDay: 졸음 경고 달력에서 고른 날(yyyy-mm-dd), 비어 있으면 모든 날
     let busy = false, lastUrgent = null, loaded = false;
     // 졸음 경고 화면의 기본 탭: 링크가 탭을 골라 주면(nextFilter) 그 탭, 아니면 미처리 긴급이 있을 때 '긴급', 없으면 '전체'.
     // filterAuto = 지금 탭이 기본값(사람이 고른 게 아님)이라는 뜻 → 처음 불러오기가 끝난 뒤 한 번 더 기본값을 맞춘다
@@ -935,7 +1075,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       const shown = isDetail(view) ? baseView : view;           // 지금 화면 (패널이 열려 있으면 그 뒤에 보이는 화면)
       if (shown === 'hazards') {                                  // 졸음 경고 화면으로 들어올 때만 탭을 정함 (10초 갱신 · 패널 닫기가 사람이 고른 탭을 바꾸지 않게)
         if (nextFilter) { filter = nextFilter; filterAuto = false; }
-        else if (prevView !== 'hazards' && !isDetail(prevView)) { filter = defaultFilter(); filterAuto = true; }
+        else if (prevView !== 'hazards' && !isDetail(prevView)) { filter = defaultFilter(); filterAuto = true; hazardDay = ''; }
       }
       nextFilter = null;
       const open = isDetail(view);
@@ -984,8 +1124,8 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       // [열쇠, 이름, 값, 단위, 빨갛게?]. 이름은 시안의 4칸 표현(운행 중 기사 · 1단계 경고 · 2단계 퀴즈 · 3단계 무응답)에 맞춤
       const cells = [
         ['drivers', '주행 중 기사', driving().length, '명', false],      // 등록 기사 전체는 '기사 관리' 에서. 홈은 지금 운전 중인 기사만 (11/16)
-        ['today', '오늘 경고', today, '회', false],
-        ['rest', '휴게 미준수', rest, '회', false],
+        ['today', '오늘 경고', today, '건', false],      // 경고 수는 모두 '건' (11/17)
+        ['rest', '휴게 미준수', rest, '건', false],
         ['urgent', '무응답', urgent, '명', urgent > 0],
       ];
       // 칸을 누르면 페이지로 가지 않고, 바로 아래에 '누가 누군지' 목록이 펼쳐진다 (다시 누르면 접힘)
@@ -993,7 +1133,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         h('button', { class: 'stat' + (alert ? ' alert' : ''), type: 'button', 'data-key': 'stat-' + key, 'aria-pressed': String(statSel === key), 'aria-controls': 'statDetail',
           onclick: () => { statSel = key; renderAll(true); } },
           h('span', { class: 'stat-label' }, label),
-          h('span', { class: 'stat-value' }, String(value), h('small', null, unit)))));
+          h('span', { class: 'stat-value' }, h('span', { 'data-num-key': 'stat-' + key, 'data-num': String(value) }, String(value)), h('small', null, unit)))));
       slideMark($('summary'), statSel ? $('summary').querySelector('[aria-pressed="true"]') : null, 'stat-ring');
       renderStatDetail();
     }
@@ -1004,23 +1144,24 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       const todayEv = events.filter((e) => isToday(e.created_at)).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       const chev = () => h('span', { class: 'sd-chev', 'aria-hidden': 'true' }, icon('chevron', 17));      // 줄마다 새로 만든다 (한 개를 여러 줄에 쓰면 마지막 줄에만 붙음)
       const evRow = (e, right) => h('a', { class: 'sd-row', href: '#event/' + e.id },
-        h('span', { class: 'sd-main' }, h('b', null, honorName(e.user_name)), h('span', null, (REASON_LABEL[e.reason] || e.reason) + ' · ' + (e.user_vehicle_no || '차량번호 미등록') + ' · ' + where(e))),
+        h('span', { class: 'sd-main' }, h('b', null, honorName(e.user_name))),      // 이름만 (이름 아래 종류 · 차량번호 · 주소 줄은 뺌, 11/17)
         right, chev());
       const stageRow = (e) => evRow(e, h('span', { class: 'sd-time' }, ago(e.created_at) || fmtTime(e.created_at)));
       let title, rows, empty;
       if (statSel === 'drivers') {
         title = '주행 중 기사 ' + driving().length + '명'; empty = '지금 주행 중인 기사가 없어요';
         rows = driving().map((u) => h('a', { class: 'sd-row', href: '#driver/' + u.id },
-          h('span', { class: 'sd-main' }, h('b', null, honorName(u.name))),        // 이름과 현재 상태만. 차량번호 · 연락처는 줄을 눌러 여는 상세 창에서
-          driverBadge(driverState(u)[2]), chev()));
+          liveDot(u),                                                               // 현재 상태 = 이름 앞 동그라미 하나로만 (배지 없음, 11/17)
+          h('span', { class: 'sd-main' }, h('b', null, honorName(u.name))),        // 이름만. 차량번호 · 연락처는 줄을 눌러 여는 상세 창에서
+          chev()));
       } else if (statSel === 'today') {
-        title = '오늘 경고 ' + todayEv.length + '회'; empty = '오늘 들어온 경고가 없어요';
+        title = '오늘 경고 ' + todayEv.length + '건'; empty = '오늘 들어온 경고가 없어요';
         rows = todayEv.map((e) => h('a', { class: 'sd-row', href: '#event/' + e.id },
-          h('span', { class: 'sd-main' }, h('b', null, honorName(e.user_name)), h('span', null, (REASON_LABEL[e.reason] || e.reason) + ' · ' + (e.user_vehicle_no || '차량번호 미등록') + ' · ' + ago(e.created_at))),
+          h('span', { class: 'sd-main' }, h('b', null, honorName(e.user_name))),
           stageBadge(e), chev()));
       } else if (statSel === 'rest') {
         const list = todayEv.filter((e) => e.reason === 'rest_overdue');
-        title = '휴게 미준수 ' + list.length + '회'; empty = '오늘 휴게를 지키지 않은 기사가 없어요';
+        title = '휴게 미준수 ' + list.length + '건'; empty = '오늘 휴게를 지키지 않은 기사가 없어요';
         rows = list.map(stageRow);
       } else {
         const list = events.filter(isOpenUrgent).sort(byPriority);
@@ -1048,10 +1189,9 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     // 홈 긴급 경고 줄 (11/16): 이름 · 차량번호 · 위치 · › 만. 전화 · 조치완료 버튼과 '무응답 N분' 글자는 두지 않음 — 줄을 누르면 경고 상세 창에서 전화 · 조치완료
     function urgentRow(e) {
       const who = honor(e.user_name);
-      return h('li', { class: 'u-row', onclick: (ev) => { if (!ev.target.closest('a, button')) location.hash = 'event/' + e.id; } },     // 줄 아무 데나 눌러도 상세 (경고 표와 같게)
+      return h('li', { class: 'u-row', onclick: (ev) => { if (!ev.target.closest('a, button')) location.hash = 'event/' + e.id; } },     // 줄 아무 데나 눌러도 상세 (경고 표와 같게). 이름 앞 상태 점은 '주행 중 기사' · '기사 관리'에서만 (11/17 사용자 결정)
         h('div', { class: 'u-main' },
-          h('a', { class: 'u-name', href: '#event/' + e.id, 'data-key': 'uview' + e.id, 'aria-label': who + ' 경고 #' + e.id + ' 상세 보기' }, honorName(e.user_name)),
-          h('p', { class: 'u-sub' }, (e.user_vehicle_no || '차량번호 미등록') + ' · ' + where(e))),
+          h('a', { class: 'u-name', href: '#event/' + e.id, 'data-key': 'uview' + e.id, 'aria-label': who + ' 경고 #' + e.id + ' 상세 보기' }, honorName(e.user_name))),      // 이름만 (이름 아래 차량번호 · 주소 줄은 뺌, 11/17)
         h('a', { class: 'u-chev', href: '#event/' + e.id, 'aria-label': '상세 보기' }, icon('chevron', 17)));
     }
     // 홈 '긴급 경고' 카드: 미처리 긴급을 건수 제한 없이 전부. 0건이면 "처리할 긴급 경고가 없어요"
@@ -1094,14 +1234,14 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       drivers().forEach((u) => { const n = driverStage(u); states[!u.driving ? OFF_TEXT : n ? STAGE_NAME[n] : '정상']++; });
       const total = drivers().length;
       const segs = [['정상', 'var(--ok-500)'], [STAGE_NAME[1], 'var(--st1)'], [STAGE_NAME[2], 'var(--st2)'], [STAGE_NAME[3], 'var(--rd-500)'], [OFF_TEXT, 'var(--fg-300)']];
-      const R = 60.5, C = 2 * Math.PI * R, GAP = 5;
+      const R = 60.5, C = 2 * Math.PI * R, GAP = 4;
       const svg = svgEl('svg', { viewBox: '0 0 132 132', role: 'img', 'aria-label': '기사 상태: ' + segs.map(([k]) => k + ' ' + states[k] + '명').join(', ') });
       svg.appendChild(svgEl('circle', { cx: 66, cy: 66, r: R, fill: 'none', style: 'stroke:var(--bg-100);stroke-width:11' }));
       let offset = 0;
       if (total) segs.forEach(([k, color]) => {
         if (!states[k]) return;
-        const part = (states[k] / total) * C, len = Math.max(0.1, part - GAP);
-        svg.appendChild(svgEl('circle', { cx: 66, cy: 66, r: R, fill: 'none', 'stroke-linecap': 'round', 'stroke-dasharray': len + ' ' + (C - len), 'stroke-dashoffset': -offset, style: 'stroke:' + color + ';stroke-width:11' }));
+        const part = (states[k] / total) * C, len = segs.filter(([kk]) => states[kk]).length > 1 ? Math.max(0.1, part - GAP) : part;      // 조각 끝은 일자로(butt) (11/17)
+        svg.appendChild(svgEl('circle', { cx: 66, cy: 66, r: R, fill: 'none', 'stroke-linecap': 'butt', 'stroke-dasharray': len + ' ' + (C - len), 'stroke-dashoffset': -offset, style: 'stroke:' + color + ';stroke-width:11' }));
         offset += part;
       });
       const pct = total ? Math.round(((states[STAGE_NAME[1]] + states[STAGE_NAME[2]] + states[STAGE_NAME[3]]) / total) * 100) : 0;
@@ -1160,37 +1300,116 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     // 종류 칸 알약 (11/16): '위험 | 음성 응답 없음' · '경고 | 미세수면'. 처리 안 된 긴급은 줄 왼쪽의 빨간 막대로 (CSS .tbl tr.alert)
     function typePill(e) {
       const n = stageNum(e.stage), kind = REASON_LABEL[e.reason] || e.reason || '졸음';
-      return n ? h('span', { class: 'badge s' + n }, h('i', { class: 'bd' }), STAGE_NAME[n] + ' | ' + kind) : h('span', { class: 'badge gray' }, h('i', { class: 'bd' }), kind);
+      return n ? h('span', { class: 'badge s' + n }, h('i', { class: 'bd' }), n + '단계 | ' + kind) : h('span', { class: 'badge gray' }, h('i', { class: 'bd' }), kind);
     }
     function statusCell(e) {
-      const map = { '미확인': [e.urgent ? 'st-urgent' : 'st-wait', e.urgent ? 'warning' : 'eye'], '확인': ['st-wait', 'eye'], '조치완료': ['st-ok', 'check'], '휴식완료': ['st-info', 'coffee'] };
+      const map = { '미확인': ['st-wait', 'eye'], '확인':      /* 미확인은 긴급이든 아니든 모두 같은 모양 (11/17). 긴급은 줄 왼쪽 빨간 막대와 '긴급' 탭으로 구분 */ ['st-wait', 'eye'], '조치완료': ['st-ok', 'check'], '휴식완료': ['st-info', 'coffee'] };
       const [cls, ic] = map[e.status] || ['st-wait', 'eye'];
       return h('span', { class: 'st ' + cls }, icon(ic, 14), e.status);
     }
 
     // 화면 제목 오른쪽의 작은 숫자 요약 (시안: 10 등록 기사 | 7 경고 발생 | 3 응답 대기)
     const headStats = (items) => items.map(([n, label]) => h('div', { class: 'head-stat' }, h('span', { class: 'n' }, String(n)), h('span', null, label)));
+    // 졸음 경고 맨 위 날짜별 달력 (11/17): 경고 있는 날 아래에 단계 색 점. 날짜를 누르면 그날만 (다시 누르거나 [전체 날짜] 로 풀기). 달 이동은 가장 오래된 경고의 달 ~ 이번 달
+    function renderHazardCal() {
+      const now = new Date(), todayKey = dayKey(now), nowIdx = now.getFullYear() * 12 + now.getMonth();
+      if (!hzCal.y) { hzCal.y = now.getFullYear(); hzCal.m = now.getMonth(); }
+      const { y, m } = hzCal, monthKey = y + '-' + p2(m + 1) + '-', curIdx = y * 12 + m;
+      const byDay = new Map();
+      events.forEach((e) => { const d = new Date(e.created_at); if (isNaN(d)) return; const k = dayKey(d); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(e); });
+      const minIdx = events.reduce((a, e) => { const t = new Date(e.created_at); return isNaN(t) ? a : Math.min(a, t.getFullYear() * 12 + t.getMonth()); }, nowIdx);
+      const monthCount = [...byDay.entries()].filter(([k]) => k.startsWith(monthKey)).reduce((a, [, v]) => a + v.length, 0);
+      const move = (delta) => { const d = new Date(y, m + delta, 1); hzCal.y = d.getFullYear(); hzCal.m = d.getMonth(); hazardDay = ''; renderAll(true); };      // 달을 옮기면 고른 날은 풀고 그 달 전체
+      const cells = [];
+      for (let i = 0; i < new Date(y, m, 1).getDay(); i++) cells.push(h('span'));
+      for (let d = 1, last = new Date(y, m + 1, 0).getDate(); d <= last; d++) {
+        const k = monthKey + p2(d), list = byDay.get(k) || [], sel = k === hazardDay;
+        const stages = [...new Set(list.map((e) => stageNum(e.stage)))].sort();
+        cells.push(h('button', { type: 'button', class: 'cal-day' + (sel ? ' sel' : '') + (k === todayKey ? ' today' : ''), disabled: k > todayKey, 'data-key': 'hzcal' + k,
+          'aria-pressed': sel ? 'true' : 'false', 'aria-label': (m + 1) + '월 ' + d + '일' + (list.length ? ', 경고 ' + list.length + '건' : ''),
+          onclick: () => { hazardDay = sel ? '' : k; if (hazardDay) { filter = 'all'; filterAuto = false; } renderAll(true); } },      // 날짜를 고르면 탭은 '전체' 로 (그날 경고를 다 보이게)
+          String(d), stages.length ? h('span', { class: 'cal-dots', 'aria-hidden': 'true' }, stages.map((n) => h('i', { style: 'background:' + stageVar(n) }))) : null));
+      }
+      fill($('hazardCal'), h('div', { class: 'cal', style: 'padding-top:0' },
+        h('div', { class: 'cal-head' },
+          h('h4', { class: 'cal-title' }, y + '년 ' + (m + 1) + '월', h('small', null, monthCount ? '경고 ' + monthCount + '건' : '경고 없음')),
+          h('div', { class: 'hz-tools' },
+            hazardDay ? h('button', { type: 'button', class: 'hz-clear', onclick: () => { hazardDay = ''; renderAll(true); } }, '전체 날짜') : null,
+            h('div', { class: 'cal-nav' },
+              h('button', { type: 'button', class: 'prev', 'aria-label': '이전 달', disabled: curIdx <= minIdx, onclick: () => move(-1) }, icon('chevron', 18)),
+              h('button', { type: 'button', 'aria-label': '다음 달', disabled: curIdx >= nowIdx, onclick: () => move(1) }, icon('chevron', 18))))),
+        h('div', { class: 'cal-grid' }, WEEKDAY.map((w) => h('span', { class: 'cal-wd' }, w)), cells)));
+    }
+    // 달력 오른쪽 요약 카드 (11/17): 고른 날의 경고 건수와 단계별 건수. 날을 고르지 않았으면 보고 있는 달 전체
+    function renderHazardSum() {
+      const { y, m } = hzCal, monthKey = y + '-' + p2(m + 1) + '-';
+      const scope = events.filter((e) => { const d = new Date(e.created_at); if (isNaN(d)) return false; const k = dayKey(d); return hazardDay ? k === hazardDay : k.startsWith(monthKey); });
+      let title, sub;
+      if (hazardDay) { const [sy, sm, sd] = hazardDay.split('-').map(Number); title = sm + '월 ' + sd + '일'; sub = WEEKDAY[new Date(sy, sm - 1, sd).getDay()] + '요일'; }
+      else { title = (m + 1) + '월 전체'; sub = '날짜를 누르면 그날만 볼 수 있어요'; }
+      const counts = [1, 2, 3].map((n) => scope.filter((e) => stageNum(e.stage) === n).length), total = scope.length;
+      // 단계별 도넛 (통계 화면의 도넛과 같은 모양: 둥근 끝 조각 + 가운데 전체 건수) + 오른쪽 범례 (단계 · 건수 · 비율)
+      const R = 60.5, C = 2 * Math.PI * R, GAP = 4;
+      const svg = svgEl('svg', { viewBox: '0 0 132 132', role: 'img', 'aria-label': title + ' 단계별 경고: ' + [1, 2, 3].map((n, i) => STAGE_NAME[n] + ' ' + counts[i] + '건').join(', ') });
+      svg.appendChild(svgEl('circle', { cx: 66, cy: 66, r: R, fill: 'none', style: 'stroke:var(--bg-100);stroke-width:11' }));
+      let offset = 0;
+      if (total) [1, 2, 3].forEach((n, i) => {
+        if (!counts[i]) return;
+        const part = (counts[i] / total) * C, len = counts.filter(Boolean).length > 1 ? Math.max(0.1, part - GAP) : part;      // 조각 끝은 둥글지 않게 일자로(butt). 조각이 하나뿐이면 틈 없이 한 바퀴 (11/17)
+        svg.appendChild(svgEl('circle', { cx: 66, cy: 66, r: R, fill: 'none', 'stroke-linecap': 'butt', 'stroke-dasharray': len + ' ' + (C - len), 'stroke-dashoffset': -offset, style: 'stroke:' + stageVar(n) + ';stroke-width:11' }));
+        offset += part;
+      });
+      // 어제(전날) 대비 (11/17): 날을 골랐으면 그 전날과, 안 골랐으면 오늘과 어제를 비교. 늘면 빨강 · 줄면 초록 · 같으면 회색
+      const dayOf = (e) => { const d = new Date(e.created_at); return isNaN(d) ? '' : dayKey(d); };
+      const countOn = (k) => events.filter((e) => dayOf(e) === k).length;
+      const shiftDay = (k, delta) => { const [yy, mm, dd] = k.split('-').map(Number); return dayKey(new Date(yy, mm - 1, dd + delta)); };
+      const diffText = (d) => (d > 0 ? '+' + d + '건' : d < 0 ? '−' + Math.abs(d) + '건' : '변화 없음');
+      let cmp = null;      // { diff, text } — 비교할 게 없으면 null (표시 안 함)
+      if (hazardDay) { const diff = countOn(hazardDay) - countOn(shiftDay(hazardDay, -1)); cmp = { diff, text: '전날보다 ' + diffText(diff) }; }
+      else {      // 날을 안 골랐으면 보고 있는 달을 지난달과 비교. 이번 달은 지난달의 같은 날까지만 비교. 지난달 기록이 아예 없으면 표시하지 않음
+        const nowD = new Date(), pm = new Date(y, m - 1, 1), prevKey = pm.getFullYear() + '-' + p2(pm.getMonth() + 1) + '-';
+        const upto = (y === nowD.getFullYear() && m === nowD.getMonth()) ? nowD.getDate() : 31;
+        const inRange = (e, key, last) => { const k = dayOf(e); return k.startsWith(key) && Number(k.slice(8)) <= last; };
+        if (events.some((e) => inRange(e, prevKey, 31))) {
+          const diff = events.filter((e) => inRange(e, monthKey, upto)).length - events.filter((e) => inRange(e, prevKey, upto)).length;
+          cmp = { diff, text: '지난달보다 ' + diffText(diff) };
+        }
+      }
+      fill($('hazardSum'),
+        h('div', { class: 'cal-head' }, h('h4', { class: 'cal-title' }, title, h('small', null, sub)), cmp ? h('span', { class: 'hz-delta ' + (cmp.diff > 0 ? 'up' : cmp.diff < 0 ? 'down' : 'same') }, cmp.text) : null),
+        h('div', { class: 'hz-sum-body' },
+          h('div', { class: 'donut-fig' }, svg, h('div', { class: 'donut-center' }, h('span', { class: 'stat-value' }, h('span', { 'data-num-key': 'hz-total', 'data-num': String(total) }, String(total)), h('small', null, '건')))),      // 큰 숫자는 홈 큰 숫자처럼 바뀔 때 세어 올라가거나 내려감 (11/17)
+          h('div', { class: 'hz-tiles' }, [1, 2, 3].map((n, i) => h('div', { class: 'hz-tile s' + n },
+            h('span', { class: 't' }, STAGE_NAME[n]), h('span', { class: 'v' }, String(counts[i]), h('small', null, '건')), h('span', { class: 'p' }, total ? Math.round((counts[i] / total) * 100) + '%' : '–'))))));
+    }
     function renderHazards() {
       const active = document.activeElement;
       const keepKey = active && active.dataset ? active.dataset.key : null;
       const test = FILTERS.find((f) => f[0] === filter)[2];
       const hq = hazardQuery.trim().toLowerCase();
-      const list = events.filter(test).filter((e) => !hq || [e.user_name, e.user_vehicle_no, e.address, REASON_LABEL[e.reason], '#' + e.id].join(' ').toLowerCase().includes(hq)).sort(byPriority);
+      renderHazardCal();
+      renderHazardSum();
+      // 표와 탭 숫자는 달력이 보여 주는 달 안에서만 (11/17): 날을 골랐으면 그날, '전체 날짜'면 그 달 전체 (다른 달 경고까지 한꺼번에 나오지 않게)
+      const viewMonthKey = hzCal.y + '-' + p2(hzCal.m + 1) + '-';
+      const monthEvents = events.filter((e) => { const d = new Date(e.created_at); return !isNaN(d) && dayKey(d).startsWith(viewMonthKey); });
+      const dayEvents = hazardDay ? monthEvents.filter((e) => dayKey(new Date(e.created_at)) === hazardDay) : monthEvents;
+      const list = dayEvents.filter(test).filter((e) => !hq || [e.user_name, e.user_vehicle_no, e.address, REASON_LABEL[e.reason], '#' + e.id].join(' ').toLowerCase().includes(hq)).sort(HAZARD_SORTS[hazardSort]);
       const body = $('hazardBody');
       fill(body, ...(list.length ? list.map((e) => {
         const alert = isOpenUrgent(e), who = honor(e.user_name);
         // 줄 전체가 상세 패널을 여는 링크 역할 ([상세 보기] 버튼은 두지 않음). 키보드 · 새 탭은 이름 링크로. 맨 오른쪽 칸 = 단계 배지
-        return h('tr', { class: 'row-link' + (alert ? ' alert' : ''), onclick: (ev) => { if (!ev.target.closest('a, button')) location.hash = 'event/' + e.id; } },
-          h('td', null, h('a', { class: 'row-id', href: '#event/' + e.id, 'data-key': 'ev' + e.id, 'aria-label': who + ' 경고 #' + e.id + ' 상세 보기' }, honorName(e.user_name)), h('span', { class: 'sub' }, e.user_vehicle_no || '차량번호 미등록')),
+        return h('tr', { class: 'row-link' + (alert ? ' alert' : ''), 'data-rid': 'e' + e.id, onclick: (ev) => { if (!ev.target.closest('a, button')) location.hash = 'event/' + e.id; } },
+          h('td', null, h('a', { class: 'row-id', href: '#event/' + e.id, 'data-key': 'ev' + e.id, 'aria-label': who + ' 경고 #' + e.id + ' 상세 보기' }, honorName(e.user_name))),      // 이름만 (차량번호는 위험도 오른쪽 열로 옮김, 11/17)
           h('td', { class: 'nowrap' }, typePill(e)),
+          h('td', { class: 'nowrap dim' }, e.user_vehicle_no ? e.user_vehicle_no : h('span', { class: 'unset' }, '미등록')),
           h('td', { class: 'loc' }, where(e)),
           h('td', { class: 'nowrap dim' }, fmtTime(e.created_at)),
           // 처리: 상태 글자만. [조치완료] 는 줄을 눌러 여는 경고 상세 창 안에서 (11/16)
           h('td', { class: 'nowrap end' }, statusCell(e)));      // 맨 오른쪽 칸 — 오른쪽 끝에 맞춤
-      }) : [h('tr', { class: 'empty-row' }, h('td', { colspan: 5 }, events.length ? (hq ? '검색 결과가 없어요' : filter === 'urgent' ? '처리할 긴급 경고가 없어요' : '해당하는 경고가 없어요') : '아직 들어온 경고가 없어요'))]));
+      }) : [h('tr', { class: 'empty-row' }, h('td', { colspan: 6 }, events.length ? (hq ? '검색 결과가 없어요' : hazardDay && !dayEvents.length ? '이 날은 경고가 없어요' : !monthEvents.length ? '이 달은 경고가 없어요' : filter === 'urgent' ? '처리할 긴급 경고가 없어요' : '해당하는 경고가 없어요') : '아직 들어온 경고가 없어요'))]));
       $('hazardCount').textContent = list.length + '건' + (hq ? ' (검색 결과)' : '');
-      fill($('hazardsMeta'), headStats([[events.length, '전체 경고'], [events.filter((e) => e.status === '미확인').length, '미확인'], [events.filter(isOpenUrgent).length, '긴급']]));
-      renderTabs($('hazardTabs'), 'hazardPanel', FILTERS.map(([key, label, fn]) => [key, label, events.filter(fn).length, key === 'urgent']), filter, (key) => { filter = key; filterAuto = false; renderAll(true); });
+      fill($('hazardsMeta'), headStats([[monthEvents.length, '전체 경고'], [monthEvents.filter((e) => e.status === '미확인').length, '미확인'], [monthEvents.filter(isOpenUrgent).length, '긴급']]));      // 위쪽 요약도 보고 있는 달 기준 (표와 숫자가 맞게)
+      renderTabs($('hazardTabs'), 'hazardPanel', FILTERS.map(([key, label, fn]) => [key, label, dayEvents.filter(fn).length, key === 'urgent']), filter, (key) => { filter = key; filterAuto = false; renderAll(true); });
       if (keepKey) { const again = document.querySelector('[data-key="' + keepKey + '"]'); if (again) again.focus({ preventScroll: true }); }
     }
 
@@ -1200,7 +1419,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     function stageBar(counts, mini) {
       const total = counts.reduce((a, b) => a + b, 0);
       if (!total) return mini ? null : h('span', { class: 'stage-bar', 'aria-hidden': 'true' });
-      const label = counts.map((c, i) => STAGE_NAME[i + 1] + ' ' + c + '건').join(', ');
+      const label = counts.map((c, i) => (i + 1) + '단계 ' + STAGE_WORD[i + 1] + ' ' + c + '건').join(', ');
       return h('span', { class: 'stage-bar' + (mini ? ' mini' : ''), role: 'img', 'aria-label': '위험도별 경고: ' + label, title: label },
         counts.map((c, i) => c ? h('i', { class: 'sb-' + (i + 1), style: 'width:' + (c / total) * 100 + '%' }) : null));
     }
@@ -1218,45 +1437,55 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       const n = driverStage(u), on = !!u.driving;
       return [on ? ['st-ok', 'st-wait', 'st-wait', 'st-urgent'][n] : 'st-wait', on ? ['check', 'eye', 'eye', 'warning'][n] : 'eye', on ? DRIVER_STATE_TEXT[n] : OFF_TEXT, n, on];
     }
-    // 기사 표 맨 오른쪽 상태 배지: 3단계 위험 = 빨강 · 2단계 퀴즈 = 주황 · 1단계 경고 = 노랑 · 정상 운행 = 초록 (앱 색)
-    function driverBadge(text) { return h('span', { class: text === OFF_TEXT ? 'badge gray' : 'badge s' + Math.max(0, DRIVER_STATE_TEXT.indexOf(text)) }, h('i', { class: 'bd' }), text); }
+    // 기사 현재 상태는 어느 목록이든 이름 앞 동그라미(liveDot) 하나로만 보여 줌 (11/17, 배지 없음): 위험 3단계 = 빨강 · 휴식 권고 2단계 = 주황 · 경고 1단계 = 노랑 · 정상 운행 = 초록 · 운행 안 함 = 회색
     const DRIVER_FILTERS = [
-      ['all', '전체', () => true],
-      ['s3', '위험', (u) => !!u.driving && driverStage(u) === 3],
-      ['s2', '휴식 권고', (u) => !!u.driving && driverStage(u) === 2],
-      ['s1', '경고', (u) => !!u.driving && driverStage(u) === 1],
+      ['all', '전체', (u) => !!u.driving],      // 11/17: 운행 안 함 기사는 이 탭들에서 빠지고 아래 '운행 안 함' 표에 따로 나옴. 위 카드 제목이 '운행 중' 이라 이 탭은 '전체' (운행 중인 기사 전체)
+      ['s3', STAGE_NAME[3], (u) => !!u.driving && driverStage(u) === 3],
+      ['s2', STAGE_NAME[2], (u) => !!u.driving && driverStage(u) === 2],
+      ['s1', STAGE_NAME[1], (u) => !!u.driving && driverStage(u) === 1],
       ['s0', '정상', (u) => !!u.driving && driverStage(u) === 0],
-      ['off', OFF_TEXT, (u) => !u.driving],
     ];
     // 기사 표 두 곳(홈의 '기사 현황' · 기사 관리 화면)이 같은 모양. 홈은 전화 버튼 칸이 없음 (전화는 위 '긴급 경고' 카드에서)
     const DT = {
-      page: { body: 'driverBody', tabs: 'driverTabs', panel: 'driverPanel', count: 'driverCount', get filter() { return driverFilter; }, set filter(v) { driverFilter = v; }, get query() { return driverQuery; } },
+      page: { body: 'driverBody', offBody: 'driverOffBody', offCard: 'driverOffCard', tabs: 'driverTabs', panel: 'driverPanel', count: 'driverCount', get sort() { return driverSort; }, get filter() { return driverFilter; }, set filter(v) { driverFilter = v; }, get query() { return driverQuery; } },
     };
+    // 기사 표 정렬 (11/17): 위험 먼저(기본: 3단계 기사 맨 위, 나머지는 서버가 준 순서 그대로) · 이름순(가나다) · 가입순(가입 번호 id 가 작은 사람 = 먼저 가입한 사람이 위. 서버가 가입일을 주지 않아서 id 로 가름)
+    const DRIVER_SORTS = {
+      danger: (a, b) => (driverStage(b) === 3) - (driverStage(a) === 3),
+      name: (a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ko') || (a.id - b.id),
+      join: (a, b) => a.id - b.id,
+    };
+    // 기사 한 줄 — 운행 중 표 · 아래 '운행 안 함' 표가 같은 모양
+    function driverRow(u, which) {
+      const mine = events.filter((e) => e.user_id === u.id);
+      const today = mine.filter((e) => isToday(e.created_at)).length;
+      const cells = [
+        h('td', null, h('span', { class: 'who-cell' }, liveDot(u), h('a', { class: 'row-id', href: '#driver/' + u.id, 'data-key': 'drv' + which + u.id, 'aria-label': honor(u.name) + ' 상세 보기와 연락처' }, honorName(u.name)))),      // 현재 상태 = 이름 앞 동그라미 (배지 · 상태 열 · 이름 아래 차량번호는 뺌, 11/17)
+        h('td', { class: 'nowrap dim' }, u.vehicle_no ? u.vehicle_no : h('span', { class: 'unset' }, '미등록')),      // 차량번호 열 (11/17)
+        h('td', { class: 'nowrap dim' }, u.phone ? u.phone : h('span', { class: 'unset' }, '미등록')),
+        h('td', { class: 'nowrap dim' }, today + '건'),
+        h('td', { class: 'nowrap dim' }, (u.event_count || 0) + '건', stageBar(stageCounts(mine), true)),
+      ];
+      return h('tr', { class: 'row-link', 'data-rid': 'u' + u.id, onclick: (ev) => { if (!ev.target.closest('a, button')) location.hash = 'driver/' + u.id; } }, cells);      // 위험 줄의 분홍 배경은 두지 않음 (11/16)
+    }
     function renderDriverTable(which) {
       const cfg = DT[which];
       const active = document.activeElement;
       const keepKey = active && active.dataset ? active.dataset.key : null;
       const q = cfg.query.trim().toLowerCase(), qDigits = digitsOf(q);
       const dtest = DRIVER_FILTERS.find((f) => f[0] === cfg.filter)[2];
-      const list = drivers().filter(dtest).filter((u) => !q || (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q)
-        || (u.vehicle_no || '').replace(/\s/g, '').toLowerCase().includes(q.replace(/\s/g, '')) || (qDigits.length >= 3 && digitsOf(u.phone).includes(qDigits)));
-      // 조치 필요 기사는 맨 위 (나머지 순서는 서버가 준 그대로 — sort 는 순서를 유지함)
-      const needsAction = (u) => driverStage(u) === 3;
-      list.sort((a, b) => needsAction(b) - needsAction(a));
-      fill($(cfg.body), ...(list.length ? list.map((u) => {
-        const text = driverState(u)[2];
-        const alert = driverStage(u) === 3, callDigits = validPhoneDigits(u.phone);
-        const mine = events.filter((e) => e.user_id === u.id);
-        const today = mine.filter((e) => isToday(e.created_at)).length;
-        const cells = [
-          h('td', null, h('a', { class: 'row-id', href: '#driver/' + u.id, 'data-key': 'drv' + which + u.id, 'aria-label': honor(u.name) + ' 상세 보기와 연락처' }, honorName(u.name)), h('span', { class: 'sub' }, u.vehicle_no || '차량번호 미등록')),
-          h('td', { class: 'nowrap dim' }, u.phone ? u.phone : h('span', { class: 'unset' }, '미등록')),
-          h('td', { class: 'nowrap dim' }, today + '회'),
-          h('td', { class: 'nowrap dim' }, (u.event_count || 0) + '회', stageBar(stageCounts(mine), true)),
-        ];
-        cells.push(h('td', { class: 'end' }, driverBadge(text)));     // 맨 오른쪽 칸 = 상태 배지
-        return h('tr', { class: 'row-link', onclick: (ev) => { if (!ev.target.closest('a, button')) location.hash = 'driver/' + u.id; } }, cells);      // 위험 줄의 분홍 배경은 두지 않음 (11/16)
-      }) : [h('tr', { class: 'empty-row' }, h('td', { colspan: 5 }, q ? '검색 결과가 없어요' : drivers().length ? '해당하는 기사가 없어요' : '등록된 기사가 없어요'))]));
+      const match = (u) => !q || (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q)
+        || (u.vehicle_no || '').replace(/\s/g, '').toLowerCase().includes(q.replace(/\s/g, '')) || (qDigits.length >= 3 && digitsOf(u.phone).includes(qDigits));
+      const list = drivers().filter(dtest).filter(match);
+      list.sort(DRIVER_SORTS[cfg.sort]);
+      fill($(cfg.body), ...(list.length ? list.map((u) => driverRow(u, which))
+        : [h('tr', { class: 'empty-row' }, h('td', { colspan: 5 }, q ? '검색 결과가 없어요' : drivers().length ? (cfg.filter === 'all' ? '지금 운행 중인 기사가 없어요' : '해당하는 기사가 없어요') : '등록된 기사가 없어요'))]));
+      // 운행 안 함 기사는 따로 아래 표에 (11/17). 탭과 상관없이 늘 같은 목록이고 검색어만 적용. 없으면 카드째 숨김
+      if (cfg.offCard) {
+        const off = drivers().filter((u) => !u.driving).filter(match).sort(DRIVER_SORTS[cfg.sort]);
+        $(cfg.offCard).hidden = !off.length;
+        fill($(cfg.offBody), ...off.map((u) => driverRow(u, which)));
+      }
       if (cfg.count) $(cfg.count).textContent = list.length + '명' + (q ? ' (검색 결과)' : '');
       renderTabs($(cfg.tabs), cfg.panel, DRIVER_FILTERS.map(([key, label, fn]) => [key, label, drivers().filter(fn).length, key === 's3']), cfg.filter, (key) => { cfg.filter = key; renderAll(true); });
       if (keepKey) { const again = document.querySelector('[data-key="' + keepKey + '"]'); if (again) again.focus({ preventScroll: true }); }
@@ -1271,14 +1500,15 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     function renderChrome() {
       const openUrgent = events.filter(isOpenUrgent);
       const urgent = openUrgent.length;
+      const unread = openUrgent.filter((e) => e.status === '미확인').length;      // 아직 열어 보지 않은 긴급 (옆 메뉴 · 종 모두 읽으면 줄어듦, 11/17)
       const badge = $('menuBadge');
-      badge.textContent = String(urgent);
-      badge.style.display = urgent > 0 ? 'inline-flex' : 'none';
-      badge.setAttribute('aria-label', '긴급 ' + urgent + '건');
+      badge.textContent = String(unread);
+      badge.style.display = unread > 0 ? 'inline-flex' : 'none';
+      badge.setAttribute('aria-label', '안 읽은 긴급 ' + unread + '건');
       if (!$('notifMenu').hidden) renderNotifs();                    // 알림 목록이 열려 있으면 같이 새로 그림
-      const bell = $('bellBadge');                                   // 위쪽 종: 긴급 건수 (0건이면 숨김)
-      bell.textContent = String(urgent); bell.hidden = urgent === 0;
-      $('bellBtn').setAttribute('aria-label', urgent ? '알림, 긴급 경고 ' + urgent + '건' : '알림');
+      const bell = $('bellBadge');                                   // 위쪽 종: 아직 열어 보지 않은(미확인) 긴급 건수만 — 열어 본 알림은 빠짐 (11/17). 0건이면 숨김
+      bell.textContent = String(unread); bell.hidden = unread === 0;
+      $('bellBtn').setAttribute('aria-label', unread ? '알림, 안 읽은 긴급 경고 ' + unread + '건' : '알림');
       lastUrgent = urgent;
       updateTitle();
       // 새로 생긴 긴급 경고(번호로 구분)만 소리 · 깜빡임으로 알린다. 첫 불러오기 전에는 비교하지 않음 (처음 열자마자 '새 경고' 알림이 뜨지 않게)
@@ -1292,7 +1522,9 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     const seenUrgent = new Set();
     let blinkTimer = null, blinkOn = false, soundOn = true, audioCtx = null;
     try { soundOn = localStorage.getItem('adminSound') !== 'off'; } catch (e) { /* 저장소를 못 쓰면 켜 둔다 */ }
-    function updateTitle() { document.title = blinkOn ? '🚨 새 긴급 경고! · 졸음 가드' : (connLost ? '⚠️ 연결 끊김 · ' : '') + (lastUrgent ? lastUrgent + ' · ' : '') + (view === 'event' ? '경고 상세 · ' : view === 'driver' ? '기사 상세 · ' : view === 'profile' ? '설정 · ' : '') + '졸음 가드 관리자'; }
+    // 브라우저 탭 제목 (11/17): '화면 이름 | 졸음 가드 관리자' 로 모두 '|' 로 통일. 앞에 붙던 긴급 건수('3 ·')는 뺌
+    const PAGE_TITLE = { dashboard: '홈', hazards: '졸음 경고', drivers: '기사 관리', stats: '통계', profile: '설정', event: '경고 상세', driver: '기사 상세' };
+    function updateTitle() { document.title = blinkOn ? '🚨 새 긴급 경고 | 졸음 가드 관리자' : [connLost ? '⚠️ 연결 끊김' : '', PAGE_TITLE[view] || '', '졸음 가드 관리자'].filter(Boolean).join(' | '); }
     function stopBlink() { clearInterval(blinkTimer); blinkTimer = null; blinkOn = false; updateTitle(); }
     function startBlink() { if (blinkTimer) return; blinkOn = true; updateTitle(); blinkTimer = setInterval(() => { blinkOn = !blinkOn; updateTitle(); }, 1000); }
     // 새 긴급 경고 알림 띠 (11/16): 새 긴급이 막 왔을 때만 뜬다. 이미 알고 있는 긴급은 홈의 '긴급 경고' 카드 · 종 배지로 보이므로 띠는 두지 않는다. 전부 조치완료되면 깜빡임도 끝.
@@ -1338,7 +1570,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     function raiseAlert(fresh) {                       // 배너는 renderUrgentBanner 가 그린다. 여기서는 알림음 · 깜빡임 · 안내 글만
       const s3 = fresh.filter((e) => e.stage === 3).length, nr = fresh.filter((e) => e.reason === 'no_response').length;
       const names = [...new Set(fresh.map((e) => honor(e.user_name)))].slice(0, 3).join(' · ');
-      const kinds = [s3 ? '위험 ' + s3 + '건' : '', nr ? '음성 응답 없음 ' + nr + '건' : ''].filter(Boolean).join(' · ');
+      const kinds = [s3 ? '3단계 ' + STAGE_WORD[3] + ' ' + s3 + '건' : '', nr ? '음성 응답 없음 ' + nr + '건' : ''].filter(Boolean).join(' · ');
       alertAudible = beep();
       alertTitle = '새 긴급 경고 ' + fresh.length + '건';
       alertMsg = names + ' · ' + kinds;
@@ -1360,18 +1592,72 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       if ($('liveText').textContent !== LIVE_TEXT[state]) $('liveText').textContent = LIVE_TEXT[state];
     }
 
+    // ── 부드럽게 바뀌기 (11/17) ────────────────────────────────────
+    //   1) 홈 맨 위 4칸의 큰 숫자와 졸음 경고 도넛 가운데의 큰 숫자만, 바뀌면 이전 값에서 새 값까지 세어 올라가거나 내려감 (data-num-key · data-num 표시가 붙은 글자). 탭 개수 · 머리 숫자 · 'N건' 은 바로 바뀜 (사용자 결정 11/17)
+    //   2) 목록 카드의 높이가 바뀌면(줄이 늘거나 줄 때) 이전 높이에서 새 높이까지 서서히 늘고 줄어듦
+    //   3) 새로 생긴 줄은 살짝 떠오르며 나타남 (처음 그릴 때와 그대로인 줄은 가만히)
+    //   '동작 줄이기'(prefers-reduced-motion)를 켠 사람은 모두 바로 바뀜
+    const REDUCE = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const lastNum = new Map();
+    function tweenNums() {
+      document.querySelectorAll('[data-num-key]').forEach((el) => {
+        const key = el.dataset.numKey, to = Number(el.dataset.num), from = lastNum.get(key);
+        lastNum.set(key, to);
+        if (REDUCE || from === undefined || from === to || !Number.isFinite(to) || !Number.isFinite(from)) { el.textContent = String(to); return; }
+        const t0 = performance.now(), dur = Math.min(700, 280 + Math.abs(to - from) * 40);
+        el.textContent = String(from);
+        const step = (now) => {
+          if (!el.isConnected) return;                                    // 화면이 다시 그려져 이 글자가 사라졌으면 멈춤
+          const p = Math.min(1, (now - t0) / dur);
+          el.textContent = String(Math.round(from + (to - from) * (1 - Math.pow(1 - p, 3))));
+          if (p < 1) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      });
+    }
+    const SMOOTH_BOXES = ['hazardCal', 'hazardPanel', 'driverPanel', 'driverOffCard', 'statDetail', 'urgentZone'];
+    function smoothRender(draw) {
+      const seen = (el) => !!el && !el.hidden && el.offsetParent !== null;
+      const before = SMOOTH_BOXES.map((id) => { const el = $(id); return [el, seen(el) ? el.getBoundingClientRect().height : 0]; });
+      before.forEach(([el]) => { if (el) el.getAnimations().filter((a) => a.id === 'smooth-h').forEach((a) => a.cancel()); });   // 진행 중이던 높이 움직임은 멈추고 새로 시작
+      draw();
+      if (REDUCE) return;
+      before.forEach(([el, h0]) => {
+        if (!seen(el) || !h0) return;                                     // 안 보이던 화면 · 처음 그리기는 건너뜀
+        const h1 = el.getBoundingClientRect().height, d = Math.abs(h1 - h0);
+        if (d < 2) return;
+        // 높이 차이가 클수록 오래 (차이 500px 이면 약 0.8초, 최대 0.9초). 시작도 끝도 부드럽게 (11/17: 줄 수가 많이 달라도 휙 바뀌지 않게)
+        const a = el.animate([{ height: h0 + 'px', overflow: 'hidden' }, { height: h1 + 'px', overflow: 'hidden' }], { duration: Math.round(Math.min(900, 420 + d * 0.8)), easing: 'cubic-bezier(.4, 0, .2, 1)' });
+        a.id = 'smooth-h';
+      });
+    }
+    const seenRows = new Map();                                           // 목록 id → 지난번에 그린 줄 열쇠 모음
+    function flagNewRows(box, sel, keyOf) {
+      if (!box) return;
+      const rows = [...box.querySelectorAll(sel || '[data-rid]')], key = keyOf || ((r) => r.dataset.rid), prev = seenRows.get(box.id);
+      seenRows.set(box.id, new Set(rows.map(key)));
+      if (!prev || REDUCE) return;
+      let n = 0;                                                          // 새 줄이 여럿이면 위에서부터 조금씩 늦게 나타남 (줄당 20ms, 최대 0.32초)
+      rows.forEach((r) => { if (!prev.has(key(r))) { r.style.animationDelay = Math.min(n * 20, 320) + 'ms'; n++; r.classList.add('row-in'); } });
+    }
     // 바꾼 것만 다시 그림 (10초마다 불러와도 포커스 · 스크롤 유지). 상세 패널이 열려 있으면 뒤 화면도 같이 그림
     function renderAll(force) {
       renderChrome();
       const shown = isDetail(view) ? baseView : view;
       // 홈은 '몇 분 전' 이 시간이 지나면 바뀌어야 해서 분 단위 값도 비교에 넣는다 (데이터가 그대로여도 1분마다 다시 그림)
-      const data = JSON.stringify([events, users, stageStats, hourStats, view, routeId, shown, filter, driverFilter, driverQuery, hazardQuery, analysisTab, statSel, shown !== 'profile' ? Math.floor(Date.now() / 10000) : 0]);
+      const data = JSON.stringify([events, users, stageStats, hourStats, view, routeId, shown, filter, driverFilter, driverQuery, hazardQuery, hazardSort, driverSort, hazardDay, hzCal.y, hzCal.m, analysisTab, statSel, shown !== 'profile' ? Math.floor(Date.now() / 10000) : 0]);
       if (!force && data === sig.all) return;
       sig.all = data;
-      if (shown === 'dashboard') keepFocus(() => { renderUrgentZone(); renderSummary(); });
-      else if (shown === 'stats') keepFocus(() => { renderTimeChart(); renderDonutChart(); renderWeekChart(); renderAnalysisChart(); });
-      else if (shown === 'hazards') renderHazards();
-      else if (shown === 'drivers') renderDrivers();
+      smoothRender(() => {
+        if (shown === 'dashboard') keepFocus(() => { renderUrgentZone(); renderSummary(); });
+        else if (shown === 'stats') keepFocus(() => { renderTimeChart(); renderDonutChart(); renderWeekChart(); renderAnalysisChart(); });
+        else if (shown === 'hazards') renderHazards();
+        else if (shown === 'drivers') renderDrivers();
+      });
+      tweenNums();
+      ['hazardBody', 'driverBody', 'driverOffBody'].forEach((id) => flagNewRows($(id)));
+      flagNewRows($('statDetail'), '.sd-row', (r) => statSel + ':' + r.getAttribute('href'));
+      flagNewRows($('urgentZone'), '.u-row', (r) => r.querySelector('a.u-name') ? r.querySelector('a.u-name').getAttribute('href') : '');
       // 내 정보는 showView 에서만 그린다 (입력 중 칸 보존)
       if (view === 'event') renderEventDrawer();
       else if (view === 'driver') renderDriverDrawer();
@@ -1463,8 +1749,9 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         h('div', { class: 'info-top' },
           h('div', { class: 'info-line' },
             h('div', { class: 'info-when' }, h('b', null, clock || day), clock ? h('span', null, day) : null),
-            h('span', { class: n ? 'badge s' + n : 'badge gray' }, h('i', { class: 'bd' }), (n ? STAGE_NAME[n] + ' | ' : '') + (REASON_LABEL[e.reason] || e.reason || '졸음')))),
+            h('span', { class: n ? 'badge s' + n : 'badge gray' }, h('i', { class: 'bd' }), (n ? n + '단계 | ' : '') + (REASON_LABEL[e.reason] || e.reason || '졸음')))),
         h('div', { class: 'info-row' }, icon('pin', 18), h('div', null, h('b', null, where(e)), mapLink)),
+        h('div', { class: 'info-row' }, icon('car', 18), e.user_vehicle_no ? h('div', null, h('b', null, e.user_vehicle_no)) : unsetText()),      // 차량번호 (11/17): 위치와 연락처 사이
         h('div', { class: 'info-row' }, icon('phone', 18), digits ? copyable(e.user_phone, '번호') : unsetText()));
     }
     function renderEventDrawer() {
@@ -1537,6 +1824,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     // ── 기사 상세의 월 달력 (11/16): 경고 있는 날엔 날짜 아래에 단계 색 점, 날짜를 누르면 아래에 그날의 경고 목록 (애플 캘린더 모양)
     //    단계별 · 종류별 그래프는 달력으로 대신함. 고른 날 · 보는 달은 10초 갱신에도 그대로 (기사가 바뀌면 오늘로)
     let calState = { uid: null, y: 0, m: 0, sel: '' };
+    let lastCalShown = { uid: null, sel: '' };      // 마지막으로 그린 달력의 기사 · 고른 날 (날이 바뀌었는지 알아내려고)
     const p2 = (n) => String(n).padStart(2, '0');
     const dayKey = (d) => d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());
     const WEEKDAY = ['일', '월', '화', '수', '목', '금', '토'];
@@ -1545,22 +1833,24 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       const now = new Date(), todayKey = dayKey(now);
       const byDay = new Map();
       mine.forEach((e) => { const d = new Date(e.created_at); if (isNaN(d)) return; const k = dayKey(d); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(e); });
-      const dayBlock = (sel) => {
+      const dayBlock = (sel, anim) => {      // anim: 날을 옮겨서 다시 그릴 때만 true → 아래 내역이 서서히 나타남 (11/17)
         const [sy, sm, sd] = sel.split('-').map(Number), selDate = new Date(sy, sm - 1, sd);
         const dayList = (byDay.get(sel) || []).slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         return [
           dayList.length
-            ? h('ul', { class: 'day-list' }, dayList.map((e) => { const n = stageNum(e.stage), tm = new Date(e.created_at);
-                return h('li', null, h('a', { class: 'day-ev' + (opts && e.id === opts.currentId ? ' now' : ''), href: '#event/' + e.id, 'aria-current': opts && e.id === opts.currentId ? 'true' : null, style: '--c:' + stageVar(n), 'aria-label': p2(tm.getHours()) + '시 ' + p2(tm.getMinutes()) + '분 ' + (REASON_LABEL[e.reason] || e.reason) + ' 상세 보기' },
+            ? h('ul', { class: 'day-list' }, dayList.map((e, i) => { const n = stageNum(e.stage), tm = new Date(e.created_at);
+                return h('li', anim ? { class: 'day-anim', style: 'animation-delay:' + Math.min(i * 50, 250) + 'ms' } : null, h('a', { class: 'day-ev' + (opts && e.id === opts.currentId ? ' now' : ''), href: '#event/' + e.id, 'aria-current': opts && e.id === opts.currentId ? 'true' : null, style: '--c:' + stageVar(n), 'aria-label': p2(tm.getHours()) + '시 ' + p2(tm.getMinutes()) + '분 ' + (REASON_LABEL[e.reason] || e.reason) + ' 상세 보기' },
                   h('span', { class: 'ev-t' }, p2(tm.getHours()) + ':' + p2(tm.getMinutes())), h('i', { class: 'ev-bar', 'aria-hidden': 'true' }),
                   h('span', { class: 'ev-main' }, h('b', null, REASON_LABEL[e.reason] || e.reason), h('small', null, n ? STAGE_NAME[n] : '경고')))); }))
-            : h('p', { class: 'day-empty' }, sel === todayKey ? '오늘은 경고가 없어요' : '이 날은 경고가 없어요')];
+            : h('p', { class: 'day-empty' + (anim ? ' day-anim' : '') }, sel === todayKey ? '오늘은 경고가 없어요' : '이 날은 경고가 없어요')];
       };
       if (opts && opts.listOnly) return h('div', { class: 'sheet-sec cal list-only' }, dayBlock(opts.sel));      // 홈에서 연 경고: 달력 없이 그날 경고만
       if (calState.uid !== uid) {                                // 처음 열면 오늘 (경고 상세에서는 그 경고가 일어난 날)
         const first = (opts && opts.sel) || todayKey, [fy, fm] = first.split('-').map(Number);
         calState = { uid, y: fy, m: fm - 1, sel: first };
       }
+      const anim = !REDUCE && lastCalShown.uid === uid && lastCalShown.sel !== calState.sel;      // 같은 기사에서 날이 바뀌었을 때만 (처음 열 때 · 10초 갱신은 가만히)
+      lastCalShown = { uid, sel: calState.sel };
       const { y, m } = calState, monthKey = y + '-' + p2(m + 1) + '-';
       const nowIdx = now.getFullYear() * 12 + now.getMonth(), curIdx = y * 12 + m;
       const old = mine.length ? new Date(mine[mine.length - 1].created_at) : now;
@@ -1578,7 +1868,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       for (let d = 1, last = new Date(y, m + 1, 0).getDate(); d <= last; d++) {
         const k = monthKey + p2(d), list = byDay.get(k) || [], future = k > todayKey, sel = k === calState.sel;
         const stages = [...new Set(list.map((e) => stageNum(e.stage)))].sort();
-        cells.push(h('button', { type: 'button', class: 'cal-day' + (sel ? ' sel' : '') + (k === todayKey ? ' today' : ''), disabled: future, 'data-key': 'cal' + k,
+        cells.push(h('button', { type: 'button', class: 'cal-day' + (sel ? ' sel' + (anim ? ' sel-in' : '') : '') + (k === todayKey ? ' today' : ''), disabled: future, 'data-key': 'cal' + k,
           'aria-pressed': sel ? 'true' : 'false', 'aria-label': (m + 1) + '월 ' + d + '일' + (list.length ? ', 경고 ' + list.length + '건' : ''),
           onclick: () => { calState.sel = k; renderAll(true); } },
           String(d), stages.length ? h('span', { class: 'cal-dots', 'aria-hidden': 'true' }, stages.map((n) => h('i', { style: 'background:' + stageVar(n) }))) : null));
@@ -1590,7 +1880,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
             h('button', { type: 'button', class: 'prev', 'aria-label': '이전 달', disabled: curIdx <= minIdx, onclick: () => move(-1) }, icon('chevron', 18)),
             h('button', { type: 'button', 'aria-label': '다음 달', disabled: curIdx >= nowIdx, onclick: () => move(1) }, icon('chevron', 18)))),
         h('div', { class: 'cal-grid' }, WEEKDAY.map((w) => h('span', { class: 'cal-wd' }, w)), cells),
-        dayBlock(calState.sel));
+        dayBlock(calState.sel, anim));
     }
 
     // ── 기사 상세 패널: 서버 API 를 더하지 않고 이미 받은 경고 · 기사 목록으로 계산 ─────
@@ -1606,6 +1896,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       // 기사 상세는 기사 정보(연락처 · 이메일 · 경고 횟수)가 중심이라 캡처 사진은 두지 않는다. 사진은 경고 상세에서만 (11/16)
       // 경고 상세와 같은 모양 (11/16): 선으로 나눈 연락처 · 이메일. 오늘 · 누적 · 마지막 경고 숫자는 아래 달력이 보여 주므로 두지 않음
       const tiles = h('div', { class: 'kv-list' },
+        h('div', { class: 'info-row' }, icon('car', 18), u.vehicle_no ? h('div', null, h('b', null, u.vehicle_no)) : unsetText()),      // 차량번호 (11/17): 맨 위. 없으면 '미등록'
         h('div', { class: 'info-row' }, icon('phone', 18), digits ? copyable(u.phone, '번호') : unsetText()),
         h('div', { class: 'info-row' }, icon('mail', 18), validMail ? copyable(u.email, '이메일') : unsetText()));
       const calendar = calendarSec(mine, u.id);
@@ -1650,7 +1941,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         await refreshAll(true);
         focusTitle();                                     // 누른 버튼은 사라졌을 수 있어서 제목으로
         toast(status === '확인' ? '확인한 경고로 표시했어요.'
-          : res.stage_reset ? who + ' ' + (stageNum(e.stage) ? STAGE_NAME[stageNum(e.stage)] : '경고') + ' 해제됨 · 기사 앱은 약 30초 안에 정상 화면이 돼요'
+          : res.stage_reset ? who + ' ' + (stageNum(e.stage) ? stageNum(e.stage) + '단계 ' + STAGE_WORD[stageNum(e.stage)] : '경고') + ' 해제됨 · 기사 앱은 약 30초 안에 정상 화면이 돼요'
           : '조치완료로 바꿨어요.');
       } catch (err) { toastError(status + ' 실패: ' + err.message + (status === '조치완료' ? ' — 기사 앱의 경고가 풀리지 않았을 수 있어요.' : '')); }
       finally { busy = false; }
@@ -1660,8 +1951,8 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     function renderTabs(box, panelId, defs, current, onPick) {
       fill(box, ...defs.map(([key, label, count, alert]) =>
         h('button', { class: 'seg-btn', type: 'button', role: 'tab', id: panelId + '-tab-' + key, 'data-key': 'tab-' + panelId + '-' + key, 'aria-selected': String(current === key),
-          'aria-controls': panelId, tabindex: current === key ? '0' : '-1', onclick: () => onPick(key) },
-          label, h('span', { class: 'seg-n' + (alert && count > 0 ? ' alert' : '') }, String(count)))));
+          'aria-controls': panelId, 'aria-label': label + ', ' + count, tabindex: current === key ? '0' : '-1', onclick: () => onPick(key) },
+          label)));      // 탭 이름 뒤의 건수 숫자는 뺌 (11/17). 화면 낭독기에는 aria-label 로 숫자를 알려 줌
       $(panelId).setAttribute('aria-labelledby', panelId + '-tab-' + current);
       slideMark(box, box.querySelector('[aria-selected="true"]'), 'seg-thumb');
     }
@@ -1696,9 +1987,24 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     // ── 내 정보 (오른쪽 위 프로필 메뉴에서): 이름 · 전화번호 수정 · 비밀번호 변경 ──────────────────
     let me = null;                                      // 로그인한 관리자 (GET /users/me)
     // 위쪽 막대 오른쪽의 관리자 프로필 (이름) + 누르면 열리는 메뉴(이메일 · 내 정보 · 알림음 · 로그아웃). 내 정보를 못 불러와도 [로그아웃] 은 쓸 수 있게 늘 보인다
-    // 관리자 프로필 사진: 서버에는 사진 칸이 없어서(users 에 칸 추가 없음) 이 브라우저에만 저장한다 (정사각형 256px 로 줄여서 localStorage). 이메일별로 따로 기억
-    const photoKey = () => 'adminPhoto:' + ((me && me.email) || 'admin');
-    function getMyPhoto() { try { return localStorage.getItem(photoKey()) || ''; } catch (e) { return ''; } }
+    // 관리자 프로필 사진 (11/17): 서버에 저장 (users.photo_url · POST/GET/DELETE /users/me/photo) → 다른 브라우저에서 로그인해도 그대로 보임.
+    //   예전에는 서버에 사진 칸이 없다고 보고 이 브라우저(localStorage)에만 저장했음. 서버에 칸이 생겼으니 옮김:
+    //   옛 저장본(이 브라우저)이 있고 서버에 사진이 없으면 처음 한 번 서버로 올리고 옛 것은 지움. 올리기 전에 가운데를 정사각형 256px 로 줄임.
+    let myPhotoUrl = '';                                // 서버에서 받은 사진의 임시 주소(blob:), 사진이 없으면 ''
+    const photoKey = () => 'adminPhoto:' + ((me && me.email) || 'admin');      // 옛 저장 위치 (옮기기용으로만 읽음)
+    function getMyPhoto() { return myPhotoUrl; }
+    async function loadMyPhoto() {
+      try {
+        let url = await fetchMyPhotoUrl();
+        if (!url) {
+          let old = ''; try { old = localStorage.getItem(photoKey()) || ''; } catch (e) { old = ''; }
+          if (old) { try { await uploadMyPhoto(await (await fetch(old)).blob()); localStorage.removeItem(photoKey()); url = await fetchMyPhotoUrl(); } catch (e) { /* 못 옮기면 다음에 다시 */ } }
+        }
+        if (myPhotoUrl) URL.revokeObjectURL(myPhotoUrl);
+        myPhotoUrl = url || '';
+      } catch (err) { /* 못 불러와도 화면은 계속: 이니셜로 보임 */ }
+      renderSidebarUser();
+    }
     function paintAvatar(node, name) {
       if (!node) return;
       const p = getMyPhoto();
@@ -1714,14 +2020,19 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         const m = Math.min(img.width, img.height);
         c.getContext('2d').drawImage(img, (img.width - m) / 2, (img.height - m) / 2, m, m, 0, 0, S, S);   // 가운데를 정사각형으로 잘라서
         URL.revokeObjectURL(url);
-        try { localStorage.setItem(photoKey(), c.toDataURL('image/jpeg', 0.85)); toast('프로필 사진을 바꿨어요.'); }
-        catch (e) { toast('사진을 저장하지 못했어요. 브라우저 저장 공간을 확인해 주세요.'); }
-        renderSidebarUser();
+        c.toBlob(async (blob) => {
+          if (!blob) { toast('사진을 처리하지 못했어요. 다른 사진을 골라 주세요.'); return; }
+          try { await uploadMyPhoto(blob); await loadMyPhoto(); toast('프로필 사진을 바꿨어요.'); }
+          catch (err) { toast(err.message || '사진을 올리지 못했어요.'); }
+        }, 'image/jpeg', 0.85);
       };
       img.onerror = () => { URL.revokeObjectURL(url); toast('이 사진은 열 수 없어요. 다른 사진을 골라 주세요.'); };
       img.src = url;
     }
-    function clearMyPhoto() { try { localStorage.removeItem(photoKey()); } catch (e) { /* 지울 수 없으면 그대로 */ } renderSidebarUser(); toast('프로필 사진을 지웠어요.'); }
+    async function clearMyPhoto() {
+      try { await deleteMyPhoto(); if (myPhotoUrl) URL.revokeObjectURL(myPhotoUrl); myPhotoUrl = ''; renderSidebarUser(); toast('프로필 사진을 지웠어요.'); }
+      catch (err) { toast(err.message || '사진을 지우지 못했어요.'); }
+    }
     function renderSidebarUser() {
       const name = (me && me.name) || '관리자';
       paintAvatar($('profileAvatar'), name);
@@ -1735,6 +2046,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     async function loadMe() {
       try { me = scrub(await fetchMe()); } catch (err) { /* 못 불러와도 화면은 계속 쓴다 */ }
       renderSidebarUser();
+      loadMyPhoto();                                   // 서버에 저장된 내 사진을 받아 이니셜 대신 보여 줌
       if (view === 'profile' && !document.querySelector('#profilePage form input:focus')) renderProfilePage();   // 내 정보로 바로 들어왔으면 이름 · 전화번호를 채워서 다시 그림
     }
     function setMsg(node, text, isError) { node.textContent = text; node.className = 'form-msg ' + (isError ? 'err' : 'ok'); }
@@ -1757,16 +2069,127 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       m.className = 'match ' + (!nw2 ? '' : bad ? 'err' : 'ok');
       $('pwNew2').classList.toggle('bad', bad);
     }
+    // 프로필 입력 검사 (11/17): 이름은 비면 빨강 '이름을 입력해 주세요', 전화번호는 숫자 9~11자리면 초록 '사용할 수 있는 번호예요' · 아니면 빨강 · 비우면 원래 안내('빈칸 저장 시 삭제').
+    //   typed = 사용자가 쓰는 중일 때만 true. 처음 그릴 때는 이미 저장된 값에 초록 문구를 띄우지 않고 안내만 보여 줌.
+    const phoneDigitsOk = (v) => { const d = digitsOf(v); return d.length >= 9 && d.length <= 11; };
+    function updateProfileChecks(typed) {
+      const nameEl = $('setName'), phoneEl = $('setPhone'), nm = $('setNameMatch'), pm = $('setPhoneMatch');
+      if (!nameEl || !phoneEl || !nm || !pm) return;
+      const name = nameEl.value.trim(), phone = phoneEl.value.trim();
+      const badName = typed && !name;
+      nm.textContent = badName ? '이름을 입력해 주세요' : ''; nm.className = 'match' + (badName ? ' err' : '');
+      nameEl.classList.toggle('bad', badName);
+      const badPhone = !!phone && !phoneDigitsOk(phone);
+      if (!phone) { pm.textContent = '빈칸 저장 시 삭제'; pm.className = 'match idle'; }
+      else if (badPhone) { pm.textContent = '숫자 9~11자리로 입력해 주세요'; pm.className = 'match err'; }
+      else if (typed) { pm.textContent = '사용할 수 있는 번호예요'; pm.className = 'match ok'; }
+      else { pm.textContent = '빈칸 저장 시 삭제'; pm.className = 'match idle'; }
+      phoneEl.classList.toggle('bad', badPhone);
+    }
+    // ── 이메일 변경 (11/17): 이메일로 가입한 계정만. [변경] → 새 이메일 + 지금 비밀번호 → [인증번호 받기] → 6자리 입력 → [이메일 바꾸기]. 구글 계정은 [변경] 이 없음 ──
+    let ecTimer = null, ecLeft = 0, ecEmail = '';
+    const EC_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    function setReveal(id, open) { const el = $(id); if (!el) return; el.classList.toggle('open', open); if (open) el.removeAttribute('inert'); else el.setAttribute('inert', ''); }
+    function ecStopTimer() { clearInterval(ecTimer); ecTimer = null; }
+    function ecTick() {
+      const m = $('ecCodeMatch'); if (!m) { ecStopTimer(); return; }
+      if (ecLeft <= 0) { ecStopTimer(); m.textContent = '인증번호가 만료됐어요. 다시 받아 주세요'; m.className = 'match err'; return; }
+      m.textContent = '남은 시간 ' + Math.floor(ecLeft / 60) + ':' + String(ecLeft % 60).padStart(2, '0'); m.className = 'match idle';
+    }
+    function ecUpdateBtns() {                            // 큰 버튼은 입력이 맞을 때만 켜짐 (애플처럼 회색 → 진한 남색)
+      const send = $('ecSend'), conf = $('ecConfirm'); if (!send || !conf) return;
+      const nv = $('ecNew').value.trim(), same = !!me && nv.toLowerCase() === String(me.email || '').toLowerCase();
+      send.disabled = !(EC_EMAIL_RE.test(nv) && !same && $('ecPw').value);
+      conf.disabled = !(/^\d{6}$/.test($('ecCode').value.trim()) && ecLeft > 0);
+    }
+    function ecReset() {                                 // 패널을 닫을 때 처음 상태로
+      ecStopTimer(); ecEmail = ''; ecLeft = 0;
+      ['ecNew', 'ecPw', 'ecCode'].forEach((id) => { const el = $(id); if (el) { el.value = ''; el.disabled = false; el.classList.remove('bad'); } });
+      ['ecNewMatch', 'ecCodeMatch'].forEach((id) => { const m = $(id); if (m) { m.textContent = ''; m.className = 'match'; } });
+      const msg = $('ecMsg'); if (msg) { msg.textContent = ''; msg.className = 'form-msg'; }
+      setReveal('ecSendWrap', true); setReveal('ecStep2', false);
+      ecUpdateBtns();
+    }
+    function toggleEmailPanel(forceOpen) {
+      const open = typeof forceOpen === 'boolean' ? forceOpen : !$('emailPanel').classList.contains('open'), btn = $('emailChangeBtn');
+      if (!open) ecReset();
+      setReveal('emailPanel', open);
+      btn.textContent = open ? '닫기' : '변경'; btn.setAttribute('aria-expanded', String(open));
+      if (open) setTimeout(() => { const el = $('ecNew'); if (el) el.focus({ preventScroll: true }); }, 140);
+    }
+    function ecCheckNew() {                              // 새 이메일 칸 아래 한 줄 검사 (비밀번호 '일치 · 불일치' 문구와 같은 방식)
+      const v = $('ecNew').value.trim(), m = $('ecNewMatch');
+      const badFormat = !!v && !EC_EMAIL_RE.test(v), same = !!v && !badFormat && !!me && v.toLowerCase() === String(me.email || '').toLowerCase();
+      m.textContent = !v ? '' : badFormat ? '이메일 형식이 아니에요' : same ? '지금과 같은 이메일이에요' : '사용할 수 있는 형식이에요';
+      m.className = 'match' + (!v ? '' : (badFormat || same) ? ' err' : ' ok');
+      $('ecNew').classList.toggle('bad', badFormat || same);
+    }
+    async function ecRequest() {
+      const msg = $('ecMsg'), newEmail = $('ecNew').value.trim(), pw = $('ecPw').value;
+      if (!EC_EMAIL_RE.test(newEmail) || (me && newEmail.toLowerCase() === String(me.email || '').toLowerCase())) { ecCheckNew(); if (!newEmail) setMsg(msg, '새 이메일을 입력해 주세요.', true); $('ecNew').focus(); return; }
+      if (!pw) { setMsg(msg, '지금 비밀번호를 입력해 주세요.', true); $('ecPw').focus(); return; }
+      const btns = [$('ecSend'), $('ecResend')].filter(Boolean); btns.forEach((b) => { b.disabled = true; });      // 받는 동안 누르지 못하게 (끝나면 다시 계산)
+      try {
+        const res = await requestEmailChange(newEmail, pw);
+        ecEmail = newEmail; ecLeft = res.expires_in || 600;
+        $('ecNew').disabled = true; $('ecPw').disabled = true; setReveal('ecSendWrap', false);      // 인증번호를 받는 동안 새 이메일은 잠그고, 큰 [인증번호 받기] 는 접힘
+        const code = $('ecCode'); code.value = ''; code.classList.remove('bad');
+        setReveal('ecStep2', true); ecStopTimer(); ecTick(); ecTimer = setInterval(() => { ecLeft -= 1; ecTick(); }, 1000);
+        setMsg(msg, newEmail + ' 로 인증번호를 보냈어요.' + (res.dev_code ? ' (모의 서버라 메일 대신 여기에 보여 드려요: ' + res.dev_code + ')' : ''), false);
+        setTimeout(() => code.focus({ preventScroll: true }), 140);
+      } catch (err) {
+        setMsg(msg, err.message === 'Not Found' ? '이 서버는 아직 이메일 변경을 지원하지 않아요.' : err.message, true);
+      } finally { const r = $('ecResend'); if (r) r.disabled = false; ecUpdateBtns(); }
+    }
+    async function ecConfirm() {
+      const msg = $('ecMsg'), code = $('ecCode').value.trim(), m = $('ecCodeMatch');
+      if (!/^\d{6}$/.test(code)) { m.textContent = '숫자 6자리를 입력해 주세요'; m.className = 'match err'; $('ecCode').classList.add('bad'); $('ecCode').focus(); return; }
+      const btn = $('ecConfirm'); btn.disabled = true;
+      try {
+        me = scrub(await confirmEmailChange(ecEmail, code));
+        $('setEmail').value = me.email || ''; renderSidebarUser();
+        toast('이메일을 바꿨어요. 다음 로그인부터 새 이메일을 써 주세요.');
+        toggleEmailPanel(false);
+      } catch (err) { setMsg(msg, err.message === 'Not Found' ? '이 서버는 아직 이메일 변경을 지원하지 않아요.' : err.message, true); $('ecCode').select(); }
+      finally { ecUpdateBtns(); }
+    }
     function renderProfilePage() {
+      ecStopTimer();
       const box = $('profilePage');
+      // 이메일 칸: 이메일 계정이면 라벨 오른쪽에 [변경] (눌러야 새 이메일 · 인증번호 칸이 부드럽게 펼쳐짐). 구글 계정은 [변경] 없이 안내만
+      const isGoogle = !!me && me.provider === 'google', canChangeEmail = !!me && !isGoogle && !!me.email;
+      const emailField = h('div', { class: 'field' },
+        h('label', { for: 'setEmail', class: canChangeEmail ? 'with-action' : null }, '이메일',
+          canChangeEmail ? h('button', { type: 'button', class: 'link-btn', id: 'emailChangeBtn', 'aria-expanded': 'false', 'aria-controls': 'emailPanel', onclick: () => toggleEmailPanel() }, '변경') : null),
+        h('input', { id: 'setEmail', type: 'email', value: (me && me.email) || '', disabled: true, 'aria-describedby': 'setEmailHint' }),
+        h('span', { class: 'hint', id: 'setEmailHint' }, isGoogle ? '구글 계정은 이메일을 바꿀 수 없어요' : canChangeEmail ? '로그인 아이디 · 이메일 인증으로 바꿀 수 있어요' : '로그인 아이디 · 변경 불가'));
+      const emailPanel = canChangeEmail ? h('div', { class: 'reveal', id: 'emailPanel', inert: true,
+        onkeydown: (ev) => { if (ev.key === 'Enter' && ev.target.tagName === 'INPUT') { ev.preventDefault(); ($('ecStep2').classList.contains('open') ? ecConfirm : ecRequest)(); } },      // 저장 폼이 같이 제출되지 않게 Enter 는 여기서 처리
+        oninput: (ev) => { if (ev.target.id === 'ecNew') ecCheckNew(); else if (ev.target.id === 'ecCode') { ev.target.value = ev.target.value.replace(/\D/g, '').slice(0, 6); ev.target.classList.remove('bad'); if (ecLeft > 0) ecTick(); } ecUpdateBtns(); } },
+        h('div', { class: 'reveal-in' }, h('div', { class: 'ec-wrap' },
+          h('div', { class: 'ec-group' },
+            h('label', { class: 'ec-row' }, h('span', { class: 'ec-lab' }, '새 이메일'), h('input', { id: 'ecNew', type: 'email', autocomplete: 'off', placeholder: 'new@example.com' })),
+            h('label', { class: 'ec-row' }, h('span', { class: 'ec-lab' }, '지금 비밀번호'), h('input', { id: 'ecPw', type: 'password', autocomplete: 'current-password', placeholder: '필수' }))),
+          h('div', { class: 'ec-note' }, h('span', { class: 'match', id: 'ecNewMatch' })),
+          h('div', { class: 'reveal open', id: 'ecSendWrap' }, h('div', { class: 'reveal-in' }, h('div', { class: 'ec-pad' },
+            h('button', { class: 'btn brand ec-primary', type: 'button', id: 'ecSend', disabled: true, onclick: ecRequest }, '인증번호 받기')))),
+          h('div', { class: 'reveal', id: 'ecStep2', inert: true }, h('div', { class: 'reveal-in' }, h('div', { class: 'ec-pad' },
+            h('div', { class: 'ec-group' }, h('label', { class: 'ec-row' }, h('span', { class: 'ec-lab' }, '인증번호'), h('input', { id: 'ecCode', type: 'text', inputmode: 'numeric', maxlength: '6', autocomplete: 'one-time-code', placeholder: '6자리' }))),
+            h('div', { class: 'ec-note' }, h('span', { class: 'match', id: 'ecCodeMatch' })),
+            h('div', { class: 'ec-actions' },
+              h('button', { class: 'ec-link', type: 'button', id: 'ecResend', onclick: ecRequest }, '다시 받기'),
+              h('button', { class: 'btn brand ec-primary', type: 'button', id: 'ecConfirm', disabled: true, onclick: ecConfirm }, '이메일 바꾸기'))))),
+          h('p', { class: 'form-msg', id: 'ecMsg', role: 'alert' })))) : null;
       const profileForm = h('form', { id: 'profileForm', novalidate: true },
-        setRow('setName', '이름', { type: 'text', value: (me && me.name) || '', maxlength: '50', autocomplete: 'name', required: true }),
-        setRow('setPhone', '전화번호', { type: 'tel', value: (me && me.phone) || '', placeholder: '010-1234-5678', autocomplete: 'tel' }, '빈칸 저장 시 삭제'),
-        setRow('setEmail', '이메일', { type: 'email', value: (me && me.email) || '', disabled: true }, '로그인 아이디 · 변경 불가'),
+        setRow('setName', '이름', { type: 'text', value: (me && me.name) || '', maxlength: '50', autocomplete: 'name', required: true }, h('span', { class: 'match', id: 'setNameMatch' })),
+        setRow('setPhone', '전화번호', { type: 'tel', value: (me && me.phone) || '', placeholder: '010-1234-5678', autocomplete: 'tel' }, h('span', { class: 'match idle', id: 'setPhoneMatch' }, '빈칸 저장 시 삭제')),
+        emailField, emailPanel,
         h('div', { class: 'form-actions' },
           h('p', { class: 'form-msg', id: 'profileMsg', role: 'alert' }),
           h('button', { class: 'btn brand', type: 'submit', id: 'profileSave' }, '저장')));
       profileForm.addEventListener('submit', saveProfile);
+      profileForm.addEventListener('input', (ev) => { if (ev.target.id === 'setName' || ev.target.id === 'setPhone') updateProfileChecks(true); });      // 쓰는 대로 칸 아래 한 줄 검사 문구가 바뀜 (11/17, 비밀번호 '일치 · 불일치' 문구와 같은 방식)
+      queueMicrotask(() => updateProfileChecks(false));
       queueMicrotask(renderSidebarUser);                                   // 그려 놓은 뒤 사진 · 이니셜 · 삭제 버튼 상태를 채움
 
       const pwForm = h('form', { id: 'pwForm', novalidate: true },
@@ -1787,7 +2210,6 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         h('div', { class: 'set-photo-btns' },
           h('button', { class: 'btn sm', type: 'button', onclick: () => photoInput.click() }, '사진 변경'),
           h('button', { class: 'btn sm danger', type: 'button', id: 'setPhotoDel', onclick: clearMyPhoto }, '삭제')),
-        h('p', { class: 'hint' }, '이 브라우저에만 저장'),
         photoInput);
       // 다른 화면(경고 · 기사 관리)과 같은 흰 카드 두 장 (넓은 화면은 나란히)
       fill(box, h('div', { class: 'set-grid' },
@@ -1798,12 +2220,14 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       ev.preventDefault();
       const msg = $('profileMsg'), btn = $('profileSave');
       const name = $('setName').value.trim(), phone = $('setPhone').value.trim();
-      if (!name) { setMsg(msg, '이름을 입력해 주세요.', true); $('setName').focus(); return; }
+      if (!name) { updateProfileChecks(true); $('setName').focus(); return; }
+      if (phone && !phoneDigitsOk(phone)) { updateProfileChecks(true); $('setPhone').focus(); return; }      // 칸 아래 빨간 문구가 이미 이유를 알려 줌
       btn.disabled = true; msg.textContent = '';
       try {
         me = scrub(await updateMe({ name, phone }));
         renderSidebarUser();
         $('setName').value = me.name || ''; $('setPhone').value = me.phone || '';
+        updateProfileChecks(false);
         setMsg(msg, '저장했어요.', false);
         toast('설정을 저장했어요.');
       } catch (err) { setMsg(msg, err.message, true); }
@@ -1899,17 +2323,15 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     // 알림 목록(종) · 프로필 메뉴 · 상세 패널 닫기 (바깥을 누르거나 Esc). 둘 중 하나가 열리면 다른 쪽은 닫힘
     function setProfileMenu(open) { $('profileMenu').hidden = !open; $('profileBtn').setAttribute('aria-expanded', String(open)); if (open) setNotif(false); }
     function setNotif(open) { $('notifMenu').hidden = !open; $('bellBtn').setAttribute('aria-expanded', String(open)); if (open) { setProfileMenu(false); renderNotifs(); } }
-    // 알림 목록: 미처리 긴급(빨간 점)을 먼저, 그다음 아직 열어 보지 않은 경고. 누르면 그 경고 상세 패널
+    // 알림 목록 (11/17 사용자 결정: 긴급만): 아직 조치완료 안 된 긴급 경고. 안 읽은 것을 먼저, 이미 열어 본 것은 뒤에 '읽음' 모양으로. 1 · 2단계 일반 경고는 졸음 경고 화면에서. 누르면 그 경고 상세 패널
     function renderNotifs() {
       const urgent = events.filter(isOpenUrgent).sort(byPriority);
-      const fresh = events.filter((e) => e.status === '미확인' && !isOpenUrgent(e)).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-      const list = [...urgent, ...fresh].slice(0, 10);
-      fill($('notifList'), list.length ? list.map((e) => { const hot = isOpenUrgent(e), n = stageNum(e.stage);
-        return h('li', null, h('a', { class: 'np-item' + (hot ? ' urgent' : ''), href: '#event/' + e.id, onclick: () => setNotif(false) },
+      const list = [...urgent.filter((e) => e.status === '미확인'), ...urgent.filter((e) => e.status !== '미확인')].slice(0, 10);
+      fill($('notifList'), list.length ? list.map((e) => { const hot = isOpenUrgent(e), n = stageNum(e.stage), read = e.status !== '미확인';
+        return h('li', null, h('a', { class: 'np-item' + (hot ? ' urgent' : n ? ' s' + n : '') + (read ? ' read' : ''), href: '#event/' + e.id, title: honorName(e.user_name) + ' · ' + (REASON_LABEL[e.reason] || e.reason) + ' · ' + where(e), 'aria-label': (hot ? '긴급 경고' : (n ? STAGE_NAME[n] : '경고')) + ', ' + honorName(e.user_name) + ', ' + (ago(e.created_at) || fmtTime(e.created_at)) + (read ? ', 읽음' : ''), onclick: () => setNotif(false) },
           h('span', { class: 'np-dot', 'aria-hidden': 'true' }),
-          h('span', { class: 'np-main' }, h('b', null, hot ? '긴급 경고 · 무응답 ' + elapsed(e.created_at) : (n ? STAGE_NAME[n] : '경고')),
-            h('span', null, honorName(e.user_name) + ' · ' + (REASON_LABEL[e.reason] || e.reason) + ' · ' + where(e))),
-          h('span', { class: 'np-time' }, ago(e.created_at) || fmtTime(e.created_at)))); })
+          h('span', { class: 'np-main' }, h('b', null, hot ? '긴급 경고' : (n ? STAGE_NAME[n] : '경고')), h('small', null, honorName(e.user_name))),      // 제목 뒤에 작은 기사 이름 (11/17). 종류 · 주소는 마우스를 올리면(title) · 상세에서
+          h('span', { class: 'np-time' }, ago(e.created_at) || fmtTime(e.created_at)))); })      // 오른쪽은 모두 '몇 분 전' 으로 통일 ('무응답' 글자는 뺌)
         : [h('li', { class: 'np-empty' }, '새 알림이 없어요')]);
     }
     $('profileBtn').addEventListener('click', () => setProfileMenu($('profileMenu').hidden));
@@ -1941,6 +2363,57 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     syncSoundBtn();
     $('logoutBtn').addEventListener('click', () => { clearToken(); location.href = 'admin_login.html'; });
     $('driverSearch').addEventListener('input', (ev) => { driverQuery = ev.target.value; renderAll(true); });
+    // 정렬 고르기 (11/17): 애플 모양 선택 메뉴. 기본 <select> 의 팝업 대신 직접 그림 (알약 버튼 + 유리 같은 팝오버, 고른 항목에 체크, 키보드 ↑ ↓ Enter Esc)
+    function dropdown(boxId, label, options, getValue, onPick) {
+      const text = h('span', { class: 'dd-label' });
+      const btn = h('button', { type: 'button', class: 'dd-btn', 'aria-haspopup': 'listbox', 'aria-expanded': 'false' }, text, icon('unfold', 16));
+      const items = options.map(([v, t]) => h('li', { class: 'dd-item', role: 'option', 'data-value': v, tabindex: '-1' }, icon('check', 14), t));
+      const menu = h('ul', { class: 'dd-menu', role: 'listbox', 'aria-label': label, hidden: true }, items);
+      $(boxId).append(btn);
+      document.body.append(menu);                                // 카드(overflow: hidden)에 잘리지 않게 body 에 붙임
+      const sync = () => {
+        const cur = getValue(), f = options.find((o) => o[0] === cur);
+        text.textContent = f ? f[1] : '';
+        btn.setAttribute('aria-label', label + ': ' + text.textContent);
+        items.forEach((li) => li.setAttribute('aria-selected', String(li.dataset.value === cur)));
+      };
+      const outside = (ev) => { if (!menu.contains(ev.target) && !btn.contains(ev.target)) close(false); };
+      const closeQuiet = () => close(false);
+      function close(refocus) {
+        if (menu.hidden) return;
+        menu.hidden = true; btn.setAttribute('aria-expanded', 'false');
+        document.removeEventListener('pointerdown', outside, true); window.removeEventListener('resize', closeQuiet); window.removeEventListener('scroll', closeQuiet, true);
+        if (refocus) btn.focus({ preventScroll: true });
+      }
+      function open() {
+        sync();
+        const r = btn.getBoundingClientRect();
+        menu.style.minWidth = r.width + 'px';                // 버튼보다 좁아지지 않게 (글자가 길면 그만큼만 넓어짐)
+        menu.hidden = false;
+        menu.style.top = (r.bottom + 6) + 'px';
+        menu.style.left = Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, r.right - menu.offsetWidth)) + 'px';      // 버튼 오른쪽 끝에 맞춤
+        btn.setAttribute('aria-expanded', 'true');
+        (items.find((li) => li.getAttribute('aria-selected') === 'true') || items[0]).focus({ preventScroll: true });
+        document.addEventListener('pointerdown', outside, true); window.addEventListener('resize', closeQuiet); window.addEventListener('scroll', closeQuiet, true);
+      }
+      function pick(v) { close(true); if (v !== getValue()) { onPick(v); sync(); } }
+      btn.addEventListener('click', () => { if (menu.hidden) open(); else close(true); });
+      btn.addEventListener('keydown', (ev) => { if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') { ev.preventDefault(); open(); } });
+      items.forEach((li) => li.addEventListener('click', () => pick(li.dataset.value)));
+      menu.addEventListener('keydown', (ev) => {
+        const i = items.indexOf(document.activeElement), go = (n) => { ev.preventDefault(); items[(n + items.length) % items.length].focus({ preventScroll: true }); };
+        if (ev.key === 'ArrowDown') go(i + 1);
+        else if (ev.key === 'ArrowUp') go(i - 1);
+        else if (ev.key === 'Home') go(0);
+        else if (ev.key === 'End') go(items.length - 1);
+        else if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); if (i >= 0) pick(items[i].dataset.value); }
+        else if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); close(true); }
+        else if (ev.key === 'Tab') close(false);
+      });
+      sync();
+    }
+    dropdown('driverSortBox', '기사 정렬 기준', [['danger', '위험 먼저'], ['name', '이름순'], ['join', '가입순']], () => driverSort, (v) => { driverSort = v; renderAll(true); });
+    dropdown('hazardSortBox', '경고 정렬 기준', [['urgent', '긴급 먼저'], ['stage', '단계순'], ['time', '시간순']], () => hazardSort, (v) => { hazardSort = v; renderAll(true); });
     $('hazardSearch').addEventListener('input', (ev) => { hazardQuery = ev.target.value; renderAll(true); });
     document.addEventListener('keydown', (ev) => {   // 탭: 좌우 화살표 · Home · End (화면에 있는 모든 탭 막대에 한 번에)
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(ev.key)) return;
