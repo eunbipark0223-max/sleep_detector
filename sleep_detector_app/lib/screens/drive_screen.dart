@@ -104,6 +104,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   final ValueNotifier<Rect?> _faceBoxNote = ValueNotifier<Rect?>(null);  static const int _cancelKeepSec = 5; // 얼굴이 계속 보이는 중에 취소되면 이 시간 뒤 글자를 지운다
   DateTime? _cancelledAt;
   Timer? _cancelClear; // 얼굴이 다시 잡혀 배너가 내려간 1초 뒤 취소 글자를 지운다
+  Timer? _stillAsleep; // (11/16) 2단계 경고 뒤에도 계속 감고 있는지 보는 시계 → 다시 보내 3단계
   bool _restarting = false; // 다시 켜는 중인지 (두 번 겹쳐 켜지 않게)
 
   // 30초마다 서버에 "운전 중이에요" 알리기 (ping) → 지금 단계 · 휴게 알림 받기
@@ -468,6 +469,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     VoiceService.stop(); // 말하기 멈춤
     WakelockPlus.disable(); // 운행이 끝나면 화면 꺼짐을 원래대로
     _pingTimer?.cancel(); // ping 끄기
+    _stillAsleep?.cancel();
     _flashTimer?.cancel();
     _retryingNote.dispose();
     _watchdog?.cancel(); // 카메라 지킴이 끄기
@@ -547,6 +549,8 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       _sending = false;
       // (11/15 팀장) 1단계 = '정신 차리세요' — 경고 화면 없이 알림음 + 짧은 음성 + 노란 띠 (예비 경고와 같은 전달)
       if (res.isSleep && res.stage == 1 && _warningRoute == null) {
+        // (11/16 A) 계속 자면 약 6초 뒤 한 번 더 → 2단계 · 눈을 뜨면 그때부터 10초 봐줌
+        _eye.afterLightWarning(faceFound: res.faceFound);
         await _lightWarn(_stage1Voice);
         return;
       }
@@ -554,6 +558,9 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       if (res.isSleep && res.stage >= 2 && (!sameStage || res.voiceQuiz != null)) {
         _showWarning(res, silent: sameStage);
       }
+      // (11/16 팀장) 2단계 경고를 받고도 계속 감고 있으면 → 2단계 경고부터 10초 뒤 사진 없이 한 번 더 → 서버 '2단계에서 또 졸면 3단계'
+      //   경고 음성 · 퀴즈를 기다리지 않는다 (판정 쉬기 중이어도 보냄). 눈을 뜨면 취소
+      if (res.isSleep && res.stage == 2) _watchStillAsleep();
     } on UnauthorizedException {
       // 로그인 만료 → ApiService 가 로그인 화면으로 보낸다. 졸음과 상관없으니 알람은 울리지 않음
     } catch (e) {
@@ -564,6 +571,32 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       _sending = false;
       if (mounted) _checkingNote.value = false;
     }
+  }
+
+  // (11/16 팀장) 2단계 뒤 계속 자는지 — 2단계 경고가 나간 뒤에도 같은 감김이 _stage2ResendSec(10초) 이어지면 다시 보낸다
+  //   (1단계 → 2단계는 감기 시작부터 6초, 2단계 → 3단계는 2단계 경고부터 10초 → 계속 감으면 3단계까지 약 16초)
+  static const int _stage2ResendSec = 10;
+  void _watchStillAsleep() {
+    _stillAsleep?.cancel();
+    final since = _eye.closedSince;
+    if (since == null) return; // 이미 눈을 뜸 → 경고 화면 흐름대로
+    _stillAsleep = Timer(const Duration(seconds: _stage2ResendSec), () async {
+      if (!mounted || _sending || _stage != 2 || _eye.closedSince != since) return; // 눈을 떴거나 이미 다른 단계
+      _sending = true;
+      try {
+        final closed = DateTime.now().difference(since).inMilliseconds / 1000.0;
+        final res = await ApiService.sendDetect(null,
+            reason: 'microsleep', closedSec: closed, perclos: _eye.currentPerclos, lat: _lat, lng: _lng);
+        if (!mounted) return;
+        _markOnline();
+        _setStage(res.stage);
+        if (res.isSleep && res.stage >= 3) _showWarning(res); // 2단계 경고 화면을 3단계로 바로 바꿈 (퀴즈 전)
+      } catch (_) {
+        // 실패하면 다음 의심 · ping 에 맡긴다 (이미 2단계 경고 중)
+      } finally {
+        _sending = false;
+      }
+    });
   }
 
   // 반쯤 감은 눈 확인 사진 (A eye_monitor, 11/10) — 눈을 뜬 상태에서 10초마다 1장, 기본 꺼짐 (AppConfig.halfCheckOn)
@@ -581,6 +614,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       final sameStage = _warningRoute != null && res.stage == stageBefore;
       _setStage(res.stage);
       if (res.stage == 1 && _warningRoute == null) {
+        _eye.afterLightWarning(faceFound: res.faceFound); // (11/16 A) 눈 뜬 상태 → 10초 봐주기만
         await _lightWarn(_stage1Voice); // (11/15) 1단계는 경고 화면 없이
       } else if (res.stage >= 2 && (!sameStage || res.voiceQuiz != null)) {
         _showWarning(res, silent: sameStage);
@@ -600,7 +634,11 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   //   퀴즈 · 휴식 화면이 위에 떠 있으면 그대로 둔다 (대답하는 중 · 쉬는 중을 끊지 않게)
   Future<void> _showWarning(SleepResponse res, {bool silent = false, bool resumeRest = false}) async {
     final old = _warningRoute;
-    if (old != null && !old.isCurrent) return;
+    if (old != null && !old.isCurrent) {
+      // 퀴즈 · 휴식 화면이 위에 떠 있으면 그대로 둔다 — 단 3단계는 퀴즈 위라도 바로 (11/16: 2단계 뒤 계속 자면 퀴즈 없이 3단계)
+      if (res.stage < 3) return;
+      Navigator.of(context).popUntil((r) => r == old);
+    }
     final route = MaterialPageRoute<int>(
       builder: (_) => WarningScreen(
         response: res,

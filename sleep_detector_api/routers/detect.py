@@ -48,7 +48,7 @@ from typing import Optional
 import shutil
 import time
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -57,7 +57,7 @@ import config
 from fastapi.security import HTTPAuthorizationCredentials
 
 from auth.jwt import bearer, get_current_user, refreshed_token
-from database.db_connection import get_session
+from database.db_connection import SessionLocal, get_session
 from models.models import SleepEvent, User
 from schema.request import DrivePing
 from services import (agent_service, drive_timer, face_service, llm_service, rag_service, sleep_state,
@@ -388,6 +388,46 @@ def drive_resume_handler(session: Session = Depends(get_session), user: User = D
 # ───────────────────────────────────────────────
 # POST /detect — 졸음 의심 사진 1장 확인 (기획안 9장)
 # ───────────────────────────────────────────────
+BG_SESSION = SessionLocal   # 뒤에서 기록을 채울 때 쓰는 DB 세션 (요청 세션은 답한 뒤 닫힘 · 시험 도구가 바꿔 끼움)
+
+
+def _fill_ai_report(event_id, user_id, photo_abs, eye_info, facts, rule_stage, location):
+    """(11/16 팀장) 경고를 먼저 보낸 뒤 뒤에서 — LLM 상황 설명 → RAG 규정 → Agent 보고서 로 경고 기록 1건을 채운다.
+    단계는 바꾸지 않는다 (규칙 단계 그대로, AGENT_MAX_STEP_UP = 0). 실패해도 템플릿 기록이 이미 저장돼 있음."""
+    t0 = time.perf_counter()
+    try:
+        analysis = llm_service.interpret_situation(photo_abs if photo_abs and os.path.exists(photo_abs) else None, eye_info)
+        t1 = time.perf_counter()
+        regulations = rag_service.search_regulations(analysis.get("summary", ""))
+        t2 = time.perf_counter()
+        agent = agent_service.generate_response(eye_info, analysis, regulations, facts, rule_stage, location, user_id)
+        t3 = time.perf_counter()
+    except Exception as e:
+        print(f"[detect] 경고 #{event_id} AI 보고서 실패 → 템플릿 기록 그대로: {type(e).__name__} {str(e)[:120]}")
+        return
+    db = BG_SESSION()
+    try:
+        event = db.get(SleepEvent, event_id)
+        if event is None:
+            return
+        try:
+            report = json.loads(event.report or "{}")
+        except ValueError:
+            report = {}
+        report.update(agent["report"])   # 상황 · 단계 이유 · 규정 · 권장 조치 · 위치 (eye · facts · 퀴즈 기록은 그대로)
+        report["regulations"] = [{"title": r["title"], "source": r["source"]} for r in regulations]
+        report["is_real"] = {"llm": bool(analysis.get("is_real")), "rag": any(r.get("is_real") for r in regulations),
+                             "agent": bool(agent["is_real"]), "driver_voice": False}
+        event.summary = (analysis.get("summary") or event.summary or "")[:255]
+        event.guidance = (agent["guidance"] or event.guidance or "")[:255]
+        event.report = json.dumps(report, ensure_ascii=False)
+        db.commit()
+        print(f"[detect] 경고 #{event_id} AI 보고서 채움 (뒤에서) · LLM {t1 - t0:.1f}초 · RAG {t2 - t1:.1f}초 · "
+              f"Agent {t3 - t2:.1f}초 ({'AI' if agent['is_real'] else '규칙'})")
+    finally:
+        db.close()
+
+
 @router.post("/detect")
 async def detect_handler(
     file: UploadFile | None = File(None),  # 없으면 = 고개를 떨궈 얼굴을 놓친 채 감김 (eye_monitor) → 앱 판단대로
@@ -397,6 +437,7 @@ async def detect_handler(
     eye_open_prob: str = Form(""),
     latitude: str = Form(""),
     longitude: str = Form(""),
+    background: BackgroundTasks = None,
     session: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ):
@@ -485,37 +526,32 @@ async def detect_handler(
     # ③ 졸음 기록 → 규칙 단계 (사진 1장 테스트에서 감음이면 미세수면으로 기록)
     reason = reason or "microsleep"
     reset_mark = sleep_state.reset_count(user.id)   # AI 처리 중에 관리자가 해제하는지 보려고 기억 (11/05)
+    prev_stage = int(sleep_state.get_stage(user.id))
     rule_stage = int(sleep_state.add_sleep(user.id, reason, closed or 0.0))
     f = sleep_state.facts(user.id)
     facts = {"sleep_count_10min": int(f["sleep_count_10min"]), "last_closed_sec": float(f["last_closed_sec"] or 0),
              "drive_min": drive_timer.drive_min(user.id)}
     # (11/12 팀장) 10분 횟수보다 단계가 높으면 = 주의(1단계)에서 다시 졸아 올라감 (휴식 뒤 1단계 등).
     #   이때 "10분 안 첫 번째 졸음"이라고 하면 2단계와 말이 안 맞아서, 횟수 대신 이 이유를 문장에 쓴다
-    stage_note = "주의 단계에서 다시 졸음" if rule_stage > min(3, facts["sleep_count_10min"]) else ""
+    #   (11/16) 2단계에서 또 졸아 3단계가 된 경우는 "휴식 권고 단계에서 다시 졸음"
+    stage_note = (f"{config.STAGE_LABELS.get(prev_stage, '주의')} 단계에서 다시 졸음"
+                  if rule_stage > min(3, facts["sleep_count_10min"]) and prev_stage >= 1 else "")
     if stage_note:
         facts["stage_note"] = stage_note
     eye_info = {"reason": reason, "closed_sec": closed, "perclos": pc, "eye_open_prob": open_prob,
                 "ear": eye.get("ear"), "method": base["method"], "sleep_count_10min": facts["sleep_count_10min"],
                 "stage_note": stage_note}
 
-    # ④ LLM 요약  ⑤ RAG 규정  ⑥ Agent (모두 실패하면 가짜로 — 각 서비스가 is_real 로 알려 줌)
+    # ④ 단계 · 음성 = 규칙만 → 바로 답한다 (11/16 팀장: 운전자를 즉시 깨우는 게 목표)
+    #   전에는 2단계부터 LLM → RAG → Agent 를 다 기다린 뒤 답해서 경고가 3~7초 늦었고, Agent 가 단계를 +1 올리기도 했음
+    #   이제 LLM · RAG · Agent 는 답한 뒤 뒤에서 돌아 이 경고 기록의 요약 · 안내문 · 관리자 보고서만 채운다 (_fill_ai_report)
+    #   1단계는 뒤에서도 AI 를 부르지 않음 (첫 졸음 · 기록 요약은 숫자 템플릿)
     t_ai = time.perf_counter()
     location = f"{lat:.5f}, {lng:.5f}" if lat is not None and lng is not None else ""
-    if rule_stage <= 1:
-        # (11/16 팀장) 1단계(첫 졸음)는 앱이 고정 문장으로 경고 → LLM · RAG · Agent 를 건너뛰고 기록만 해서 바로 답한다.
-        #   ① 첫 알림이 AI 시간(최대 5 + 7초)만큼 늦지 않게  ② Agent 의 +1 올림으로 첫 졸음이 2단계가 되지 않게
-        #   기록 요약은 숫자 템플릿 ("약 N초간 눈을 감은 미세수면 상태로 보여요. 10분 안에 첫 번째 졸음이에요.")
-        analysis = llm_service.template_summary(eye_info)
-        t_llm = t_rag = time.perf_counter()
-        regulations = []
-        agent = agent_service.rule_response(eye_info, analysis, regulations, facts, rule_stage, location)
-    else:
-        analysis = await run_in_threadpool(llm_service.interpret_situation, tmp_path, eye_info)
-        t_llm = time.perf_counter()
-        regulations = await run_in_threadpool(rag_service.search_regulations, analysis.get("summary", ""))
-        t_rag = time.perf_counter()
-        agent = await run_in_threadpool(agent_service.generate_response, eye_info, analysis, regulations, facts,
-                                        rule_stage, location, user.id)
+    analysis = llm_service.template_summary(eye_info)
+    t_llm = t_rag = time.perf_counter()
+    regulations = []
+    agent = agent_service.rule_response(eye_info, analysis, regulations, facts, rule_stage, location)
     t_agent = time.perf_counter()
     # AI 처리 중에 관리자가 [조치완료] 했으면 단계를 다시 올리지 않는다 — 경고 기록은 '조치완료' 로 남김 (11/05)
     released = sleep_state.reset_count(user.id) != reset_mark
@@ -523,8 +559,8 @@ async def detect_handler(
         stage = int(sleep_state.get_stage(user.id))
     else:
         stage = int(sleep_state.set_stage(user.id, agent["stage"]))   # 올리기만 (sleep_state 가 보증)
-    print(f"[detect]   → 10분 졸음 {facts['sleep_count_10min']}번 · 규칙 {rule_stage}단계 · Agent {agent['stage']}단계 "
-          f"({'AI' if agent['is_real'] else '규칙'}) → 최종 {stage}단계{' (처리 중 관리자 해제)' if released else ''}")
+    print(f"[detect]   → 10분 졸음 {facts['sleep_count_10min']}번 · 규칙 {rule_stage}단계 → 최종 {stage}단계 (바로 답함)"
+          f"{' (관리자 해제됨)' if released else ''}")
 
     # ⑦ 저장 — 확정 사진만 uploads/events/ 로, DB 1줄 (사진 없이 온 경고는 photo_path 없음 → 관리자 웹 '사진 없음')
     photo_path = None
@@ -567,9 +603,14 @@ async def detect_handler(
         if due:
             voice_quiz = voice_quiz_service.make_quiz(user.id, event_id=event.id)
 
+    # ⑨ 2단계부터 — 답한 뒤 뒤에서 LLM · RAG · Agent 로 이 기록의 요약 · 안내문 · 관리자 보고서를 채움 (단계는 그대로)
+    if rule_stage >= 2 and background is not None:
+        photo_abs = os.path.join(config.UPLOAD_EVENT_DIR, os.path.basename(photo_path)) if photo_path else None
+        background.add_task(_fill_ai_report, event.id, user.id, photo_abs, eye_info, facts, rule_stage, location)
+
     t_end = time.perf_counter()
-    print(f"[detect]   → 걸린 시간: 눈판정 {t_eye - t_start:.1f}초 · LLM {t_llm - t_ai:.1f}초 · RAG {t_rag - t_llm:.1f}초 · "
-          f"Agent {t_agent - t_rag:.1f}초 · 저장 · 퀴즈 {t_end - t_agent:.1f}초 · 합계 {t_end - t_start:.1f}초")
+    print(f"[detect]   → 걸린 시간: 눈판정 {t_eye - t_start:.1f}초 · 저장 · 퀴즈 {t_end - t_agent:.1f}초 · "
+          f"합계 {t_end - t_start:.1f}초{' (AI 보고서는 뒤에서)' if rule_stage >= 2 else ''}")
 
     return {
         **base, "is_sleep": True, "reason": reason, "stage": stage, "status": _label(stage),

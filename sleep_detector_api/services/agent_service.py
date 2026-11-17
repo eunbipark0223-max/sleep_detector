@@ -84,7 +84,8 @@ def _template_voice(stage, facts, guidance):
             return "눈을 자주 감고 있어요. 정신 차려 주세요."
         return f"{max(1, round(closed))}초 동안 눈을 감았어요. 정신 차려 주세요."
     # (11/12 팀장) 주의 단계에서 다시 졸아 올라간 단계면 '10분 동안 1번' 대신 그 이유 (단계와 말이 맞게)
-    head = "주의 단계에서 또 졸았어요." if facts.get("stage_note") else f"10분 새 {n}번 졸았어요."
+    head = (f"{_note_label(facts.get('stage_note'))} 단계에서 또 졸았어요." if facts.get("stage_note")
+            else f"10분 새 {n}번 졸았어요.")
     if stage == 2:
         return f"{head} 가까운 쉼터에서 쉬어 가세요."
     return f"{head} 지금 바로 정차하세요."
@@ -138,11 +139,16 @@ def _check_voice(text, facts):
     return s
 
 
+def _note_label(note):
+    """stage_note ("주의 단계에서 다시 졸음" / "휴식 권고 단계에서 다시 졸음") → 앞 단계 이름 (11/16)"""
+    return str(note or "").split(" 단계에서")[0] or "주의"
+
+
 def _base_report(eye, analysis, regulations, rule_stage, location):
     reason = REASON_KO.get(eye.get("reason"), "졸음")
     return {
         "situation": analysis.get("summary") or f"{reason} 감지",
-        "stage_reason": (f"주의 단계에서 다시 졸아 {rule_stage}단계" if eye.get("stage_note")
+        "stage_reason": (f"{_note_label(eye.get('stage_note'))} 단계에서 다시 졸아 {rule_stage}단계" if eye.get("stage_note")
                          else f"10분 안 졸음 횟수 기준 {rule_stage}단계"),
         "regulation": regulations[0]["title"] if regulations else "",
         "recommended_action": ACTION.get(rule_stage, ACTION[1]),

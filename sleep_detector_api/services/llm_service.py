@@ -120,7 +120,8 @@ def _template(eye):
     else:
         first = "졸음이 감지됐어요."
     if eye.get("stage_note"):              # (11/12) 횟수 대신 단계 이유
-        return first + " 주의 단계에서 다시 졸았어요."
+        lbl = str(eye["stage_note"]).split(" 단계에서")[0] or "주의"   # 주의 / 휴식 권고 (11/16)
+        return first + f" {lbl} 단계에서 다시 졸았어요."
     if count:
         n = int(count)
         first += f" 10분 안에 {ORDINAL_KO[n]} 번째 졸음이에요." if n in ORDINAL_KO else f" 10분 안에 {n}번째 졸음이에요."

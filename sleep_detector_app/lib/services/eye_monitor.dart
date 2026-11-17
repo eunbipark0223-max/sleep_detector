@@ -167,6 +167,8 @@ class EyeMonitor {
   Rect? lastFaceBox;   // 마지막 프레임 얼굴 위치 (얼굴을 놓치면 null)
   Size? lastImageSize; // 마지막 프레임 사진 크기 (회전 전 카메라 프레임 크기)
   bool get isHeadDown => _headDown;
+  // (11/16 팀장) 지금 이어서 감고 있는 감김의 시작 시각 (뜨면 null) — drive_screen 이 2단계 경고 뒤 계속 자는지 볼 때 씀
+  DateTime? get closedSince => _closedStartTime;
 
   // 감긴 순간의 프레임 임시 보관
   CameraImage? _lastClosedFrame; // PERCLOS 사진용 (최근 감긴 프레임 1장)

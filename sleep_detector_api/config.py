@@ -62,7 +62,7 @@ CALIB_MAX = 0.25              # 기준 상한 (실패하면 EAR_THRESHOLD)
 
 # ── 경고 단계 (sleep_state · agent_service) ───────────
 WINDOW_MIN = 3 if DEMO_MODE else 10      # 졸음 횟수를 세는 창 · 1단계 자동 해제 시간
-AGENT_MAX_STEP_UP = 1         # 천장 규칙: Agent 는 규칙 단계보다 최대 +1
+AGENT_MAX_STEP_UP = 0         # (11/16 팀장) 단계는 규칙만 — Agent 는 경고 뒤에 보고서 · 요약만 쓴다 (전: 최대 +1)
 STAGE_MAX = 3
 STAGE_LABELS = {0: "정상", 1: "주의", 2: "휴식 권고", 3: "긴급"}
 STAGE3_REPEAT_SEC = 30        # 3단계 경고 반복 간격 (앱)

@@ -119,9 +119,10 @@ def record_sleep(user_id: int, closed_sec: float = 0.0) -> int:
 
     count = len(state["sleep_times"])
     rule_stage = min(3, count)
-    if state["stage"] == 1:
+    if state["stage"] >= 1:
         # 1단계에서 또 졸면 최소 2단계 — 휴식 후 1단계는 10분 기록이 비어 있어도 "다시 졸면 바로 2단계" (기획안 8-5)
-        rule_stage = max(rule_stage, 2)
+        # (11/16 팀장) 2단계에서 또 졸면 3단계 — 2단계 경고 뒤에도 계속 감고 있으면 앱이 다시 보냄 → 퀴즈 없이 바로 3단계
+        rule_stage = max(rule_stage, state["stage"] + 1)
 
     set_stage(user_id, rule_stage)
     return state["stage"]
