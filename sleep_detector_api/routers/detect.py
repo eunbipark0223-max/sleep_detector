@@ -270,6 +270,10 @@ def drive_state_handler(session: Session = Depends(get_session), user: User = De
 
 
 _session_start: dict[int, tuple] = {}   # user_id → (시작 시각, 그때 마지막 경고 id)
+# (11/18 팀장) 운행 종료 리포트의 AI 문장 — 뒤에서 채움. report_id → {user_id, done, summary, advice, is_real, at}
+_drive_reports: dict[str, dict] = {}
+DRIVE_REPORT_KEEP_SEC = 600   # 10분 지난 것은 지움 (앱은 화면을 연 동안만 물어봄)
+STAGE1_DELIVERED = "졸음이 감지됐어요. 정신 차려 주세요."   # (11/18) 앱 1단계 음성과 같은 문장 (drive_screen._stage1Voice · stage_texts)
 _REASON_TEXT = {"microsleep": "눈 감김", "perclos": "피로 누적", "no_face": "고개 숙임", "half": "눈 반쯤 감김",
                 "rest_overdue": "휴게 미준수"}
 
@@ -280,8 +284,29 @@ def _driver_name(name):
     return (name or "").strip()
 
 
+def _fill_drive_report(report_id, stats):
+    """(11/18 팀장) [운행 종료] 뒤 뒤에서 — AI 리포트 문장을 만들어 _drive_reports 에 넣는다 (실패하면 템플릿 그대로 done)"""
+    ai = agent_service.drive_report(stats)
+    with _lock:
+        item = _drive_reports.get(report_id)
+        if item is not None:
+            item.update({"done": True, "summary": ai["summary"], "advice": ai["advice"], "is_real": ai["is_real"]})
+    print(f"[detect] 운행 리포트 {report_id[:8]} 뒤에서 채움 ({'AI' if ai['is_real'] else '템플릿'})")
+
+
+@router.get("/drive/report/{report_id}")
+def drive_report_handler(report_id: str, user: User = Depends(get_current_user)):
+    """(11/18 팀장) 운행 종료 리포트의 AI 문장 — 앱이 리포트 화면을 연 동안 몇 초마다 물어봄. 아직이면 done=False"""
+    with _lock:
+        item = _drive_reports.get(report_id)
+    if item is None or item["user_id"] != user.id:
+        raise HTTPException(status_code=404, detail="리포트가 없어요")
+    return {k: item[k] for k in ("done", "summary", "advice", "is_real")}
+
+
 @router.post("/drive/end")
-def drive_end_handler(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+def drive_end_handler(background: BackgroundTasks, session: Session = Depends(get_session),
+                      user: User = Depends(get_current_user)):
     """[운행 종료] — 단계는 그대로(2 · 3단계는 계속 이어짐), 진행 중인 운행만 끝냄.
     (11/16 팀장) + 오늘 운행 AI 리포트: 운행 시간 · 졸음 횟수 · 최고 단계 · 휴식 · 시간표 · 다음 운행 조언"""
     drive_timer.end(user.id)
@@ -314,13 +339,25 @@ def drive_end_handler(session: Session = Depends(get_session), user: User = Depe
         "rest_min": sum(int(r.get("minutes") or 0) for r in rests),
         "timeline": timeline,
     }
-    ai = agent_service.drive_report(stats)
+    # (11/18 팀장) 템플릿 문장으로 바로 답하고, AI 문장은 뒤에서 → 앱이 GET /drive/report/{report_id} 로 받아 바꿔 끼움
+    #   (전에는 AI 를 기다렸다 답해서, Gemini 가 느린 날엔 6초 시간 초과로 거의 템플릿이었음)
+    ai = agent_service.drive_report_template(stats)
+    report_id = uuid.uuid4().hex
+    pending = bool(agent_service.USE_REAL_AI)
+    with _lock:
+        cutoff = time.time() - DRIVE_REPORT_KEEP_SEC
+        for k in [k for k, v in _drive_reports.items() if v["at"] < cutoff]:
+            del _drive_reports[k]
+        _drive_reports[report_id] = {"user_id": user.id, "done": not pending, "at": time.time(), **ai}
+    if pending:
+        background.add_task(_fill_drive_report, report_id, dict(stats))
     print(f"[detect] {now:%H:%M:%S} u{user.id} 운행 종료 리포트 · {stats['drive_min']}분 · 졸음 {stats['sleep_count']}번 · "
-          f"최고 {stats['max_stage']}단계 · 휴식 {stats['rest_count']}번 ({'AI' if ai['is_real'] else '템플릿'})")
+          f"최고 {stats['max_stage']}단계 · 휴식 {stats['rest_count']}번 (템플릿 먼저{' · AI 는 뒤에서' if pending else ''})")
     return {"success": True, "report": {
         **stats, "name": f"{_driver_name(user.name)} 기사님".strip(),
         "started": started.strftime("%H:%M") if started else "", "ended": now.strftime("%H:%M"),
-        "summary": ai["summary"], "advice": ai["advice"], "is_real": ai["is_real"]}}
+        "summary": ai["summary"], "advice": ai["advice"], "is_real": False,
+        "report_id": report_id, "ai_pending": pending}}
 
 
 @router.post("/drive/rest")
@@ -415,7 +452,7 @@ def _fill_ai_report(event_id, user_id, photo_abs, eye_info, facts, rule_stage, l
         report["is_real"] = {"llm": bool(analysis.get("is_real")), "rag": any(r.get("is_real") for r in regulations),
                              "agent": bool(agent["is_real"]), "driver_voice": False}
         event.summary = (analysis.get("summary") or event.summary or "")[:255]
-        event.guidance = (agent["guidance"] or event.guidance or "")[:255]
+        # (11/18 팀장) guidance(기사님께 전달한 안내)는 덮어쓰지 않음 — 기사가 실제로 들은 문장 그대로
         event.report = json.dumps(report, ensure_ascii=False)
         db.commit()
         print(f"[detect] 경고 #{event_id} AI 보고서 채움 (뒤에서) · LLM {t1 - t0:.1f}초 · RAG {t2 - t1:.1f}초 · "
@@ -575,11 +612,14 @@ async def detect_handler(
         "is_real": {"llm": bool(analysis.get("is_real")), "rag": any(r.get("is_real") for r in regulations),
                     "agent": bool(agent["is_real"]), "driver_voice": bool(agent["voice_is_real"])},
     }
+    # (11/18 팀장) 경고 기록의 '기사님께 전달한 안내' = 기사가 실제로 들은 문장 (이름 빼고)
+    #   1단계: 앱 고정 문장 (drive_screen._stage1Voice) · 2 · 3단계: 아래 driver_voice 의 문장. Agent 가 덮어쓰지 않음
+    delivered = STAGE1_DELIVERED if stage <= 1 else agent["driver_voice"]
     event = SleepEvent(
         user_id=user.id, stage=int(agent["stage"]) if released else stage, ear=eye.get("ear"),
         eye_closed_prob=eye.get("eye_closed_prob"),
         method=base["method"], reason=reason, perclos=pc,
-        summary=(analysis.get("summary") or "")[:255], guidance=agent["guidance"][:255],
+        summary=(analysis.get("summary") or "")[:255], guidance=delivered[:255],
         report=json.dumps(report, ensure_ascii=False), photo_path=photo_path,
         latitude=lat, longitude=lng, status="조치완료" if released else "미확인",
     )
@@ -606,7 +646,7 @@ async def detect_handler(
 
     return {
         **base, "is_sleep": True, "reason": reason, "stage": stage, "status": _label(stage),
-        "summary": event.summary or "", "guidance": agent["guidance"],
+        "summary": event.summary or "", "guidance": delivered,
         # (11/16 팀장) 음성은 '이름 + 사실 하나 + 행동 하나' 한 문장 (약 4초)
         "driver_voice": f"{_driver_name(user.name) or '기사'}님, {agent['driver_voice']}",
         "sleep_count_10min": facts["sleep_count_10min"], "voice_quiz": voice_quiz,

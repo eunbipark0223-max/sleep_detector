@@ -6,15 +6,64 @@
 //     ① AI 요약 (남색 카드) ② 운행 시간 · 졸음 · 휴식 숫자 3칸 ③ 시간표 (언제 몇 단계 · 휴식 · 3단계 응답) ④ 다음 운행 조언
 //   - 서버 POST /drive/end 의 report 를 그대로 그림 (숫자는 서버가 센 것, 문장만 AI — 틀리면 서버가 템플릿으로 바꿈)
 //   - 서버 답이 없으면(연결 끊김) 이 화면을 띄우지 않고 그냥 홈으로 (drive_screen._confirmEnd)
+//   - (11/18 팀장) 서버는 템플릿 문장으로 바로 답하고 AI 문장은 뒤에서 만든다 (ai_pending · report_id)
+//       → 이 화면은 템플릿을 먼저 보여 주고, 2초마다 GET /drive/report/{id} 를 물어 AI 문장이 오면 바꿔 끼운다 (최대 40초)
 // ═══════════════════════════════════════════════════════════════
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../services/api_service.dart';
 import '../theme.dart';
 import '../widgets/web_ui.dart';
 
-class DriveReportScreen extends StatelessWidget {
+class DriveReportScreen extends StatefulWidget {
   final Map<String, dynamic> report;
   const DriveReportScreen({super.key, required this.report});
+
+  @override
+  State<DriveReportScreen> createState() => _DriveReportScreenState();
+}
+
+class _DriveReportScreenState extends State<DriveReportScreen> {
+  late Map<String, dynamic> report = Map<String, dynamic>.from(widget.report);
+  Timer? _poll;
+  int _tries = 0;
+  static const int _maxTries = 20; // 2초 × 20 = 40초까지 기다림 (서버 Agent 마감 30초)
+
+  @override
+  void initState() {
+    super.initState();
+    final id = report['report_id'];
+    if (report['ai_pending'] == true && id is String && id.isNotEmpty) {
+      _poll = Timer.periodic(const Duration(seconds: 2), (_) => _checkAi(id));
+    }
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  // AI 문장이 오면 요약 · 조언만 바꿔 끼운다 (숫자 · 시간표는 그대로). 실패 · 시간 초과면 템플릿 그대로
+  Future<void> _checkAi(String id) async {
+    if (++_tries > _maxTries) {
+      _poll?.cancel();
+      return;
+    }
+    try {
+      final r = await ApiService.fetchDriveReport(id);
+      if (!mounted || r['done'] != true) return;
+      _poll?.cancel();
+      if (r['is_real'] != true) return;
+      setState(() {
+        report = {...report, 'summary': r['summary'], 'advice': r['advice'], 'is_real': true};
+      });
+    } catch (_) {
+      // 한 번 못 받아도 다음에 다시 물어봄
+    }
+  }
 
   static const Color _bg = Color(0xFFF8F9FC);
   static const List<String> _stageNames = ['정상', '주의', '휴식 권고', '긴급'];
