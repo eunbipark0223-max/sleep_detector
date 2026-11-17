@@ -7,6 +7,8 @@
 // [이 파일이 하는 일]
 //   - startRest() → 15분 카운트다운 (눈 판정 멈춤, ping 은 계속) 🔊 '15분 쉬고 출발하세요'
 //   - 15분이 지나야 [운행 재개] 켜짐 → resumeDrive() → 1단계로 drive_screen 🔊 '주의 단계로 다시 출발합니다'
+//   - (11/18 팀장) [관련 규정 보기] → 휴식 관련 고정 규정 카드 창 (rest_regulations.dart · regulation_screen 의 showRegulationSheet)
+//       경고 화면에서 규정을 뺀 대신 쉬는 동안 여기서 본다
 //
 // [주의]
 //   - 퀴즈 없음
@@ -39,10 +41,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../rest_regulations.dart';
 import '../services/api_service.dart';
 import '../services/voice_service.dart';
 import '../theme.dart';
 import '../widgets/web_ui.dart';
+import 'regulation_screen.dart';
 
 class RestScreen extends StatefulWidget {
   /// 휴식 시작 (POST /drive/rest). 서버 JSON 을 돌려준다.
@@ -232,6 +236,12 @@ class _RestScreenState extends State<RestScreen> {
             const SizedBox(height: 10),
             const Text('휴식 시간이 끝나면 [운행 재개]가 켜져요', style: TextStyle(fontSize: 13, color: AppColors.textMuted)),
           ],
+          // (11/18 팀장) 규정은 경고 화면 대신 쉬는 동안 여기서
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () => showRegulationSheet(context, RestRegulations.list),
+            child: const Text('관련 규정 보기 ›', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+          ),
         ]);
     }
   }

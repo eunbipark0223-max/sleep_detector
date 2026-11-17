@@ -317,7 +317,7 @@ def make_quiz(user_id: int, qtype: Optional[str] = None, event_id: Optional[int]
             a, b = random.randint(10, 89), random.randint(10, 89)
             if a % 10 + b % 10 <= 9 and a // 10 + b // 10 <= 9:
                 break
-        speak = f"잠을 깨워 볼게요. {_ko_number(a)} 더하기 {_ko_number(b)}는?"
+        speak = f"깨어 있는지 확인할게요. {_ko_number(a)} 더하기 {_ko_number(b)}는?"
         display, asked, answer = f"{a} + {b} = ?", f"{a}+{b}", a + b
     quiz_id = "q_" + uuid.uuid4().hex[:4]
     QUIZZES[quiz_id] = {"user_id": user_id, "type": qtype, "answer": answer, "asked": asked, "event_id": event_id}
@@ -1191,7 +1191,7 @@ def quiz_answer(body: VoiceQuizAnswer, user: dict = Depends(current_user)):
 
     if passed:
         st["quiz_fail"] = 0
-        return {**result, "message": {2: "잘하셨습니다. 쉼터까지 조심히 가세요.", 3: "잘하셨습니다. 안전한 곳에 정차해 주세요."}.get(stage, "잘하셨습니다. 안전 운행하세요.")}
+        return {**result, "message": {2: "확인했어요. 쉼터까지 조심히 가세요.", 3: "확인했어요. 안전한 곳에 정차해 주세요."}.get(stage, "확인했어요. 안전 운행하세요.")}
 
     st["quiz_fail"] += 1
     if st["quiz_fail"] < VOICE_QUIZ_MAX_TRIES:  # 1번 실패 → 같은 유형 새 문제

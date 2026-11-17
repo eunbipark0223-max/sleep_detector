@@ -5,7 +5,8 @@
 // 수업 원본: road_hazard_app/lib/screens/detect_result_screen.dart (🟡 이름 변경 + 수정)
 //
 // [이 파일이 하는 일]
-//   - 단계별 색 · 내 얼굴(카메라) · 큰 글씨 한 줄 + AI 안내 카드(보라) + [규정 듣기]
+//   - 단계별 색 · 내 얼굴(카메라) · 큰 글씨 한 줄 + [규정 듣기] (1단계 사진 시험 · 운행 중이 아닌 3단계만. 11/18 2단계 [규정 보기] 는 뺌 → 휴식 화면)
+//   - 2단계 순서 (11/18 팀장): 🔔 + 'OOO님, 쉼터에서 쉬어 가세요.' → 퀴즈 (필수, 버튼 꺼짐) → 통과하면 쉼터 한 줄 + [가까운 졸음쉼터 안내] · [정차했어요]
 //   - 소리 순서: 🔔 알람 → 서버 한 문장 driverVoice ('OOO님, 쉼터에서 쉬어 가세요.' / '… 지금 바로 정차하세요.', 없으면 stage_texts.dart 고정 문구) (11/17)
 //   - 운전 중 음성 퀴즈 (부품 A): D 의 quiz_screen 을 띄우고, 돌려받은 단계로 색 갱신 (2번 실패면 한 단계 위 + 알람)
 //   - 같은 단계에서 또 졸면 알람 · 음성 보고 없이 낼 퀴즈만 (silent, 기획안 6-6)
@@ -428,7 +429,7 @@ class _WarningScreenState extends State<WarningScreen> {
   late int _stage; // 지금 화면의 단계 (정차 후 돌려받은 단계로 바뀜)
   Timer? _repeat; // 3단계 30초 반복 음성
   String _restMessage = ''; // 휴식 뒤 서버가 준 안내 (예: 주의 단계로 다시 출발합니다). 있으면 이전 단계의 요약 · 안내 · 음성 보고 대신 보여 준다
-  bool _voiceDone = false; // 알람 · 음성 · 퀴즈가 다 끝났는지 ([규정 듣기] 는 그 뒤에 켜짐)
+  bool _voiceDone = false; // 알람 · 음성 · 퀴즈가 다 끝났는지 (버튼은 그 뒤에 켜짐 — 2단계는 퀴즈 필수, 11/18)
   bool _flowStopped = false; // [정차했어요] 를 눌러 음성 · 퀴즈 순서를 그만둠 (휴식 화면 위로 퀴즈가 뜨지 않게)
   bool _readingRegs = false; // 규정을 읽는 중 (30초 반복이 끊지 않게)
   bool _keepSpeaking = false; // 닫혀도 말을 끊지 않음 (운행 재개 안내를 끝까지 듣게)
@@ -853,7 +854,7 @@ class _WarningScreenState extends State<WarningScreen> {
                   ),
                 ),
               ],
-              // 2단계: 쉼터 안내 + 정차했어요 + 작은 규정 보기
+              // 2단계: 쉼터 안내 + 정차했어요 — 둘 다 퀴즈가 끝난 뒤 켜짐 (11/18 팀장: 퀴즈는 필수, 규정 보기는 뺌 → 휴식 화면)
               if (_stage == 2) ...[
                 // (11/16 R안) [가까운 졸음쉼터 안내] 흰 버튼 + [정차했어요] 남색 꽉 찬 버튼
                 FilledButton.icon(
@@ -864,16 +865,13 @@ class _WarningScreenState extends State<WarningScreen> {
                 ),
                 const SizedBox(height: 10),
                 FilledButton(
-                  onPressed: () async {
-                    if (await confirmRest(context) && mounted) _goRest();
-                  },
+                  onPressed: _voiceDone
+                      ? () async {
+                          if (await confirmRest(context) && mounted) _goRest();
+                        }
+                      : null,
                   style: stageButton('navy'), // 이 단계에서 가장 중요한 행동
                   child: const Text('정차했어요'),
-                ),
-                TextButton(
-                  onPressed: _voiceDone ? _showRegulations : null,
-                  style: TextButton.styleFrom(foregroundColor: AppColors.textSecondary, disabledForegroundColor: Colors.black26),
-                  child: const Text('규정 보기 ›', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                 ),
               ],
               // 1단계 (사진 1장 테스트에서만 이 화면이 뜸) · 운행 중이 아닌 3단계

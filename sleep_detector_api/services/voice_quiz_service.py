@@ -121,7 +121,7 @@ def make_quiz(user_id, qtype=None, event_id=None):
         qtype = "add"
     first = qtype is None
     qtype = qtype if qtype in ("repeat", "add") else random.choice(["repeat", "add"])
-    intro = "잠을 깨워 볼게요. " if first else ""
+    intro = "깨어 있는지 확인할게요. " if first else ""  # (11/18 팀장) 퀴즈를 하는 이유를 먼저 말함
 
     if qtype == "repeat":
         sentences = _load_sentences()

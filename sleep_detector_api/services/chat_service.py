@@ -8,6 +8,7 @@
 #   - 인사말을 졸음운전 · 휴게 규정 내용으로
 #   - 질문 → rag_service.search_by_text 로 규정 근거 → Gemini 가 근거 안에서만 답변
 #   - 근거에 없는 질문은 "제공된 자료에서 확인되지 않습니다" (노션 「RAG 전체 흐름 테스트」 채팅 시험 프롬프트를 운전자용으로)
+#     → (11/18 팀장) 기사에게는 이 말 대신 NOT_FOUND_ANSWER 안내 + 근거 카드 숨김 (관계없는 법령 카드가 붙어 헷갈렸음)
 #   - "버스는요?" 같은 이어지는 질문은 직전 사용자 질문을 붙여서 검색
 #
 # [만들 것 (이름 약속 — routers/chat.py 가 이 이름으로 부름)]
@@ -20,6 +21,7 @@
 #   - 답 속 숫자가 질문 · 근거에 없으면 기본 문장으로 교체 ("프롬프트는 부탁, 코드는 보증" — llm_service 와 같은 원칙)
 #   - 출처 번호는 문장 끝에만 — 문장 앞 "[1]에 따르면" 은 코드가 지움 (끝에 [1] 이 또 붙어서 두 번 나옴)
 #   - 무료 한도 때문에 재시도 없이 주 모델 1회 + 대체 모델 1회 (llm_service 의 클라이언트 · 모델 설정을 같이 씀)
+#   - (11/18 팀장) 기다리는 시간은 CHAT_TIMEOUT_SEC(20초) — llm_service 기본 5초는 경고 보고서용이라 법령 원문이 긴 질문이 늘 시간 초과였음
 #
 # 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」 · 노션 「RAG 전체 흐름 테스트」
 # ═══════════════════════════════════════════════════════════════
@@ -30,6 +32,10 @@ from services import llm_service, rag_service
 
 HELLO = "안녕하세요, 졸음 가드 규정 도우미예요. 졸음운전 · 연속 운전 휴게시간 규정을 물어보세요."
 NO_AI_ANSWER = "지금은 AI 답변을 만들 수 없어요. 질문과 관련된 규정 원문을 아래에 보여 드릴게요."
+NOT_FOUND_ANSWER = "저는 규정 도우미예요. 졸음운전 · 휴게시간 규정을 물어봐 주세요."  # (11/18 팀장) 자료에 없는 질문 — 근거 카드 없이
+# SYSTEM_PROMPT 가 자료에 없을 때 쓰라고 한 말 "만" 답했을 때 — "…는 확인되지 않습니다. 다만 …" 처럼 쓸 내용이 붙은 답은 그대로 둔다
+NOT_FOUND_ONLY = re.compile(r"^[^.]*확인되지\s*않습니다[.\s]*(\[[\d,\s]+\][.\s]*)*$")   # 한 문장짜리 '…확인되지 않습니다 [1, 2]' 까지
+CHAT_TIMEOUT_SEC = 20  # (11/18 팀장) 규정 도우미만 — 경고 보고서용 llm_service 5초와 따로
 HISTORY_TURNS = 6      # 이전 대화는 최근 6개만 (무료 한도 · 응답 속도)
 ANSWER_MAX_CHARS = 600
 
@@ -77,7 +83,7 @@ def _real_answer(messages):
     errors = []
     for model in dict.fromkeys([llm_service.GEMINI_MODEL, llm_service.LLM_FALLBACK_MODEL]):  # 같은 이름이면 1번만
         try:
-            r = llm_service._get_client().chat.completions.create(
+            r = llm_service._get_client().with_options(timeout=CHAT_TIMEOUT_SEC).chat.completions.create(
                 model=model, messages=messages, temperature=0.2, reasoning_effort="low")
             return r.choices[0].message.content
         except Exception as e:
@@ -141,6 +147,9 @@ def answer(message, history=None):
     if text is None:
         print(f"[chat_service] 답변 검사 불통과 → 기본 문장 사용: {str(raw)[:80]!r}")
         return {"answer": NO_AI_ANSWER, "sources": sources, "is_real": False}
+    if NOT_FOUND_ONLY.match(text.strip()):
+        # (11/18 팀장) 자료에 없는 질문 — '확인되지 않습니다' 대신 안내, 관계없는 근거 카드는 숨김
+        return {"answer": NOT_FOUND_ANSWER, "sources": [], "is_real": True}
     return {"answer": text, "sources": sources, "is_real": True}
 
 
