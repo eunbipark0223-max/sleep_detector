@@ -38,7 +38,7 @@
 #   - JSON 칸 이름은 팀 약속이라 바꾸지 않는다 (sleep_response.dart · drive_status.dart · sleep_event.dart 와 같아야 함)
 #   - 기획안에 칸 이름이 없는 곳(로그인 응답 · /events/my 한 줄 · /admin/*)은 D 가 정했음 → 맨 아래 [임시로 정한 것] 표를 C 와 확인
 #   - 시간 기준은 시험하기 좋게 줄여 둠: 휴식 15분 → 10초 (MOCK_REST_SEC), 1단계 자동 해제 10분 → 60초 (MOCK_WINDOW_SEC),
-#     음성 퀴즈 간격 2분 → 20초 (MOCK_QUIZ_GAP_SEC). 진짜 값은 config.py (REST_MIN · WINDOW_MIN · VOICE_QUIZ_GAP_SEC)
+#     음성 퀴즈는 2단계에 들어갈 때마다 (11/18 2분 간격 뺌, 진짜 서버와 같음). 진짜 값은 config.py (REST_MIN · WINDOW_MIN)
 #   - 서버를 다시 켜면 메모리가 비워진다 (진짜 서버의 sleep_state 와 같음)
 #
 # 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
@@ -65,7 +65,6 @@ from services import employee_service   # (11/17 C) 시연용 사번 목록 · �
 WINDOW_SEC = int(os.getenv("MOCK_WINDOW_SEC", "60"))          # 1단계 자동 해제 · 졸음 횟수를 세는 구간 (진짜 600)
 REST_SEC = int(os.getenv("MOCK_REST_SEC", "10"))              # 휴식 시간 (진짜 900)
 PRE_WARN_ON = os.getenv("PRE_WARN_ON", "false").lower() in ("1", "true", "yes")  # (11/15) 예비 경고 기본 꺼짐
-QUIZ_GAP_SEC = int(os.getenv("MOCK_QUIZ_GAP_SEC", "20"))      # 음성 퀴즈 최소 간격 (진짜 120)
 DRIVE_LIMIT_MIN = 120                                         # 연속 운전 휴게 알림
 CALIB_FRAMES = 5                                              # 개인 기준 측정 사진 수
 LISTEN_SEC = 10                                               # 음성 퀴즈 듣는 시간 (10/29 STT 시험으로 7 → 10)
@@ -1158,9 +1157,9 @@ async def detect(
                       eye_closed_prob=None if open_prob is None else round(1 - open_prob, 3), method=base["method"], perclos=perclos_v,
                       photo_path=photo_path, lat=lat, lng=lng)
 
-    # ⑧ 음성 퀴즈 1문제 (최소 간격 안이면 null)
+    # ⑧ 음성 퀴즈 1문제 — 2단계에 들어갈 때마다 (11/18 팀장: 2분 간격 뺌, 2단계에서 또 졸면 바로 3단계라 연달아 나오지 않음)
     voice_quiz = None
-    if stage == 2 and time.time() - st["last_quiz_at"] >= QUIZ_GAP_SEC:  # (11/15) 퀴즈는 2단계에서만 (3단계는 [깨어 있어요])
+    if stage == 2:  # (11/15) 퀴즈는 2단계에서만 (3단계는 [깨어 있어요])
         voice_quiz = make_quiz(user["id"], event_id=event["id"])
         st["last_quiz_at"] = time.time()
         st["quiz_fail"] = 0
@@ -1406,7 +1405,7 @@ def dev_scenario(body: dict):
 
 @app.get("/dev/state")
 def dev_state():
-    return {"scenario": SCENARIO["name"], "timing": {"window_sec": WINDOW_SEC, "rest_sec": REST_SEC, "quiz_gap_sec": QUIZ_GAP_SEC},
+    return {"scenario": SCENARIO["name"], "timing": {"window_sec": WINDOW_SEC, "rest_sec": REST_SEC},
             "users": {uid: {"stage": st["stage"], "sleep_count": len(recent_sleeps(st)), "drive_min": drive_min_of(st),
                             "quiz_fail": st["quiz_fail"], "resting": st["rest_started"] is not None, "ear_threshold": st["ear_threshold"]}
                       for uid, st in STATES.items()},

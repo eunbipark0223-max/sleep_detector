@@ -54,7 +54,7 @@ def get_state(user_id: int) -> dict:
             "drive_started_at": datetime.now(),
             "rest_started_at": None,     # [정차했어요] 누른 시각
             "quiz_fails": 0,             # 운전 중 퀴즈 연속 실패 횟수
-            "last_quiz_at": None,        # 마지막 퀴즈 출제 시각 (2분 간격 제한용)
+            "last_quiz_at": None,        # 마지막 퀴즈 출제 시각 (기록만 · 11/18 2분 간격 뺌)
             "last_ping_at": None,        # 마지막 ping 수신 시각
             "reset_count": 0,            # 관리자 [조치완료] 횟수 (/detect 가 AI 처리 중 해제됐는지 확인)
             "open_ear": None,            # 🆕 출발 전 측정 뜬 눈 EAR 중간값 (face_service.calibrate, 실패면 None)

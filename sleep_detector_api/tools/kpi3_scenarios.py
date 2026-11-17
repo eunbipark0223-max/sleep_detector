@@ -87,7 +87,6 @@ def new_driver():
     h = {"Authorization": f"Bearer {tok}"}
     uid = client.get("/users/me", headers=h).json()["id"]
     client.post("/drive/start", headers=h)
-    detect._last_quiz_at.pop(uid, None)
     sleep_state.get_state(uid)["pre_warned"] = True   # 예비 경고는 이미 지난 기사 — 여기서는 단계 규칙만 (예비 경고는 보너스, 11/12)
     return h, uid
 
@@ -339,6 +338,18 @@ def bonus_stage2_still_asleep():
             f"음성 {r3['driver_voice'].endswith('님, 지금 바로 정차하세요.')}")
 
 
+def bonus_quiz_every_stage2():
+    """(11/18 팀장) 2분 간격 뺌 — 2단계에 들어갈 때마다 퀴즈 (휴식 뒤 곧바로 다시 2단계여도 퀴즈가 나옴)"""
+    h, uid = new_driver()
+    doze(h)
+    q1 = doze(h)                                        # 2단계 첫 진입
+    client.post("/drive/rest", headers=h)
+    back(uid, config.REST_MIN + 1)
+    client.post("/drive/resume", headers=h)             # 1단계
+    q2 = doze(h)                                        # 몇 초 만에 다시 2단계
+    return f"{q1['stage']} · 퀴즈 {q1['voice_quiz'] is not None} → {q2['stage']} · 퀴즈 {q2['voice_quiz'] is not None}"
+
+
 def bonus_stage1_no_ai():
     """(11/16 팀장) 1단계(첫 졸음)는 LLM · Agent 를 부르지 않고 기록만 — Agent 가 올리려 해도 1단계. 두 번째 졸음부터 AI"""
     h, uid = new_driver()
@@ -529,6 +540,7 @@ BONUS = [("(보너스) 3단계는 휴식으로 안 풀림 → 3단계", 3, bonus
          ("(보너스) 서버 판정 오류 → 앱 판단대로 확정", "확정", bonus_error),
          ("(보너스) 바로 경고 · AI 는 뒤에서 기록만", "단계 2 · ping 2 · 기록 2단계 · Agent 1번 · 보고서 True · 규정 True", bonus_reset_race),
          ("(보너스) 2단계 뒤 계속 감음 → 퀴즈 없이 3단계", "2 → 3 · 퀴즈 False · 음성 True", bonus_stage2_still_asleep),
+         ("(보너스) 2단계 들어갈 때마다 퀴즈 (2분 간격 없음)", "2 · 퀴즈 True → 2 · 퀴즈 True", bonus_quiz_every_stage2),
          ("(보너스) 1단계는 AI 없이 기록만", "첫 졸음 1단계 · AI 0·0 · 기록 1건 · 요약 True · 두 번째 AI 1·1", bonus_stage1_no_ai),
          ("(보너스) 경고 사진 권한", "401 · 200 · 404 · 200 · 404", bonus_photo_access),
          ("(보너스) 퀴즈 통과 음성: 2 · 3단계", "쉼터까지 조심히 가세요. / 안전한 곳에 정차해 주세요.", bonus_quiz_message),

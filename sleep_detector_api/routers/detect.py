@@ -74,8 +74,6 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 _calib_photos = {}       # user_id → [임시 사진 경로, ...]
 # [정차했어요] 때 휴식완료로 바꿀 2단계 경고 번호
 _rest_event = {}         # user_id → event_id
-# 운전 중 음성 퀴즈 최소 간격 (VOICE_QUIZ_GAP_SEC) — 마지막으로 낸 시각
-_last_quiz_at = {}       # user_id → time.time()
 _lock = threading.Lock()
 # 서버를 켠 뒤 /detect 판정 방식별 건수 (GET /health — method 가 cnn 이 아니면 폴백이 난 것)
 _method_counts = {"cnn": 0, "ear": 0, "mlkit": 0}
@@ -589,17 +587,13 @@ async def detect_handler(
     session.commit()
     session.refresh(event)
 
-    # ⑧ 운전 중 음성 퀴즈 (경고를 저장한 뒤 → event_id 를 함께 기억, 최소 간격 VOICE_QUIZ_GAP_SEC)
+    # ⑧ 운전 중 음성 퀴즈 (경고를 저장한 뒤 → event_id 를 함께 기억)
+    #   (11/18 팀장) 2분 간격 뺌 — 목적은 깨우기. 2단계에 들어갈 때마다 반드시 낸다
+    #   (질문 폭탄 걱정 없음: 2단계에서 또 졸면 퀴즈 없이 바로 3단계 · 3단계는 [깨어 있어요] 버튼)
     voice_quiz = None
     # (11/15 팀장) 기사에게는 ① 정신 차리세요(예비 · 1단계) ② 쉬어 가세요(2) ③ 지금 멈추세요(3) — 퀴즈는 2단계부터
     if config.QUIZ_MODE == "voice" and not released and stage == 2:  # 3단계는 [깨어 있어요] 버튼 (11/15)
-        now = time.time()
-        with _lock:
-            due = now - _last_quiz_at.get(user.id, 0) >= config.VOICE_QUIZ_GAP_SEC
-            if due:
-                _last_quiz_at[user.id] = now
-        if due:
-            voice_quiz = voice_quiz_service.make_quiz(user.id, event_id=event.id)
+        voice_quiz = voice_quiz_service.make_quiz(user.id, event_id=event.id)
 
     # ⑨ 2단계부터 — 답한 뒤 뒤에서 LLM · RAG · Agent 로 이 기록의 요약 · 안내문 · 관리자 보고서를 채움 (단계는 그대로)
     if rule_stage >= 2 and background is not None:

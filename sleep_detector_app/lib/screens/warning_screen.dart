@@ -536,7 +536,7 @@ class _WarningScreenState extends State<WarningScreen> {
       await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted || _flowStopped) return;
     }
-    // 운전 중 음성 퀴즈 (D님 QuizScreen) — 서버가 2분 간격으로만 보내서 없을 수도 있음
+    // 운전 중 음성 퀴즈 (D님 QuizScreen) — 서버가 2단계에 들어갈 때마다 보냄 (11/18 2분 간격 뺌)
     final quiz = widget.response.voiceQuiz;
     if (quiz != null) {
       final before = _stage;

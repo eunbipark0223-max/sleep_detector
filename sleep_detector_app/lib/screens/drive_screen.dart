@@ -556,7 +556,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
         await _lightWarn(_stage1Voice);
         return;
       }
-      // 2단계 이상이면 경고 화면을 띄운다. 같은 단계면 낼 퀴즈가 있을 때만 (퀴즈는 2단계부터 · 2분 간격)
+      // 2단계 이상이면 경고 화면을 띄운다. 같은 단계면 낼 퀴즈가 있을 때만 (퀴즈는 2단계에 들어갈 때마다 · 11/18 2분 간격 뺌)
       if (res.isSleep && res.stage >= 2 && (!sameStage || res.voiceQuiz != null)) {
         _showWarning(res, silent: sameStage);
       }
