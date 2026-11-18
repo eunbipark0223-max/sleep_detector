@@ -37,10 +37,12 @@
 #       근거 맞음 = 근거 카드 제목에 gold 법령 · 조항이 하나라도 있음
 #       정답      = yes 질문: AI 답 + 거절 아님 + 근거 맞음 + key_facts 낱말이 답에 있음
 #                   no 질문 : 거절('확인되지 않습니다' · 규정 도우미 안내 문장)
+#                   key_facts 의 '!낱말' = 답에 없어야 하는 말 (예: d12 '!8시간' — 관계없는 버스 출근 전 휴식 규정)
 #       AI 실패   = is_real False (시간 초과 · 숫자 검사 불통과 → 기본 문장)
 #   venv\Scripts\python tools/kpi4_rag.py daily --label before --out D:\kpi4     (고치기 전 코드에서)
 #   venv\Scripts\python tools/kpi4_rag.py daily --label after  --out D:\kpi4     (고친 뒤)
 #   venv\Scripts\python tools/kpi4_rag.py daily-compare --out D:\kpi4          → 전 · 후 표
+#   (11/18 2차: d11 · d12 추가 — --label v2_before / v2_after, daily-compare --labels v2_before,v2_after)
 #
 # 자세한 내용: 「파이널 프로젝트 최종 기획안 10.13」 KPI ④ · 6-2 RAG · knowledge/README.md
 # ═══════════════════════════════════════════════════════════════
@@ -104,7 +106,9 @@ def llm_only_prompt():
     p = p.replace("숫자는 근거에 적힌 그대로 쓰고", "숫자는 법령에 적힌 그대로 쓰고")
     # 11/18 chat_service 거절 기준 완화와 같게: 가까운 규정은 적용 대상을 밝혀 안내, 모르거나 관계없으면 '확인되지 않습니다'
     p = p.replace("질문과 가까운 규정이 [근거]에 있으면", "질문과 가까운 규정을 확실히 알고 있으면")
+    p = p.replace("근거에 나온 대상", "그 규정에 나온 대상")
     p = p.replace("근거에 나오지 않는 대상", "그 규정에 나오지 않는 대상")
+    p = p.replace("도로교통법 근거에 따로", "도로교통법에 따로")
     p = p.replace("근거와 전혀 관계없는 질문에만", "그 규정을 확실히 알지 못하거나 관계없는 질문에는")
     assert "[근거]" not in p, "SYSTEM_PROMPT 가 바뀜 — llm_only_prompt 를 다시 맞추기"
     return p
@@ -199,7 +203,8 @@ def _grade(q, r, searched):
     titles = " | ".join(searched)
     refused = ans == chat_service.NOT_FOUND_ANSWER or "확인되지 않" in ans or "자료에 없어요" in ans
     gold_hit = any(g.strip() and g.strip() in titles for g in q["gold"].split(";"))
-    facts = all(f.strip() in ans for f in q["key_facts"].split(";") if f.strip())
+    facts = all((f[1:] not in ans) if f.startswith("!") else (f in ans)
+                for f in (x.strip() for x in q["key_facts"].split(";")) if f)
     if q["answerable"] == "yes":
         correct = r["is_real"] and not refused and gold_hit and facts
     else:
@@ -265,6 +270,8 @@ if __name__ == "__main__":
     ap.add_argument("step", choices=["check", "run", "summarize", "daily", "daily-compare"])
     ap.add_argument("--out", default=r"D:\kpi4", help="결과 폴더 (저장소 밖)")
     ap.add_argument("--label", default="after", help="daily: 결과 이름 (before / after)")
+    ap.add_argument("--labels", default="before,after", help="daily-compare: 비교할 결과 이름들 (쉼표)")
     a = ap.parse_args()
     {"check": check, "run": lambda: run(a.out), "summarize": lambda: summarize(a.out),
-     "daily": lambda: daily(a.out, a.label), "daily-compare": lambda: daily_compare(a.out)}[a.step]()
+     "daily": lambda: daily(a.out, a.label),
+     "daily-compare": lambda: daily_compare(a.out, tuple(a.labels.split(",")))}[a.step]()
