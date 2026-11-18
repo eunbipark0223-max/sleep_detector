@@ -12,7 +12,7 @@
 #
 # [만들 것 (이름 약속 — 다른 파일이 이 이름으로 부름)]
 #   - search_regulations(summary="", vehicle=None, k=3) → [{title, source, content, is_real}]  (vehicle 없으면 화물 · 여객 둘 다)
-#   - search_by_text(query, k=4)                        → [{title, source, content, is_real}]
+#   - search_by_text(query, k=4, doc_type=None)         → [{title, source, content, is_real}]
 #       is_real = False 면 검색 결과가 아닌 대표 규정(가짜 / 실패) — 팀장이 보고서 is_real.rag 로 저장
 #
 # [주의]
@@ -383,9 +383,9 @@ def _route(query):
     return "both"
 
 
-def _real_search_by_text(query, k):
+def _real_search_by_text(query, k, doc_type=None):
     store = build_index()
-    route = _route(query)
+    route = doc_type or _route(query)
     if route == "both":  # 애매하면 법령 (k-1) + 일반 자료 1 (노션 「문제 1」 권장 구성)
         law = store.similarity_search_with_score(query, k=10, filter={"doc_type": "law"})
         guide = store.similarity_search_with_score(query, k=4, filter={"doc_type": "guide"})
@@ -400,12 +400,13 @@ def _mock_search_by_text(query, k=4):
     return _mock(k)
 
 
-def search_by_text(query, k=4):
-    """질문 → 관련 규정 k개. 답을 만드는 일(생성)은 chat_service / agent_service 몫."""
+def search_by_text(query, k=4, doc_type=None):
+    """질문 → 관련 규정 k개. 답을 만드는 일(생성)은 chat_service / agent_service 몫.
+    doc_type: "law" / "guide" 로 정하면 _route 대신 그 유형만 (11/18 — 규정 도우미가 법령이 없을 때 법령만 다시 찾음)"""
     if not USE_REAL_AI:
         return _mock_search_by_text(query, k)
     try:
-        return _normalize(_real_search_by_text(query, k))
+        return _normalize(_real_search_by_text(query, k, doc_type))
     except Exception as e:
         if not FALLBACK_ON_ERROR:
             raise

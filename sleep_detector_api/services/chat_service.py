@@ -10,6 +10,8 @@
 #   - 근거에 없는 질문은 "제공된 자료에서 확인되지 않습니다" (노션 「RAG 전체 흐름 테스트」 채팅 시험 프롬프트를 운전자용으로)
 #     → (11/18 팀장) 기사에게는 이 말 대신 NOT_FOUND_ANSWER 안내 + 근거 카드 숨김 (관계없는 법령 카드가 붙어 헷갈렸음)
 #   - "버스는요?" 같은 이어지는 질문은 직전 사용자 질문을 붙여서 검색
+#   - (11/18) 일상어 질문 — 검색어에만 법령 낱말을 덧붙임 (QUERY_WORDS 사전, AI 추가 호출 X). AI 에는 원래 질문 그대로
+#   - (11/18) 검색 결과에 법령이 하나도 없으면 법령만 한 번 더 찾아 맨 앞에 (일반 자료 1개와 바꿈)
 #
 # [만들 것 (이름 약속 — routers/chat.py 가 이 이름으로 부름)]
 #   - hello() → str
@@ -49,8 +51,11 @@ SYSTEM_PROMPT = (
     #        (팀장 확인: '해당한다' 는 단정 X → 관련 근거로 안내 + 적용은 사안에 따라 다름)
     "졸음운전에 관한 처벌이나 의무를 물으면, 과로로 정상적으로 운전하지 못할 우려가 있는 상태의 운전을 다루는 법령을 "
     "관련 근거로 안내하되, 실제 적용 여부는 사안에 따라 다르다고 함께 말하라. "
-    "근거가 질문의 대상과 다른 대상에 관한 것이면 그 근거를 대신 적용하지 마라. "
-    "질문이 묻는 규정이나 통계가 [근거]에 없으면 '제공된 자료에서 확인되지 않습니다'라고만 답하라."
+    # 11/18: 예전 '근거가 질문의 대상과 다른 대상이면 적용하지 마라' 때문에 '밤새 운전' ↔ '2시간 연속 운전' 을 다른 이야기로 보고 거절
+    #        → 가까운 규정은 적용 대상을 밝혀 안내, 전혀 관계없는 질문만 거절 (팀장 요청)
+    "질문과 가까운 규정이 [근거]에 있으면, 그 규정의 적용 대상(화물, 시외버스 등)을 밝히고 안내하라. "
+    "다만 근거에 나오지 않는 대상(예: 택시)에 그 규정이 적용된다고 말하지는 마라. "
+    "근거와 전혀 관계없는 질문에만 '제공된 자료에서 확인되지 않습니다'라고 답하라."
 )
 
 LAW_TITLE = re.compile(r"제\d+조")  # rag_service 의 법령 제목은 "…법 제45조(…)" 모양, 일반 자료는 조 번호 없음
@@ -131,9 +136,43 @@ def _search_query(message, history):
     return f"{last} {message}" if last else message
 
 
+# 일상어 → 법령 낱말 (11/18 팀장 점검: '버스 기사인데 2시간 넘게 운전하면 어떻게 해야 해?' 가
+#   법령 낱말이 없고 '어떻게' 만 있어 rag_service._route 가 일반 자료로만 검색 → 뉴스 기사 3개 → 거절)
+#   법령은 '운수종사자 · 휴게시간 · 연속운전', 기사는 '버스 기사 · 쉬어야 · 2시간 넘게' — 낱말이 안 겹침
+#   덧붙인 말은 검색에만 쓰고 AI 에는 원래 질문을 줌. 숫자는 넣지 않음 (_check 의 숫자 검사가 질문 숫자를 허용하므로)
+QUERY_WORDS = [
+    (("버스 기사", "버스기사", "버스 운전", "고속버스", "관광버스"), "여객자동차 운수종사자 시외버스 전세버스"),
+    (("화물차", "트럭", "화물 기사", "화물기사", "용달"), "화물자동차 운수종사자"),
+    (("쉬어", "쉬는", "쉬지", "쉴 ", "쉬면"), "휴게시간 휴식시간"),
+    (("넘게", "계속", "밤새", "내리 ", "달렸"), "연속 운전"),
+    (("피곤", "지쳐", "밤새"), "과로"),
+    (("사장", "회사"), "운송사업자 보장"),
+]
+
+
+def _expand(query):
+    """검색어에 법령 낱말 덧붙이기 (사전에 걸린 것만, 같은 말은 한 번)"""
+    extra = [words for keys, words in QUERY_WORDS if any(k in query for k in keys)]
+    return " ".join([query, *dict.fromkeys(extra)])
+
+
+def _is_law(source):
+    return bool(LAW_TITLE.search(source["title"]))
+
+
+def _law_first(sources, search_query):
+    """검색 결과에 법령이 하나도 없으면 법령만 한 번 더 찾아 맨 앞에 (개수는 그대로 — 마지막 일반 자료와 바꿈).
+    의무 · 금지는 법령으로만 답하라는 지시문 때문에, 법령 없이 뉴스만 있으면 AI 가 거절함"""
+    if not sources or any(_is_law(s) for s in sources) or not all(s["is_real"] for s in sources):
+        return sources  # 이미 법령이 있거나, 검색 실패로 대표 규정(가짜)이 온 경우
+    law = [s for s in rag_service.search_by_text(search_query, k=1, doc_type="law") if s["is_real"] and _is_law(s)]
+    return (law + sources[: len(sources) - len(law)]) if law else sources
+
+
 def answer(message, history=None):
     query = _search_query(message, history)
-    sources = rag_service.search_by_text(query)
+    search_query = _expand(query)
+    sources = _law_first(rag_service.search_by_text(search_query), search_query)
     if not llm_service.USE_REAL_AI:
         return {"answer": NO_AI_ANSWER, "sources": sources, "is_real": False}
     try:
