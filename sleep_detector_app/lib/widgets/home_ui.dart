@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import '../models/sleep_event.dart';
 import '../stage_texts.dart';
 import '../theme.dart';
+import 'auth_ui.dart';
 import 'web_ui.dart';
 
 /// 남색 '지금 상태' 카드 (시안 .current-state-card)
@@ -46,6 +47,18 @@ class HomeStateCard extends StatelessWidget {
     return _readdy(s, big);
   }
 
+  // (11/18 사용자 요청) [운행 시작] 아래 [이어서 운행] — 같은 크기 · 같은 알약 모양으로 나란히.
+  //   이어서 할 운행이 없으면 [이어서 운행] 은 흐리게 (눌리지 않음). 운행이 있으면 home_screen 의 resume 이 대신 들어옴
+  Widget _startButtons() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        AuthButton(
+          text: startLabel,
+          onPressed: onStart,
+          leading: const Icon(Icons.photo_camera_outlined, size: 20, color: Colors.white),
+        ),
+        const SizedBox(height: 10),
+        const AuthButton(text: '이어서 운행', primary: false),
+      ]);
+
   // (11/16 R안 · readdy 홈 카드) 흰 카드 · 단계 점 + 이름 · 큰 글 · 운행 요약 숫자 · 버튼 (부엉이 · 그라데이션 · 그림자 없음)
   Widget _readdy(int s, String big) {
     // (11/17 사용자 요청) 운행 전 · 정상이면 '정상' 배지 · '안전 운전 중이에요' 없이 캐릭터 자리 + [운행 시작] 만
@@ -55,14 +68,25 @@ class HomeStateCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Center(child: ImageSlot(label: '메인 캐릭터 이미지', width: 120, height: 120, radius: 22)),
-            const SizedBox(height: 22),
-            resume ??
-                FilledButton.icon(
-                  onPressed: onStart,
-                  icon: const Icon(Icons.photo_camera_outlined, size: 20),
-                  label: Text(startLabel),
+            // (11/18 사용자 요청) 캐릭터는 왼쪽 · 오른쪽에 애플 메시지 같은 말풍선
+            const Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+              ImageSlot(label: '메인 캐릭터 이미지', width: 104, height: 104, radius: 20),
+              SizedBox(width: 14),
+              Expanded(
+                // (11/18 사용자 요청) '안녕하세요' 굵게 · 다음 줄 '오늘도 안전운전하세요' 보통 굵기
+                child: SpeechBubble(
+                  child: Text.rich(
+                    TextSpan(children: [
+                      TextSpan(text: '안녕하세요\n', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                      TextSpan(text: '오늘도 안전운전하세요', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w400)),
+                    ]),
+                    style: TextStyle(height: 1.45, letterSpacing: -0.3, color: AppColors.textPrimary),
+                  ),
                 ),
+              ),
+            ]),
+            const SizedBox(height: 22),
+            resume ?? _startButtons(),
           ],
         ),
       );
@@ -73,20 +97,23 @@ class HomeStateCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                // (11/18 사용자 요청) '지금 상태' 글자 없이 단계 배지부터
-                StageBadge(stage: s, fontSize: 13),
-                const SizedBox(height: 12),
-                Text(big,
-                    maxLines: 3,
-                    style: const TextStyle(
-                        fontSize: 24, height: 1.3, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: AppColors.textPrimary)),
-              ]),
-            ),
-            const SizedBox(width: 12),
+          // (11/18 사용자 요청) 캐릭터 왼쪽 · 단계 배지 + 큰 글은 캐릭터가 말하는 말풍선 안에
+          Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
             const ImageSlot(label: '메인 캐릭터 이미지', width: 92, height: 92, radius: 18),
+            const SizedBox(width: 14),
+            Expanded(
+              child: SpeechBubble(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  // (11/18 사용자 요청) '지금 상태' 글자 없이 단계 배지부터
+                  StageBadge(stage: s, fontSize: 12.5),
+                  const SizedBox(height: 8),
+                  Text(big,
+                      maxLines: 3,
+                      style: const TextStyle(
+                          fontSize: 19, height: 1.3, fontWeight: FontWeight.w700, letterSpacing: -0.5, color: AppColors.textPrimary)),
+                ]),
+              ),
+            ),
           ]),
           if (stats.isNotEmpty) ...[
             const SizedBox(height: 22),
@@ -109,12 +136,7 @@ class HomeStateCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 22),
-          resume ??
-              FilledButton.icon(
-                onPressed: onStart,
-                icon: const Icon(Icons.photo_camera_outlined, size: 20),
-                label: Text(startLabel),
-              ),
+          resume ?? _startButtons(),
         ],
       ),
     );
@@ -782,4 +804,45 @@ Future<bool?> showPermissionSheet(
       ),
     ),
   );
+}
+
+/// (11/18 사용자 요청) 애플 메시지 같은 말풍선 — 연회색 둥근 칸 + 왼쪽 아래 작은 꼬리 (캐릭터 쪽을 가리킴)
+class SpeechBubble extends StatelessWidget {
+  static const Color color = Color(0xFFF1F2F6);
+  final Widget child;
+  const SpeechBubble({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _BubbleTail(color),
+      child: Container(
+        margin: const EdgeInsets.only(left: 6), // 꼬리 자리
+        padding: const EdgeInsets.fromLTRB(16, 13, 16, 14),
+        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)),
+        child: child,
+      ),
+    );
+  }
+}
+
+/// 말풍선 왼쪽 아래로 살짝 휘어 나온 꼬리 (iMessage 받은 말풍선 모양)
+class _BubbleTail extends CustomPainter {
+  final Color color;
+  const _BubbleTail(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final b = size.height; // 아래 끝
+    final path = Path()
+      ..moveTo(6 + 14, b - 18) // 말풍선 안쪽에서 시작
+      ..lineTo(6 + 14, b)
+      ..quadraticBezierTo(8, b, 0, b - 1) // 왼쪽 아래 끝으로 휘어 나감
+      ..quadraticBezierTo(6, b - 6, 6, b - 18)
+      ..close();
+    canvas.drawPath(path, Paint()..color = color..isAntiAlias = true);
+  }
+
+  @override
+  bool shouldRepaint(_BubbleTail old) => old.color != color;
 }

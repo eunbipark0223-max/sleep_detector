@@ -10,6 +10,8 @@
 // ═══════════════════════════════════════════════════════════════
 import 'package:flutter/material.dart';
 
+import 'owl_says.dart' show keepWords;
+
 import '../theme.dart';
 
 /// 그림 자리 — 캐릭터 이미지 · 로고가 정해지면 이 자리에 넣는다 (사용자 규칙 11/17)
@@ -41,7 +43,7 @@ class ImageSlot extends StatelessWidget {
         border: Border.all(color: const Color(0xFFB9BFCD), width: 1.2),
       ),
       child: Text(
-        label,
+        keepWords(label), // 단어 중간에서 줄이 안 나뉘게 ('이미 / 지' 방지)
         textAlign: TextAlign.center,
         maxLines: 3,
         overflow: TextOverflow.fade,

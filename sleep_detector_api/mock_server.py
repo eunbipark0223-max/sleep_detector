@@ -678,6 +678,44 @@ async def phone_verify(request: Request):
     return {"verified": True, "phone": phone, "phone_token": token}
 
 
+# (11/18 C) 이메일 찾기 · 비밀번호 찾기 — 진짜 서버(routers/user.py)와 같은 주소 · 같은 응답 모양
+def _mask_email(email: str) -> str:
+    local, _, domain = email.partition("@")
+    keep = local[:2] if len(local) > 2 else local[:1]
+    return f"{keep}{'*' * max(len(local) - len(keep), 2)}@{domain}"
+
+
+@app.post("/users/find-email")
+async def find_email(request: Request):
+    body = await read_body(request)
+    phone = _phone_or_422(body.get("phone"))
+    if not employee_service.use_phone_token(phone, body.get("phone_token")):
+        raise HTTPException(status_code=400, detail="전화번호 인증을 먼저 해 주세요")
+    found = [u for u in USERS.values() if u.get("phone") == phone and u.get("role") != "admin"]
+    if not found:
+        raise HTTPException(status_code=404, detail="이 전화번호로 가입한 계정이 없어요")
+    return {"emails": [{"email": _mask_email(str(u["email"])), "provider": u.get("provider") or "email"} for u in found]}
+
+
+@app.post("/users/password/reset")
+async def reset_password(request: Request):
+    body = await read_body(request)
+    email = _email_or_422(body.get("email"))
+    user = next((u for u in USERS.values() if str(u["email"]).lower() == email.lower()), None)
+    if user is None:
+        raise HTTPException(status_code=404, detail="가입되지 않은 이메일이에요")
+    if user.get("provider") == "google":
+        raise HTTPException(status_code=400, detail="구글 계정은 구글로 계속하기로 로그인해 주세요")
+    try:
+        new_password = check_password_rules(str(body.get("new_password") or ""))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    if not employee_service.use_email_token(email, body.get("email_token")):
+        raise HTTPException(status_code=400, detail="이메일 인증을 먼저 해 주세요")
+    _PASSWORDS[user["id"]] = new_password
+    return {"success": True}
+
+
 @app.post("/users/login")
 async def login(request: Request):
     body = await read_body(request)

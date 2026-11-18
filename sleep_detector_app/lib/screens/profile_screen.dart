@@ -6,7 +6,7 @@
 //
 // [이 파일이 하는 일]
 //   - 신고 건수 → 경고 건수 (fetchMyEvents 로 센다, 못 받으면 '—'), 내 기준 표시만 추가
-//   - AuthService.me() 로 내 정보(이름 · 이메일 · 역할 · 가입 방식 · 가입일)를 보여 준다
+//   - AuthService.me() 로 내 정보(이름 · 이메일 · 전화번호 · 차량번호)를 보여 주고, 아래 '정보 변경' 줄에서 하나씩 바꾼다 (11/18)
 //   - 프로필 사진: 아바타를 누르면 [갤러리에서 선택 · 사진 찍기 · 사진 삭제] (서버 /users/me/photo)
 //   - 연락처 · 차량: 전화번호 · 차량번호를 보여 주고 [수정] 으로 적는다 (서버 PATCH /users/me). 관리자 웹의 '기사에게 연락' 창에 나온다
 //     (생성자의 saveContact 는 테스트 · 미리보기에서 저장을 바꿔 끼우는 입구, 비우면 AuthService.updateProfile)
@@ -267,7 +267,7 @@ class _BodyState extends State<_Body> {
     final saveContact = widget.saveContact ?? AuthService.updateProfile;
     final Widget page = switch (key) {
       'name' => EditFieldScreen(
-          title: '이름 변경',
+          title: '이름',
           label: '이름',
           initial: _text('name'),
           hint: '이름을 입력하세요',
@@ -276,7 +276,7 @@ class _BodyState extends State<_Body> {
           save: (v) => AuthService.updateProfile(name: v),
         ),
       'phone' => EditFieldScreen(
-          title: '전화번호 변경',
+          title: '전화번호',
           label: '전화번호',
           initial: _text('phone'),
           hint: '010-1234-5678',
@@ -288,7 +288,7 @@ class _BodyState extends State<_Body> {
           save: (v) => saveContact(phone: v),
         ),
       _ => EditFieldScreen(
-          title: '차량번호 변경',
+          title: '차량번호',
           label: '차량번호',
           initial: _text('vehicle_no'),
           hint: '12가 3456',
@@ -308,12 +308,12 @@ class _BodyState extends State<_Body> {
     if (done == true) _toast('비밀번호를 바꿨어요');
   }
 
-  String get _providerLabel => _text('provider') == 'google' ? '구글 로그인' : '이메일';
-
-  // created_at 은 2026-10-14T09:30:00 같은 글자 — 날짜만 '2026.10.14'
-  String get _joined {
-    final raw = _text('created_at');
-    return raw.length >= 10 ? raw.substring(0, 10).replaceAll('-', '.') : '—';
+  Future<void> _changeEmail() async {
+    final result = await Navigator.of(context)
+        .push<Map<String, dynamic>>(MaterialPageRoute(builder: (_) => EmailChangeScreen(current: _text('email'))));
+    if (result == null || !mounted) return;
+    setState(() => _user = {..._user, ...result});
+    _toast('이메일을 바꿨어요');
   }
 
   @override
@@ -334,22 +334,22 @@ class _BodyState extends State<_Body> {
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 24),
+        // (11/18 사용자 요청) 애플 설정처럼 줄을 누르면 바로 그 칸 바꾸기 화면 · 안내 글 없음 · 가입일 없음
+        //   구글 계정은 이메일을 구글에서 관리해서 이메일 줄만 누를 수 없음
         _Section(
           title: '내 정보',
           rows: [
             _Row(label: '이름', value: name.isEmpty ? '미등록' : name, onTap: () => _edit('name')),
-            _Row(label: '이메일', value: email), // 로그인 아이디라서 바꿀 수 없음
+            _Row(label: '이메일', value: email, onTap: isGoogle ? null : _changeEmail),
             _Row(label: '전화번호', value: _contactValue('phone'), onTap: () => _edit('phone')),
             _Row(label: '차량번호', value: _contactValue('vehicle_no'), onTap: () => _edit('vehicle_no')),
           ],
-          note: '전화번호 · 차량번호는 졸음 경고 시 관리자 연락에만 사용돼요',
         ),
-        const SizedBox(height: 24),
-        _Section(title: '계정', rows: [
-          _Row(label: '가입 방식', value: _providerLabel),
-          _Row(label: '가입일', value: _joined),
-          if (!isGoogle) _Row(label: '비밀번호 변경', value: '', onTap: _changePassword),
-        ]),
+        // 비밀번호 변경은 그대로 따로 한 줄 (구글 계정은 비밀번호가 없어서 숨김)
+        if (!isGoogle) ...[
+          const SizedBox(height: 24),
+          _Section(title: '계정', rows: [_Row(label: '비밀번호 변경', value: '', onTap: _changePassword)]),
+        ],
         const SizedBox(height: 24),
         _Section(title: '운전 기록', rows: [
           _Row(label: '경고 건수', value: _eventCount == null ? '—' : '$_eventCount건'),
@@ -417,12 +417,11 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-/// 묶음 — 위 작은 회색 제목 · 흰 카드(회색 테두리) 안 줄 목록 · 아래 작은 설명 (애플 설정 그룹)
+/// 묶음 — 위 작은 회색 제목 · 흰 카드(회색 테두리) 안 줄 목록 (애플 설정 그룹)
 class _Section extends StatelessWidget {
   final String title;
   final List<_Row> rows;
-  final String? note;
-  const _Section({required this.title, required this.rows, this.note});
+  const _Section({required this.title, required this.rows});
 
   @override
   Widget build(BuildContext context) {
@@ -447,11 +446,6 @@ class _Section extends StatelessWidget {
             ],
           ]),
         ),
-        if (note != null)
-          Padding(
-            padding: const EdgeInsets.only(left: 6, top: 8),
-            child: Text(note!, style: const TextStyle(fontSize: 12.5, height: 1.4, color: AppColors.textMuted)),
-          ),
       ],
     );
   }

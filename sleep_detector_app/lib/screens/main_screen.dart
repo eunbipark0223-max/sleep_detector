@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../theme.dart';
+import '../widgets/press.dart';
 import '../widgets/chatbot_icon.dart';
 import '../widgets/contact_dialog.dart';
 import '../widgets/web_ui.dart';
@@ -355,7 +356,7 @@ class _MainScreenState extends State<MainScreen> {
     bool chevron = true,
     double height = 56,
   }) {
-    return InkWell(
+    return Press(scale: 0.98, child: InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(22),
       child: SizedBox(
@@ -384,7 +385,7 @@ class _MainScreenState extends State<MainScreen> {
           ]),
         ),
       ),
-    );
+    ));
   }
 
   @override

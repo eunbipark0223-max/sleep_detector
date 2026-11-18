@@ -40,6 +40,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../services/rest_area_service.dart';
 import '../theme.dart';
+import '../widgets/press.dart';
 
 export '../services/rest_area_service.dart' show RestArea, LatLng;
 
@@ -194,6 +195,10 @@ class _MapScreenState extends State<MapScreen> {
   static const Color _bg = AppColors.card;
   static const double _side = 20; // 탭 · 설명 · 목록 공통 좌우 여백
   int _sort = 0; // 0 거리순 · 1 시간순
+  // (11/18 사용자 요청) 위 손잡이(선)를 누르거나 아래로 끌면 목록 시트가 내려감 · 다시 누르거나 위로 끌면 올라옴
+  bool _sheetOpen = true;
+  static const double _openH = 360;
+  static const double _closedH = 92; // 손잡이 + [거리순 | 시간순] 까지만 보임
 
   // 화면에 보일 순서 (지도 마커 번호는 _near 순서 그대로라서 원래 번호를 들고 다님)
   List<int> get _order {
@@ -234,14 +239,24 @@ class _MapScreenState extends State<MapScreen> {
               : Stack(
                   children: [
                     // 지도 — 위쪽 전체 (아래 목록 시트가 겹쳐 올라옴)
-                    Positioned(
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 320),
+                      curve: Curves.easeOutCubic,
                       left: 0,
                       right: 0,
                       top: 0,
-                      bottom: 330,
+                      bottom: (_sheetOpen ? _openH : _closedH) - 30,
                       child: _web == null ? const _NoKeyView() : WebViewWidget(controller: _web!),
                     ),
-                    Positioned(left: 0, right: 0, bottom: 0, height: 360, child: _sheet()),
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 320),
+                      curve: Curves.easeOutCubic,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      height: _sheetOpen ? _openH : _closedH,
+                      child: _sheet(),
+                    ),
                   ],
                 ),
     );
@@ -258,12 +273,22 @@ class _MapScreenState extends State<MapScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 8),
-          Center(
-            child: Container(
-                width: 36, height: 5, decoration: BoxDecoration(color: const Color(0xFFD5D8DF), borderRadius: BorderRadius.circular(99))),
+          // 손잡이 — 누르면 열고 닫기 · 아래로 끌면 닫기 · 위로 끌면 열기
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _sheetOpen = !_sheetOpen),
+            onVerticalDragEnd: (d) {
+              final v = d.primaryVelocity ?? 0;
+              if (v.abs() > 50) setState(() => _sheetOpen = v < 0);
+            },
+            child: SizedBox(
+              height: 27,
+              child: Center(
+                child: Container(
+                    width: 36, height: 5, decoration: BoxDecoration(color: const Color(0xFFD5D8DF), borderRadius: BorderRadius.circular(99))),
+              ),
+            ),
           ),
-          const SizedBox(height: 14),
           // 애플 세그먼트 탭 — 거리순 | 시간순
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: _side),
@@ -273,7 +298,7 @@ class _MapScreenState extends State<MapScreen> {
               onSelect: (i) => setState(() => _sort = i),
             ),
           ),
-          Padding(
+          if (_sheetOpen) Padding(
             padding: const EdgeInsets.fromLTRB(_side + 2, 12, _side, 6),
             child: Text(
               _roadLoading
@@ -284,7 +309,7 @@ class _MapScreenState extends State<MapScreen> {
               style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
             ),
           ),
-          Expanded(
+          if (_sheetOpen) Expanded(
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(_side, 4, _side, 16),
               itemCount: order.length,
@@ -303,7 +328,7 @@ class _MapScreenState extends State<MapScreen> {
     final a = near.area;
     final selected = _selected == i;
     final dist = '거리 ${near.bestKm.toStringAsFixed(1)}km${near.roadMin == null ? '' : ' · ${near.roadMin}분'}';
-    return Material(
+    return Press(child: Material(
       color: AppColors.card,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -316,17 +341,19 @@ class _MapScreenState extends State<MapScreen> {
           padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
           child: Row(
             children: [
-              Container(
+              AnimatedContainer(
                 width: 28,
                 height: 28,
                 alignment: Alignment.center,
+                duration: const Duration(milliseconds: 200),
+                // (11/18 사용자 요청) 누른 쉼터는 숫자 동그라미가 남색으로 채워짐 · 안 누르면 원래 모양 그대로
                 decoration: BoxDecoration(
-                    color: rank == 1 ? AppColors.navy : AppColors.field, shape: BoxShape.circle),
+                    color: rank == 1 || selected ? AppColors.navy : AppColors.field, shape: BoxShape.circle),
                 child: Text('$rank',
                     style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: rank == 1 ? Colors.white : AppColors.textSecondary)),
+                        color: rank == 1 || selected ? Colors.white : AppColors.textSecondary)),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -371,7 +398,7 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ),
       ),
-    );
+    ));
   }
 }
 

@@ -255,6 +255,38 @@ class AuthService {
     if (res.statusCode != 200) throw _error(res);
   }
 
+  /// (11/18 C) 이메일 변경 1단계 — 새 이메일 + 지금 비밀번호 → 새 이메일로 인증번호. 시연용 서버는 번호(dev_code)를 돌려준다
+  static Future<String?> requestEmailChange({required String newEmail, required String currentPassword}) async {
+    final res = await _send(() async => http.post(_uri('/users/me/email/request'),
+        headers: await authHeaders(), body: jsonEncode({'new_email': newEmail, 'current_password': currentPassword})));
+    if (res.statusCode != 200) throw _error(res);
+    return _decode(res)['dev_code']?.toString();
+  }
+
+  /// (11/18 C) 이메일 변경 2단계 — 인증번호가 맞으면 바뀐 내 정보
+  static Future<Map<String, dynamic>> confirmEmailChange({required String newEmail, required String code}) async {
+    final res = await _send(() async => http.post(_uri('/users/me/email/confirm'),
+        headers: await authHeaders(), body: jsonEncode({'new_email': newEmail, 'code': code})));
+    if (res.statusCode != 200) throw _error(res);
+    return _decode(res);
+  }
+
+  /// (11/18 C) 이메일 찾기 — 전화번호 인증 표(phone_token)로 그 번호로 가입한 이메일(가려진 것) 목록
+  static Future<List<Map<String, dynamic>>> findEmail({required String phone, required String phoneToken}) async {
+    final res = await _send(() => http.post(_uri('/users/find-email'),
+        headers: _json, body: jsonEncode({'phone': phone, 'phone_token': phoneToken})));
+    if (res.statusCode != 200) throw _error(res);
+    final list = _decode(res)['emails'];
+    return list is List ? list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : const [];
+  }
+
+  /// (11/18 C) 비밀번호 찾기 — 가입한 이메일 인증 표(email_token)로 새 비밀번호 저장
+  static Future<void> resetPassword({required String email, required String emailToken, required String newPassword}) async {
+    final res = await _send(() => http.post(_uri('/users/password/reset'),
+        headers: _json, body: jsonEncode({'email': email, 'email_token': emailToken, 'new_password': newPassword})));
+    if (res.statusCode != 200) throw _error(res);
+  }
+
   // ── 프로필 사진 (서버: POST · GET · DELETE /users/me/photo) ──────────────
   /// 내 프로필 사진 바이트. 사진이 없으면(404) null.
   /// 사진은 로그인 토큰이 있어야 받을 수 있어서(주소만으로는 안 열림) Image.network 대신 바이트로 받아 Image.memory 로 그린다.

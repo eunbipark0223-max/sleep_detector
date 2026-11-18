@@ -45,6 +45,7 @@ import config
 from schema.request  import (
     SignupRequest, LoginRequest, GoogleLoginRequest, ProfileUpdate, PasswordChange,
     EmployeeCheckRequest, PhoneSendRequest, PhoneVerifyRequest, EmailSendRequest, EmailVerifyRequest,
+    FindEmailRequest, PasswordResetRequest, EmailChangeRequest, EmailChangeConfirm,
 )
 from services import employee_service
 from schema.response import UserResponse, LoginResponse
@@ -163,6 +164,39 @@ def verify_email_code_handler(body: EmailVerifyRequest):
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return {"verified": True, "email": str(body.email), "email_token": token}
+
+
+def _mask_email(email: str) -> str:
+    """abcdef@test.com → ab****@test.com (앞 2글자만 보여 줌)"""
+    local, _, domain = email.partition("@")
+    keep = local[:2] if len(local) > 2 else local[:1]
+    return f"{keep}{'*' * max(len(local) - len(keep), 2)}@{domain}"
+
+
+@router.post("/users/find-email", status_code=status.HTTP_200_OK)
+def find_email_handler(body: FindEmailRequest, session: Session = Depends(get_session)):
+    """(11/18 C) 이메일 찾기 — 전화번호 인증(phone_token)을 마치면 그 번호로 가입한 이메일을 가려서 알려 줌"""
+    if not employee_service.use_phone_token(body.phone, body.phone_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="전화번호 인증을 먼저 해 주세요")
+    users = session.scalars(select(User).where(User.phone == body.phone, User.role == "user")).all()
+    if not users:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="이 전화번호로 가입한 계정이 없어요")
+    return {"emails": [{"email": _mask_email(u.email), "provider": u.provider or "email"} for u in users]}
+
+
+@router.post("/users/password/reset", status_code=status.HTTP_200_OK)
+def reset_password_handler(body: PasswordResetRequest, session: Session = Depends(get_session)):
+    """(11/18 C) 비밀번호 찾기 — 가입한 이메일로 인증(email_token)을 마치면 새 비밀번호로 바꿈. 구글 계정은 거절"""
+    user = session.scalar(select(User).where(User.email == str(body.email)))
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="가입되지 않은 이메일이에요")
+    if not user.hashed_password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="구글 계정은 구글로 계속하기로 로그인해 주세요")
+    if not employee_service.use_email_token(str(body.email), body.email_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이메일 인증을 먼저 해 주세요")
+    user.hashed_password = hash_password(body.new_password)
+    session.commit()
+    return {"success": True}
 
 
 @router.post(
@@ -302,6 +336,43 @@ def change_my_password_handler(
     user.hashed_password = hash_password(body.new_password)
     session.commit()
     return {"success": True}
+
+@router.post("/users/me/email/request", status_code=status.HTTP_200_OK)
+def request_email_change_handler(
+    body   : EmailChangeRequest,
+    session: Session = Depends(get_session),
+    user   : User    = Depends(get_current_user),
+):
+    """(11/18 C) 이메일 변경 1단계 — 지금 비밀번호 확인 후 새 이메일로 인증번호 (시연용: dev_code 로 돌려줌). 모의 서버(D)와 같은 모양"""
+    if not user.hashed_password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="구글 계정은 이메일을 바꿀 수 없어요")
+    if not verify_password(body.current_password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="지금 비밀번호가 맞지 않아요")
+    new_email = str(body.new_email)
+    if new_email == user.email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="지금 쓰는 이메일과 같아요")
+    if session.scalar(select(User).where(User.email == new_email)):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 가입된 이메일이에요")
+    code = employee_service.send_email_code(new_email)
+    return {"sent": True, "dev_code": code, "expires_sec": employee_service.CODE_TTL_SEC}
+
+@router.post("/users/me/email/confirm", status_code=status.HTTP_200_OK)
+def confirm_email_change_handler(
+    body   : EmailChangeConfirm,
+    session: Session = Depends(get_session),
+    user   : User    = Depends(get_current_user),
+):
+    """(11/18 C) 이메일 변경 2단계 — 새 이메일로 받은 인증번호가 맞으면 바꿈"""
+    new_email = str(body.new_email)
+    try:
+        employee_service.verify_email_code(new_email, body.code)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    if session.scalar(select(User).where(User.email == new_email, User.id != user.id)):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 가입된 이메일이에요")
+    user.email = new_email
+    session.commit()
+    return _me_dict(user)
 
 @router.post("/users/me/photo", status_code=status.HTTP_200_OK)
 async def upload_my_photo_handler(

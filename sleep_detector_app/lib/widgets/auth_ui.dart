@@ -8,6 +8,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
+import 'press.dart';
 import 'package:flutter/services.dart';
 
 import '../theme.dart';
@@ -39,7 +40,7 @@ class AuthTinyButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final on = onPressed != null;
-    return DecoratedBox(
+    return Press(enabled: on, scale: 0.92, child: DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
         boxShadow: on ? const [BoxShadow(color: Color(0x0D1F2A5C), blurRadius: 2, offset: Offset(0, 1))] : null,
@@ -59,7 +60,7 @@ class AuthTinyButton extends StatelessWidget {
         ),
         child: Text(text),
       ),
-    );
+    ));
   }
 }
 
@@ -309,7 +310,7 @@ class AuthButton extends StatelessWidget {
         Text(text, style: textStyle),
       ],
     );
-    return ElevatedButton(
+    return Press(enabled: onPressed != null, child: ElevatedButton(
       onPressed: onPressed,
       style: ElevatedButton.styleFrom(
         minimumSize: const Size.fromHeight(AuthUi.controlHeight), // 입력칸과 같은 높이 — 로그인 · 가입하기 · 사번 확인 · 구글 모두 같게
@@ -322,6 +323,6 @@ class AuthButton extends StatelessWidget {
         shape: shape,
       ),
       child: child,
-    );
+    ));
   }
 }

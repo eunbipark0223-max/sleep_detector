@@ -32,6 +32,7 @@ import 'package:http/http.dart' as http;
 
 import '../services/auth_service.dart';
 import '../theme.dart';
+import '../widgets/press.dart';
 import '../widgets/owl_says.dart' show keepWords;
 import '../widgets/web_ui.dart';
 
@@ -172,8 +173,6 @@ class _ChatScreenState extends State<ChatScreen> {
   // ── 화면 (11/16 Figma 시안 '졸음운전 감지 앱5' 규정 도우미 — 디자인만. 서버 호출 · 대화 흐름은 위 그대로) ──
   static const Color _bg = AppColors.background; // (11/17 R안) readdy 바탕
 
-  bool get _started => _messages.any((m) => m.isMine);
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -188,19 +187,14 @@ class _ChatScreenState extends State<ChatScreen> {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               children: [
                 _greeting(),
-                // 추천 질문 — 처음에는 인사 아래 2 × 2 카드
-                if (!_started && _suggestions.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  _suggestionGrid(),
-                ],
                 const SizedBox(height: 14),
                 for (final m in _messages.skip(1)) _bubble(m),
                 if (_isSending) _typingBubble(),
               ],
             ),
           ),
-          // 대화가 시작된 뒤 남은 추천 질문 — 입력창 위 한 줄 (답을 가리지 않게)
-          if (_started && _suggestions.isNotEmpty && !_isSending) _suggestionRow(),
+          // (11/18 사용자 요청) 빠른 질문은 처음부터 입력창 바로 위 한 줄 — 옆으로 밀어서 다 볼 수 있게
+          if (_suggestions.isNotEmpty && !_isSending) _suggestionRow(),
           _inputBar(),
         ],
       ),
@@ -246,7 +240,7 @@ class _ChatScreenState extends State<ChatScreen> {
   );
 
   // 빠른 질문 알약 — 흰 바탕 · 옅은 회색 테두리 · 남색 글자
-  Widget _quickPill(String q) => Material(
+  Widget _quickPill(String q) => Press(child: Material(
         color: AppColors.card,
         shape: const StadiumBorder(side: BorderSide(color: AppColors.cardBorder)),
         child: InkWell(
@@ -257,23 +251,16 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Text(q, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.navy)),
           ),
         ),
-      );
+      ));
 
-  // 처음 — 인사 말풍선 아래 빠른 질문 (말풍선과 같은 왼쪽 선에서 시작, 넘치면 다음 줄)
-  Widget _suggestionGrid() {
-    return Padding(
-      padding: const EdgeInsets.only(left: 50),
-      child: Wrap(spacing: 8, runSpacing: 8, children: [for (final q in _suggestions) _quickPill(q)]),
-    );
-  }
-
-  // 대화가 시작된 뒤 — 입력창 위 한 줄 (옆으로 넘김)
+  // 입력창 위 한 줄 — 옆으로 밀어서 넘김 (화면 끝에서 살짝 잘려 보여서 더 있다는 걸 알 수 있음)
   Widget _suggestionRow() {
     return SizedBox(
       height: 54,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+        physics: const BouncingScrollPhysics(), // 애플처럼 끝에서 살짝 튕김
         children: [
           for (final q in _suggestions) Padding(padding: const EdgeInsets.only(right: 8), child: _quickPill(q)),
         ],
@@ -394,7 +381,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            Material(
+            Press(enabled: !_isSending, scale: 0.9, child: Material(
               color: _isSending ? AppColors.textMuted : AppColors.navy,
               shape: const CircleBorder(),
               child: InkWell(
@@ -402,7 +389,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 onTap: _isSending ? null : () => _send(_inputController.text),
                 child: const SizedBox(width: 46, height: 46, child: Icon(Icons.arrow_upward_rounded, size: 24, color: Colors.white)),
               ),
-            ),
+            )),
           ],
         ),
       ),

@@ -370,9 +370,15 @@ class _ResumeInCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        AuthButton(text: '이어서 운행', onPressed: onResume),
+        // (11/18 사용자 요청) 운행 전과 같은 자리 — 위 [운행 시작] · 아래 [이어서 운행]. 지금 할 일(이어서 운행)이 남색
+        AuthButton(
+          text: '새로운 운행 시작',
+          primary: false,
+          onPressed: onNew,
+          leading: const Icon(Icons.photo_camera_outlined, size: 20, color: AppColors.textPrimary),
+        ),
         const SizedBox(height: 10),
-        AuthButton(text: '새로운 운행 시작', primary: false, onPressed: onNew),
+        AuthButton(text: '이어서 운행', onPressed: onResume),
       ],
     );
   }
