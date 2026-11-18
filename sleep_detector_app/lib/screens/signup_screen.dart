@@ -166,7 +166,7 @@ class _SignupScreenState extends State<SignupScreen> {
     } on AuthException catch (e) {
       if (mounted) setState(() => _empError = e.message);
     } catch (_) {
-      if (mounted) setState(() => _empError = '사번을 확인하지 못했어요. 잠시 뒤 다시 시도해 주세요');
+      if (mounted) setState(() => _empError = '사번을 확인하지 못했어요\n잠시 뒤 다시 시도해 주세요');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -190,7 +190,7 @@ class _SignupScreenState extends State<SignupScreen> {
     } on AuthException catch (e) {
       if (mounted) setState(() => v.msg = e.message);
     } catch (_) {
-      if (mounted) setState(() => v.msg = '인증번호를 보내지 못했어요. 잠시 뒤 다시 시도해 주세요');
+      if (mounted) setState(() => v.msg = '인증번호를 보내지 못했어요\n잠시 뒤 다시 시도해 주세요');
     } finally {
       if (mounted) setState(() => v.busy = false);
     }
@@ -218,7 +218,7 @@ class _SignupScreenState extends State<SignupScreen> {
     } on AuthException catch (e) {
       if (mounted) setState(() => v.msg = e.message);
     } catch (_) {
-      if (mounted) setState(() => v.msg = '인증하지 못했어요. 잠시 뒤 다시 시도해 주세요');
+      if (mounted) setState(() => v.msg = '인증하지 못했어요\n잠시 뒤 다시 시도해 주세요');
     } finally {
       if (mounted) setState(() => v.busy = false);
     }
@@ -260,7 +260,7 @@ class _SignupScreenState extends State<SignupScreen> {
     } on AuthException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (_) {
-      if (mounted) setState(() => _error = '가입하지 못했어요. 잠시 뒤 다시 시도해 주세요');
+      if (mounted) setState(() => _error = '가입하지 못했어요\n잠시 뒤 다시 시도해 주세요');
     } finally {
       if (mounted) setState(() => _loading = false);
     }

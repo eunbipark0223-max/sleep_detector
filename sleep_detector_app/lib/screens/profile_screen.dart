@@ -6,7 +6,7 @@
 //
 // [이 파일이 하는 일]
 //   - 신고 건수 → 경고 건수 (fetchMyEvents 로 센다, 못 받으면 '—'), 내 기준 표시만 추가
-//   - AuthService.me() 로 내 정보(이름 · 이메일 · 전화번호 · 차량번호)를 보여 주고, 아래 '정보 변경' 줄에서 하나씩 바꾼다 (11/18)
+//   - AuthService.me() 로 내 정보(이름 · 이메일 · 전화번호 · 차량번호)를 보여 주고, 줄을 누르면 그 칸 바꾸기 화면 (11/18)
 //   - 프로필 사진: 아바타를 누르면 [갤러리에서 선택 · 사진 찍기 · 사진 삭제] (서버 /users/me/photo)
 //   - 연락처 · 차량: 전화번호 · 차량번호를 보여 주고 [수정] 으로 적는다 (서버 PATCH /users/me). 관리자 웹의 '기사에게 연락' 창에 나온다
 //     (생성자의 saveContact 는 테스트 · 미리보기에서 저장을 바꿔 끼우는 입구, 비우면 AuthService.updateProfile)
@@ -267,7 +267,7 @@ class _BodyState extends State<_Body> {
     final saveContact = widget.saveContact ?? AuthService.updateProfile;
     final Widget page = switch (key) {
       'name' => EditFieldScreen(
-          title: '이름',
+          title: '이름 변경',
           label: '이름',
           initial: _text('name'),
           hint: '이름을 입력하세요',
@@ -276,7 +276,7 @@ class _BodyState extends State<_Body> {
           save: (v) => AuthService.updateProfile(name: v),
         ),
       'phone' => EditFieldScreen(
-          title: '전화번호',
+          title: '전화번호 변경',
           label: '전화번호',
           initial: _text('phone'),
           hint: '010-1234-5678',
@@ -284,11 +284,10 @@ class _BodyState extends State<_Body> {
           inputFormatters: [PhoneHyphenFormatter()],
           isValid: (s) => ContactRules.checkPhone(s) == null,
           invalidNote: '전화번호 형식이 올바르지 않아요',
-          note: '졸음 경고 시 관리자 연락에만 사용돼요',
           save: (v) => saveContact(phone: v),
         ),
       _ => EditFieldScreen(
-          title: '차량번호',
+          title: '차량번호 변경',
           label: '차량번호',
           initial: _text('vehicle_no'),
           hint: '12가 3456',
@@ -348,7 +347,7 @@ class _BodyState extends State<_Body> {
         // 비밀번호 변경은 그대로 따로 한 줄 (구글 계정은 비밀번호가 없어서 숨김)
         if (!isGoogle) ...[
           const SizedBox(height: 24),
-          _Section(title: '계정', rows: [_Row(label: '비밀번호 변경', value: '', onTap: _changePassword)]),
+          _Section(title: '로그인 및 보안', rows: [_Row(label: '비밀번호 변경', value: '', onTap: _changePassword)]),
         ],
         const SizedBox(height: 24),
         _Section(title: '운전 기록', rows: [

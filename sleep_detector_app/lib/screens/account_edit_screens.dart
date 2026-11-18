@@ -15,7 +15,7 @@ import '../widgets/auth_ui.dart';
 import '../widgets/verify_field.dart';
 
 class EditFieldScreen extends StatefulWidget {
-  final String title; // '이름' (11/18 사용자 요청: '이름 변경' → '이름')
+  final String title; // '이름 변경'
   final String label; // '이름'
   final String initial;
   final String hint;
@@ -77,36 +77,93 @@ class _EditFieldScreenState extends State<EditFieldScreen> {
     }
   }
 
+  // (11/18 사용자 요청 · 아이폰 설정 > 이름 바꾸기처럼)
+  //   위 가운데 '이름 변경' · 오른쪽 위 [완료] (바뀌고 맞을 때만 남색) · 둥근 칸 하나 안에 입력 + 지우기(ⓧ)
+  //   칸 위 작은 회색 이름 · 칸 아래 작은 안내 / 틀리면 빨간 안내
   @override
   Widget build(BuildContext context) {
     final text = _c.text.trim();
+    final canSave = _ok && _changed && !_saving;
+    final bad = text.isNotEmpty && !_ok;
     return Scaffold(
       backgroundColor: AppColors.card,
-      appBar: AppBar(title: Text(widget.title), centerTitle: true),
+      appBar: AppBar(
+        title: Text(widget.title),
+        centerTitle: true,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: _saving
+                ? const Padding(
+                    padding: EdgeInsets.all(14),
+                    child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.navy)))
+                : TextButton(
+                    onPressed: canSave ? _save : null,
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.navy,
+                      disabledForegroundColor: AppColors.textMuted,
+                      textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                    ),
+                    child: const Text('완료'),
+                  ),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
           children: [
-            AuthField(
-              label: widget.label,
-              controller: _c,
-              hint: widget.hint,
-              enabled: !_saving,
-              keyboardType: widget.keyboardType,
-              inputFormatters: widget.inputFormatters,
-              textInputAction: TextInputAction.done,
-              onFieldSubmitted: (_) => _save(),
-              onChanged: (_) => setState(() {}),
-              valid: text.isEmpty ? null : _ok,
-              invalidNote: widget.invalidNote,
-              helper: widget.note,
+            Padding(
+              padding: const EdgeInsets.only(left: 16, bottom: 8),
+              child: Text(widget.label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textMuted)),
             ),
-            if (_error != null) AuthNote(_error!, error: true),
-            const SizedBox(height: 24),
-            if (_saving)
-              const SizedBox(height: AuthUi.controlHeight, child: Center(child: CircularProgressIndicator(color: AppColors.navy)))
-            else
-              AuthButton(text: '저장', onPressed: _ok && _changed ? _save : null),
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.card,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: bad ? AuthUi.error : AppColors.cardBorder, width: bad ? 1.4 : 1),
+              ),
+              padding: const EdgeInsets.only(left: 16, right: 4),
+              child: Row(children: [
+                Expanded(
+                  child: TextField(
+                    controller: _c,
+                    autofocus: true,
+                    enabled: !_saving,
+                    keyboardType: widget.keyboardType,
+                    inputFormatters: widget.inputFormatters,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _save(),
+                    onChanged: (_) => setState(() => _error = null),
+                    style: const TextStyle(fontSize: 17, color: AppColors.textPrimary),
+                    decoration: InputDecoration(
+                      hintText: widget.hint,
+                      hintStyle: const TextStyle(color: AppColors.textMuted),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      filled: false,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                ),
+                if (_c.text.isNotEmpty && !_saving)
+                  IconButton(
+                    onPressed: () => setState(() {
+                      _c.clear();
+                      _error = null;
+                    }),
+                    tooltip: '지우기',
+                    icon: const Icon(Icons.cancel_rounded, size: 20, color: Color(0xFFC4C7CE)),
+                  ),
+              ]),
+            ),
+            if (bad)
+              AuthNote(widget.invalidNote, error: true)
+            else if (_error != null)
+              AuthNote(_error!, error: true)
+            else if (widget.note != null)
+              AuthNote(widget.note!, color: AppColors.textMuted),
           ],
         ),
       ),
@@ -172,7 +229,7 @@ class _PasswordScreenState extends State<PasswordScreen> {
     void refresh(String _) => setState(() {});
     return Scaffold(
       backgroundColor: AppColors.card,
-      appBar: AppBar(title: const Text('비밀번호'), centerTitle: true),
+      appBar: AppBar(title: const Text('비밀번호 변경'), centerTitle: true),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
@@ -252,7 +309,7 @@ class _EmailChangeScreenState extends State<EmailChangeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.card,
-      appBar: AppBar(title: const Text('이메일'), centerTitle: true),
+      appBar: AppBar(title: const Text('이메일 변경'), centerTitle: true),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),

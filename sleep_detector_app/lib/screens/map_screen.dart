@@ -123,7 +123,7 @@ class _MapScreenState extends State<MapScreen> {
       if (areas.isEmpty) throw Exception('졸음쉼터 데이터가 비어 있어요');
       final me = await (widget.getPosition ?? _defaultPosition)();
       if (!mounted) return;
-      if (me == null) throw Exception('내 위치를 알 수 없어요. 위치 권한 · GPS 를 켜 주세요');
+      if (me == null) throw Exception('내 위치를 알 수 없어요\n위치 권한 · GPS 를 켜 주세요');
       // 1) 직선 거리 목록을 바로 보여 주고  2) 도로 거리가 오면 빨리 도착하는 순으로 바꿈 (안 오면 그대로)
       final candidates = nearestFrom(areas, me, n: roadCandidates);
       final near = candidates.take(_count).toList();

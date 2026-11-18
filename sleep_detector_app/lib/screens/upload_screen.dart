@@ -75,7 +75,7 @@ class _UploadScreenState extends State<UploadScreen> {
       if (!mounted) return;
       setState(() {
         _analyzing = false;
-        _error ??= '사진을 불러오지 못했어요. 사진 · 카메라 권한을 확인해 주세요';
+        _error ??= '사진을 불러오지 못했어요\n사진 · 카메라 권한을 확인해 주세요';
       });
     }
   }

@@ -147,7 +147,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = '카메라를 열 수 없어요. 카메라 권한을 확인해 주세요';
+        _error = '카메라를 열 수 없어요\n카메라 권한을 확인해 주세요';
         _phase = _Phase.cameraFailed;
       });
     }
@@ -258,7 +258,8 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     return PopScope(
       canPop: canLeave, // 측정 중에는 뒤로 가기로 나갈 수 없다
       child: Scaffold(
-        appBar: AppBar(title: const Text('얼굴 인식'), centerTitle: true, automaticallyImplyLeading: canLeave),
+        appBar: AppBar(title: const Text('얼굴 등록'), // (11/18 사용자 요청) 휴대폰 Face ID 설정과 같은 표준 말
+        centerTitle: true, automaticallyImplyLeading: canLeave),
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -326,7 +327,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
         return [
           const Icon(Icons.check_circle_outline, size: 56, color: AppColors.normal),
           const SizedBox(height: 12),
-          const Text('얼굴 인식이 완료됐어요', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          const Text('얼굴 등록이 완료됐어요', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
           const SizedBox(height: 6),
           Text(_result, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, color: AppColors.textSecondary)),
           if (_note.isNotEmpty) ...[

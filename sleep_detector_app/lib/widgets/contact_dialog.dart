@@ -99,7 +99,7 @@ class _ContactDialogState extends State<ContactDialog> {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _error = '저장하지 못했어요. 잠시 뒤 다시 시도해 주세요';
+        _error = '저장하지 못했어요\n잠시 뒤 다시 시도해 주세요';
       });
     }
   }

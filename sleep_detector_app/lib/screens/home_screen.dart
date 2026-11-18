@@ -396,7 +396,7 @@ class _OldResumeInCard extends StatelessWidget {
     if (state.resting) {
       final min = (state.restLeftSec / 60).ceil();
       return state.restLeftSec <= 0
-          ? '충분히 쉬었어요. [운행 재개]를 눌러 주세요.'
+          ? '충분히 쉬었어요\n[운행 재개]를 눌러 주세요'
           : '쉬는 중이에요 (약 $min분 남음)';
     }
     if (state.stage >= 3) return '관리자가 조치하기 전까지 3단계가 이어져요.';

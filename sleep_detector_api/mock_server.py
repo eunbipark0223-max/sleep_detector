@@ -230,9 +230,9 @@ def make_ai_text(stage: int, reason: str, count: int, closed_sec: float, perclos
     if stage == 1:
         voice = f"{closed}초 동안 눈을 감았어요. 정신 차려 주세요." if closed >= 1 else "눈을 자주 감고 있어요. 정신 차려 주세요."
     elif stage == 2:
-        voice = f"10분 새 {count}번 졸았어요. 가까운 쉼터에서 쉬어 가세요."
+        voice = "쉼터에서 쉬어 가세요."   # (11/18 C) 진짜 서버 agent_service._template_voice 와 같게 — 이름 + 할 일만
     else:
-        voice = f"10분 새 {count}번 졸았어요. 지금 바로 정차하세요."
+        voice = "지금 바로 정차하세요."
     return {
         "summary": summary, "guidance": GUIDANCE[stage], "driver_voice": voice,
         "report": {
@@ -722,7 +722,11 @@ async def login(request: Request):
     email = str(body.get("email") or body.get("username") or "").strip()  # OAuth2 폼이면 username
     if not email:
         raise HTTPException(status_code=422, detail="email 이 필요합니다")
-    return login_response(add_user(email, email.split("@")[0], "admin" if email.startswith("admin") else "user"))
+    user = add_user(email, email.split("@")[0], "admin" if email.startswith("admin") else "user")
+    # (11/18 C) 화면 확인용 — 경고 기록이 하나도 없는 기사는 로그인할 때 운행 기록(최근 3주)을 자동으로 채움
+    if user["role"] != "admin" and not any(e["user_id"] == user["id"] for e in EVENTS):
+        demo_history(user["id"])
+    return login_response(user)
 
 
 @app.get("/users/google/config")
