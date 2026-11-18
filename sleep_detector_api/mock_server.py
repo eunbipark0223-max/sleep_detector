@@ -8,6 +8,9 @@
 #   - 진짜 서버와 같은 주소 · 같은 JSON 칸 이름으로 대답해서 C(앱) 가 서버 없이도 화면을 만들 수 있게 한다
 #   - 구현한 API (기획안 9장 · 각 router 파일 맨 위 주석 그대로)
 #       POST /users/signup · /users/login · /users/google  ·  GET · PATCH /users/me (PATCH = 전화번호 · 차량번호)
+#       POST /admin/signup/check · /admin/signup   관리자 회원가입 (11/17): 회사가 정한 '인증된 사번'(모의 기본 20240001~20240005)만, 한 사번은 한 번만
+#       POST /users/me/email/request · /users/me/email/confirm   이메일 변경 (11/17): 새 이메일 + 지금 비밀번호 → 6자리 인증번호 → 확인. 구글 계정은 거절.
+#                          모의라서 메일은 안 보내고 서버 화면(로그)에 인증번호를 찍고, 응답의 dev_code 로도 알려 준다 (진짜 서버는 메일로만 보내고 dev_code 는 주지 않음)
 #       POST /detect                       졸음 의심 사진 1장 + reason · closed_sec · perclos · eye_open_prob · latitude · longitude (Form)
 #       POST /drive/start · /drive/calibrate · /drive/ping · /drive/rest · /drive/resume
 #       GET  /drive/state · POST /drive/end   앱을 껐다 켰을 때 [이어서 운행] (진짜 서버와 같은 모양)
@@ -35,7 +38,7 @@
 #   - JSON 칸 이름은 팀 약속이라 바꾸지 않는다 (sleep_response.dart · drive_status.dart · sleep_event.dart 와 같아야 함)
 #   - 기획안에 칸 이름이 없는 곳(로그인 응답 · /events/my 한 줄 · /admin/*)은 D 가 정했음 → 맨 아래 [임시로 정한 것] 표를 C 와 확인
 #   - 시간 기준은 시험하기 좋게 줄여 둠: 휴식 15분 → 10초 (MOCK_REST_SEC), 1단계 자동 해제 10분 → 60초 (MOCK_WINDOW_SEC),
-#     음성 퀴즈 간격 2분 → 20초 (MOCK_QUIZ_GAP_SEC). 진짜 값은 config.py (REST_MIN · WINDOW_MIN · VOICE_QUIZ_GAP_SEC)
+#     음성 퀴즈는 2단계에 들어갈 때마다 (11/18 2분 간격 뺌, 진짜 서버와 같음). 진짜 값은 config.py (REST_MIN · WINDOW_MIN)
 #   - 서버를 다시 켜면 메모리가 비워진다 (진짜 서버의 sleep_state 와 같음)
 #
 # 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
@@ -53,16 +56,15 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 
-from schema.request import PasswordChange, ProfileUpdate, format_phone, format_vehicle_no   # 전화번호 · 차량번호 형식 검사는 진짜 서버와 같은 것을 쓴다
+from schema.request import PasswordChange, ProfileUpdate, check_password_rules, format_phone, format_vehicle_no   # 전화번호 · 차량번호 형식 검사는 진짜 서버와 같은 것을 쓴다
 from services import employee_service   # (11/17 C) 시연용 사번 목록 · 전화번호 인증 (DB 없이 씀)
 
 # ── 기준 숫자 (진짜 서버는 config.py 에서 가져옴) ──────────────────
 WINDOW_SEC = int(os.getenv("MOCK_WINDOW_SEC", "60"))          # 1단계 자동 해제 · 졸음 횟수를 세는 구간 (진짜 600)
 REST_SEC = int(os.getenv("MOCK_REST_SEC", "10"))              # 휴식 시간 (진짜 900)
 PRE_WARN_ON = os.getenv("PRE_WARN_ON", "false").lower() in ("1", "true", "yes")  # (11/15) 예비 경고 기본 꺼짐
-QUIZ_GAP_SEC = int(os.getenv("MOCK_QUIZ_GAP_SEC", "20"))      # 음성 퀴즈 최소 간격 (진짜 120)
 DRIVE_LIMIT_MIN = 120                                         # 연속 운전 휴게 알림
 CALIB_FRAMES = 5                                              # 개인 기준 측정 사진 수
 LISTEN_SEC = 10                                               # 음성 퀴즈 듣는 시간 (10/29 STT 시험으로 7 → 10)
@@ -315,7 +317,7 @@ def make_quiz(user_id: int, qtype: Optional[str] = None, event_id: Optional[int]
             a, b = random.randint(10, 89), random.randint(10, 89)
             if a % 10 + b % 10 <= 9 and a // 10 + b // 10 <= 9:
                 break
-        speak = f"잠을 깨워 볼게요. {_ko_number(a)} 더하기 {_ko_number(b)}는?"
+        speak = f"깨어 있는지 확인할게요. {_ko_number(a)} 더하기 {_ko_number(b)}는?"
         display, asked, answer = f"{a} + {b} = ?", f"{a}+{b}", a + b
     quiz_id = "q_" + uuid.uuid4().hex[:4]
     QUIZZES[quiz_id] = {"user_id": user_id, "type": qtype, "answer": answer, "asked": asked, "event_id": event_id}
@@ -395,6 +397,56 @@ def seed() -> None:
               lat=37.4300, lng=127.1300, created_at=_now_text(now - timedelta(minutes=50)))
 
 
+def seed_more() -> None:
+    """(11/16) 관리자 화면 시험용: 기사를 더 늘리고 최근 7일 경고를 흩어 놓는다 (목록 · 그래프가 비어 보이지 않게). 항상 같은 값 (random 씨앗 고정)."""
+    now = datetime.now()
+    people = [
+        ("park@test.com", "박정민", "010-3412-1182", "70바 1182"), ("seo@test.com", "서준호", "010-2287-6834", "12다 6834"),
+        ("kang@test.com", "강민서", "010-5521-3391", "25가 3391"), ("lee@test.com", "이서윤", "010-8830-3320", "91사 3320"),
+        ("choi@test.com", "최도윤", "010-7742-9021", "83아 9021"), ("jung@test.com", "정예린", "010-6615-2275", "70바 2275"),
+        ("han@test.com", "한승우", "010-9104-1190", "82가 1190"), ("yoon@test.com", "윤지호", "010-4478-5547", "91사 5547"),
+        ("oh@test.com", "오민재", "010-3369-7712", "83아 7712"),
+    ]
+    spots = [(37.4021, 127.1088), (37.4105, 127.1190), (37.3950, 127.1100), (37.4300, 127.1300), (36.9921, 127.9246)]
+    rng = random.Random(7)
+
+    def make(user_id: int, stage: int, reason: str, when: datetime, status: str, r: Optional[random.Random] = None) -> None:
+        lat, lng = (r or rng).choice(spots)
+        ai = make_ai_text(stage, reason, min(stage + 1, 3), 2.0, 0.3, 120, lat, lng)
+        if reason == "no_response":
+            ai["report"]["situation"] = "운전 중 음성 퀴즈에 2번 답하지 못함"
+            ai["summary"] = "운전 중 음성 퀴즈에 2번 답하지 못했습니다."
+        add_event(user_id, stage, reason, ai["report"], summary=ai["summary"], guidance=ai["guidance"], ear=0.18, method="ear",
+                  perclos=0.3, eye_closed_prob=0.7, lat=lat, lng=lng, status=status, created_at=_now_text(when))
+
+    users = [add_user(email, name, phone=phone, vehicle_no=plate) for email, name, phone, plate in people]
+    for u in users:                                   # 최근 7일에 흩어진 지난 경고 (이미 처리됨)
+        for _ in range(rng.randint(1, 5)):
+            stage = rng.choice([1, 1, 1, 2, 2, 3])
+            reason = rng.choice(["microsleep", "perclos"]) if stage < 3 else "no_response"
+            when = now - timedelta(days=rng.randint(0, 6), hours=rng.randint(1, 23), minutes=rng.randint(0, 59))
+            make(u["id"], stage, reason, when, "조치완료" if stage == 3 else ("휴식완료" if stage == 2 else "확인"))
+    by_name = {u["name"]: u["id"] for u in users}     # 지금 막 들어온 경고 (처리 전) — 홈의 긴급 경고 · 알림 시험용
+    make(by_name["박정민"], 3, "no_response", now - timedelta(minutes=12), "미확인")
+    make(by_name["서준호"], 3, "perclos", now - timedelta(minutes=5), "미확인")
+    make(by_name["이서윤"], 2, "perclos", now - timedelta(minutes=20), "미확인")
+    make(by_name["최도윤"], 1, "microsleep", now - timedelta(minutes=8), "미확인")
+    make(by_name["정예린"], 1, "rest_overdue", now - timedelta(minutes=35), "미확인")
+    # 지금 주행 중인 기사 (관리자 홈 '주행 중 기사' 시험용): 연속 운전 분을 다르게
+    for who, minutes in [("박정민", 140), ("서준호", 95), ("이서윤", 62), ("최도윤", 38), ("정예린", 121), ("강민서", 12)]:
+        st = state_of(by_name[who])
+        st.update({"drive_start": time.time() - minutes * 60, "last_ping": time.time(), "ended": False, "demo_driving": True})
+    # (11/17) 지난달 경고 — 관리자 졸음 경고 화면 요약 카드의 '지난달보다' 비교 시험용. 따로 씨앗(11)을 써서 위 값들(이번 주 경고 · 위치)은 그대로.
+    rng_old = random.Random(11)
+    prev_last = now.replace(day=1) - timedelta(days=1)          # 지난달 마지막 날
+    for u in users:
+        for _ in range(rng_old.randint(2, 4)):
+            stage = rng_old.choice([1, 1, 1, 2, 2, 3])
+            reason = rng_old.choice(["microsleep", "perclos"]) if stage < 3 else "no_response"
+            when = prev_last.replace(day=rng_old.randint(1, prev_last.day), hour=rng_old.randint(0, 23), minute=rng_old.randint(0, 59), second=0, microsecond=0)
+            make(u["id"], stage, reason, when, "조치완료" if stage == 3 else ("휴식완료" if stage == 2 else "확인"), rng_old)
+
+
 def demo_history(user_id: int) -> int:
     """(11/17 C) 화면 확인용 운행 기록 — 최근 3주에 걸친 경고 + 방금 생긴 경고 2개(알림 '새 알림' 확인용).
 
@@ -466,6 +518,7 @@ def reset_all() -> None:
     add_user("admin@test.com", "관리자", "admin")
     add_user("driver2@test.com", "이기사")          # 일부러 전화번호 · 차량번호 없이 — 관리자 웹의 '미등록' 표시 시험용
     seed()
+    seed_more()
 
 
 reset_all()
@@ -634,11 +687,23 @@ async def login(request: Request):
     return login_response(add_user(email, email.split("@")[0], "admin" if email.startswith("admin") else "user"))
 
 
+@app.get("/users/google/config")
+def google_config():
+    # 진짜 서버는 .env 의 FIREBASE_* 값을 돌려줌. 모의 서버는 구글 창을 열 수 없으니 mock=true 로 알려서 시험용 관리자로 바로 로그인
+    return {"enabled": True, "mock": True, "apiKey": "", "authDomain": "", "projectId": "mock", "appId": ""}
+
+
 @app.post("/users/google")
 async def login_google(request: Request):
-    # (11/17 C) 앱이 보낸 구글 이메일 · 이름으로 계정을 찾거나 만든다 (진짜 서버처럼 provider = google, 처음엔 연락처 없음)
+    # (11/16 D) 관리자 웹 구글 로그인 시험 · (11/17 C) 앱 구글 로그인은 이메일로 계정을 찾거나 만든다
     body = await read_body(request)
     email = str(body.get("email") or "").strip()
+    if email.startswith("admin"):          # 관리자 웹 구글 로그인 시험 (진짜 서버는 관리자 계정이면 id_token 을 검증함)
+        existed = any(str(u["email"]).lower() == email.lower() for u in USERS.values())
+        google_admin = add_user(email, str(body.get("name") or "관리자"), "admin")
+        if not existed:
+            google_admin["provider"] = "google"                  # 구글로 새로 만든 계정만 표시 (설정에서 이메일 변경 불가). 이미 있던 이메일 계정은 그대로 둠 (진짜 서버는 이때 409)
+        return login_response(google_admin)
     if not email:
         return login_response(USERS[1])  # 예전 시험 스크립트처럼 아무것도 안 보내면 기본 기사
     is_new = not any(u["email"] == email for u in USERS.values())
@@ -667,10 +732,147 @@ def update_me(body: ProfileUpdate, user: dict = Depends(current_user)):
     return me(user)
 
 
-# 비밀번호 변경 — 새 비밀번호 규칙은 진짜 서버와 같음. 모의 서버는 비밀번호를 저장하지 않아서(로그인이 비밀번호를 보지 않음) 지금 비밀번호는 검사하지 않는다
+# 비밀번호 변경 — 새 비밀번호 규칙은 진짜 서버와 같음. 모의 서버는 로그인이 비밀번호를 보지 않아서, 처음 바꿀 때는 지금 비밀번호를 검사하지 않고
+# 한 번 바꾼 뒤부터는 그 비밀번호와 맞는지 본다 (관리자 설정 화면의 '비밀번호 불일치' 시험용. 서버를 다시 켜면 처음 상태)
+_PASSWORDS: dict = {}   # user_id → 마지막으로 바꾼 비밀번호
+
+
 @app.put("/users/me/password")
 def change_my_password(body: PasswordChange, user: dict = Depends(current_user)):
+    saved = _PASSWORDS.get(user["id"])
+    if saved is not None and body.current_password != saved:
+        raise HTTPException(status_code=400, detail="지금 비밀번호가 맞지 않아요")
+    _PASSWORDS[user["id"]] = body.new_password
     return {"success": True}
+
+
+# 관리자 회원가입 (11/17) — 회사가 따로 정해 둔 '인증된 사번'(숫자) 목록에 있는 번호만 가입할 수 있고, 한 사번으로는 한 번만 가입한다.
+#   모의 서버의 인증된 사번: MOCK_EMPLOYEE_NOS 환경변수(쉼표로 구분), 없으면 20240001 ~ 20240005.
+#   사번 알아맞히기를 막으려고 같은 접속에서 10분에 5번 틀리면 잠시 막는다. 진짜 서버는 목록을 .env 나 별도 파일에서 읽고, 쓴 사번 기록이 필요함 (칸 추가는 팀과 정함)
+EMPLOYEE_NOS = {s.strip() for s in os.getenv("MOCK_EMPLOYEE_NOS", "20240001,20240002,20240003,20240004,20240005").split(",") if s.strip()}
+_EMP_USED: dict = {}      # 사번 → 가입한 user_id
+_EMP_FAILS: dict = {}     # 접속 주소 → 틀린 시각들
+
+
+class EmployeeCheck(BaseModel):
+    employee_no: str
+
+
+class AdminSignupRequest(BaseModel):
+    employee_no: str
+    name: str = Field(..., min_length=1, max_length=50)
+    email: EmailStr
+    password: str
+
+
+def _check_employee(raw: str, request: Request) -> str:
+    no = re.sub(r"\s", "", str(raw or ""))
+    if not re.fullmatch(r"\d{4,12}", no):
+        raise HTTPException(status_code=400, detail="사번은 숫자 4~12자리로 입력해 주세요")
+    who = request.client.host if request.client else "?"
+    now = time.time()
+    fails = [t for t in _EMP_FAILS.get(who, []) if now - t < 600]
+    if len(fails) >= 5:
+        raise HTTPException(status_code=429, detail="사번을 너무 많이 틀렸어요. 10분 뒤에 다시 시도해 주세요")
+    if no not in EMPLOYEE_NOS:
+        fails.append(now); _EMP_FAILS[who] = fails
+        raise HTTPException(status_code=400, detail="등록되지 않은 사번이에요")
+    if no in _EMP_USED:
+        raise HTTPException(status_code=409, detail="이미 가입에 쓰인 사번이에요")
+    return no
+
+
+@app.post("/admin/signup/check")
+def admin_signup_check(body: EmployeeCheck, request: Request):
+    _check_employee(body.employee_no, request)
+    return {"success": True}
+
+
+@app.post("/admin/signup")
+def admin_signup(body: AdminSignupRequest, request: Request):
+    no = _check_employee(body.employee_no, request)
+    try:
+        check_password_rules(body.password)            # 진짜 서버와 같은 비밀번호 규칙 (한국어 문구)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    email = str(body.email).strip().lower()
+    if any(str(u["email"]).lower() == email for u in USERS.values()):
+        raise HTTPException(status_code=409, detail="이미 사용중인 이메일입니다")
+    user = add_user(email, body.name.strip(), "admin")
+    user["employee_no"] = no                          # 사번은 관리자 계정에만 붙음 (기사 화면에는 내보내지 않음)
+    _EMP_USED[no] = user["id"]
+    _PASSWORDS[user["id"]] = body.password            # 모의 로그인은 비밀번호를 안 보지만, 비밀번호 변경 시험이 되게 기억해 둠
+    return {"success": True}
+
+
+# 이메일 변경 (11/17) — 이메일로 가입한 계정만. 새 이메일 + 지금 비밀번호 → 6자리 인증번호(10분 · 5번까지) → 확인하면 users.email 이 바뀜.
+# 모의 서버라 메일은 안 보내고 서버 화면(로그)에 인증번호를 찍는다. 응답의 dev_code 는 모의 서버에서만 (진짜 서버는 메일로만 알려 줌). 인증번호는 메모리에만 보관 (DB 칸 추가 없음)
+EMAIL_CODE_TTL_SEC = 600
+EMAIL_CODE_RESEND_SEC = int(os.getenv("MOCK_EMAIL_RESEND_SEC", "20"))     # 다시 받기 간격 (진짜는 60초로 하면 됨. 시험하기 좋게 20초)
+EMAIL_CODE_MAX_TRIES = 5
+_EMAIL_CODES: dict = {}   # user_id → {email, code, expires, sent_at, tries}
+
+
+class EmailChangeRequest(BaseModel):
+    new_email: EmailStr
+    current_password: str
+
+
+class EmailChangeConfirm(BaseModel):
+    new_email: EmailStr
+    code: str
+
+
+def _email_taken(email: str, my_id: int) -> bool:
+    return any(str(u["email"]).lower() == email and u["id"] != my_id for u in USERS.values())
+
+
+@app.post("/users/me/email/request")
+def request_email_change(body: EmailChangeRequest, user: dict = Depends(current_user)):
+    if user.get("provider") == "google":
+        raise HTTPException(status_code=400, detail="구글 계정은 이메일을 바꿀 수 없어요")
+    saved = _PASSWORDS.get(user["id"])
+    if saved is not None and body.current_password != saved:
+        raise HTTPException(status_code=400, detail="지금 비밀번호가 맞지 않아요")
+    new_email = str(body.new_email).strip().lower()
+    if new_email == str(user["email"]).lower():
+        raise HTTPException(status_code=400, detail="지금과 같은 이메일이에요")
+    if _email_taken(new_email, user["id"]):
+        raise HTTPException(status_code=409, detail="이미 사용중인 이메일입니다")
+    now = time.time()
+    prev = _EMAIL_CODES.get(user["id"])
+    if prev and now - prev["sent_at"] < EMAIL_CODE_RESEND_SEC:
+        raise HTTPException(status_code=429, detail=f"잠시 뒤에 다시 받아 주세요 ({int(EMAIL_CODE_RESEND_SEC - (now - prev['sent_at'])) + 1}초)")
+    code = f"{random.randint(0, 999999):06d}"
+    _EMAIL_CODES[user["id"]] = {"email": new_email, "code": code, "expires": now + EMAIL_CODE_TTL_SEC, "sent_at": now, "tries": 0}
+    print(f"[모의 메일] {new_email} 로 보낸 인증번호: {code} (10분 안에 입력)")
+    return {"success": True, "expires_in": EMAIL_CODE_TTL_SEC, "dev_code": code}
+
+
+@app.post("/users/me/email/confirm")
+def confirm_email_change(body: EmailChangeConfirm, user: dict = Depends(current_user)):
+    if user.get("provider") == "google":
+        raise HTTPException(status_code=400, detail="구글 계정은 이메일을 바꿀 수 없어요")
+    new_email = str(body.new_email).strip().lower()
+    entry = _EMAIL_CODES.get(user["id"])
+    if not entry or entry["email"] != new_email:
+        raise HTTPException(status_code=400, detail="먼저 인증번호를 받아 주세요")
+    if time.time() > entry["expires"]:
+        _EMAIL_CODES.pop(user["id"], None)
+        raise HTTPException(status_code=400, detail="인증번호가 만료됐어요. 다시 받아 주세요")
+    if body.code.strip() != entry["code"]:
+        entry["tries"] += 1
+        left = EMAIL_CODE_MAX_TRIES - entry["tries"]
+        if left <= 0:
+            _EMAIL_CODES.pop(user["id"], None)
+            raise HTTPException(status_code=400, detail="인증번호가 맞지 않아요. 인증번호를 다시 받아 주세요")
+        raise HTTPException(status_code=400, detail=f"인증번호가 맞지 않아요 (남은 횟수 {left}번)")
+    if _email_taken(new_email, user["id"]):                       # 받는 사이에 다른 사람이 쓴 경우
+        _EMAIL_CODES.pop(user["id"], None)
+        raise HTTPException(status_code=409, detail="이미 사용중인 이메일입니다")
+    user["email"] = new_email
+    _EMAIL_CODES.pop(user["id"], None)
+    return me(user)
 
 
 # 프로필 사진 — 진짜 서버(routers/user.py)와 같은 규칙: 확장자 · 5MB · 사진 받기는 로그인 토큰이 있어야 함 (메모리에만 보관)
@@ -732,9 +934,8 @@ async def drive_wake(request: Request, user: dict = Depends(current_user)):
     return {"success": True, "event_id": event["id"], "pressed": pressed}
 
 
-def _call_name(name) -> str:
-    n = (name or "").strip()
-    return "기사님" if not n else (f"{n}님" if n.endswith("기사") else f"{n} 기사님")
+def _driver_name(name) -> str:
+    return (name or "").strip()   # (11/17 팀장) 이름만 — 리포트 '이름 기사님' · 음성 '이름님' (진짜 서버와 같음)
 
 
 @app.post("/drive/start")
@@ -834,7 +1035,7 @@ def drive_end(user: dict = Depends(current_user)):
         advice = "다음 운행 전에는 충분히 자고 출발하세요." if top >= 3 else "졸음이 오면 바로 쉼터에서 15분 쉬어 가세요."
     if rc:
         summary += f" 휴식은 {rc}번 했어요."
-    return {"success": True, "report": {**stats, "name": _call_name(user.get("name")),
+    return {"success": True, "report": {**stats, "name": f"{_driver_name(user.get('name'))} 기사님".strip(),
             "started": started.strftime("%H:%M") if started else "", "ended": now.strftime("%H:%M"),
             "summary": summary, "advice": advice, "is_real": False}}
 
@@ -956,15 +1157,15 @@ async def detect(
                       eye_closed_prob=None if open_prob is None else round(1 - open_prob, 3), method=base["method"], perclos=perclos_v,
                       photo_path=photo_path, lat=lat, lng=lng)
 
-    # ⑧ 음성 퀴즈 1문제 (최소 간격 안이면 null)
+    # ⑧ 음성 퀴즈 1문제 — 2단계에 들어갈 때마다 (11/18 팀장: 2분 간격 뺌, 2단계에서 또 졸면 바로 3단계라 연달아 나오지 않음)
     voice_quiz = None
-    if stage == 2 and time.time() - st["last_quiz_at"] >= QUIZ_GAP_SEC:  # (11/15) 퀴즈는 2단계에서만 (3단계는 [깨어 있어요])
+    if stage == 2:  # (11/15) 퀴즈는 2단계에서만 (3단계는 [깨어 있어요])
         voice_quiz = make_quiz(user["id"], event_id=event["id"])
         st["last_quiz_at"] = time.time()
         st["quiz_fail"] = 0
 
     return {**base, "is_sleep": True, "reason": reason, "stage": stage, "status": STAGE_LABELS[stage], "summary": ai["summary"],
-            "guidance": ai["guidance"], "driver_voice": f"{_call_name(user.get('name'))}, {ai['driver_voice']}",
+            "guidance": ai["guidance"], "driver_voice": f"{_driver_name(user.get('name')) or '기사'}님, {ai['driver_voice']}",
             "sleep_count_10min": count, "voice_quiz": voice_quiz,
             "regulations": MOCK_REGULATIONS, "event_id": event["id"]}
 
@@ -990,7 +1191,7 @@ def quiz_answer(body: VoiceQuizAnswer, user: dict = Depends(current_user)):
 
     if passed:
         st["quiz_fail"] = 0
-        return {**result, "message": {2: "잘하셨습니다. 쉼터까지 조심히 가세요.", 3: "잘하셨습니다. 안전한 곳에 정차해 주세요."}.get(stage, "잘하셨습니다. 안전 운행하세요.")}
+        return {**result, "message": {2: "확인했어요. 쉼터까지 조심히 가세요.", 3: "확인했어요. 안전한 곳에 정차해 주세요."}.get(stage, "확인했어요. 안전 운행하세요.")}
 
     st["quiz_fail"] += 1
     if st["quiz_fail"] < VOICE_QUIZ_MAX_TRIES:  # 1번 실패 → 같은 유형 새 문제
@@ -1063,7 +1264,11 @@ def admin_users(admin: dict = Depends(require_admin)):
     out = []
     for u in USERS.values():
         mine = [e for e in EVENTS if e["user_id"] == u["id"]]
-        out.append({**u, "event_count": len(mine), "last_event_at": max((e["created_at"] for e in mine), default=None)})
+        st = STATES.get(u["id"]) or {}
+        last = st.get("last_ping")
+        driving = bool(last) and not st.get("ended") and (bool(st.get("demo_driving")) or time.time() - last <= 120)   # 진짜 서버와 같음: 마지막 ping 2분 안
+        out.append({**u, "event_count": len(mine), "last_event_at": max((e["created_at"] for e in mine), default=None),
+                    "driving": driving, "drive_min": drive_min_of(st) if driving else 0})
     return out
 
 
@@ -1204,7 +1409,7 @@ def dev_scenario(body: dict):
 
 @app.get("/dev/state")
 def dev_state():
-    return {"scenario": SCENARIO["name"], "timing": {"window_sec": WINDOW_SEC, "rest_sec": REST_SEC, "quiz_gap_sec": QUIZ_GAP_SEC},
+    return {"scenario": SCENARIO["name"], "timing": {"window_sec": WINDOW_SEC, "rest_sec": REST_SEC},
             "users": {uid: {"stage": st["stage"], "sleep_count": len(recent_sleeps(st)), "drive_min": drive_min_of(st),
                             "quiz_fail": st["quiz_fail"], "resting": st["rest_started"] is not None, "ear_threshold": st["ear_threshold"]}
                       for uid, st in STATES.items()},
@@ -1228,7 +1433,7 @@ def dev_reset():
 #                          · report(객체: situation · stage_reason · regulation · recommended_action · location · eye · driving_quiz · rest)
 #                          · photo_url · latitude · longitude · created_at     (목록은 배열, 최신순)
 #   /admin/events 한 줄    위와 같고 + user_name · user_email · user_phone · user_vehicle_no · address · urgent  (전화 · 차량이 없으면 '')
-#   /admin/users 한 줄     {id · email · name · role · phone · vehicle_no · event_count · last_event_at}  (phone · vehicle_no 없으면 null)
+#   /admin/users 한 줄     {id · email · name · role · phone · vehicle_no · event_count · last_event_at · driving · drive_min}  (phone · vehicle_no 없으면 null)
 #   PATCH /users/me        {phone?, vehicle_no?} → 내 정보 (빠진 칸은 그대로, '' 면 지움, 형식이 틀리면 422)
 #   PATCH 요청/응답        {status} → {success, id, status, stage_reset}     status: 미확인 · 확인 · 조치완료 · 휴식완료 (아니면 422)
 #   관리자 전용            PATCH /events/{id}/status · /admin/*  — role 이 admin 이 아니면 403 (mock 은 이메일이 admin 으로 시작하면 admin)

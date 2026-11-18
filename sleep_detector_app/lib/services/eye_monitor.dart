@@ -48,6 +48,9 @@
 //       서버가 피로 확정 (isSleep) 일 때만 경고 · 아니면 아무것도 안 띄움 (취소 글자 · serverCancelled 도 부르지 않음)
 //   - reset()  ← drive_screen 이 경고 화면이 닫힐 때 부름 (판정 기록 비우기, 개인 기준은 그대로, 11/03 팀장)
 //   - serverCancelled()  ← drive_screen 이 서버 취소 응답을 받으면 부름 (안 부르면 한 번 더 보내기가 동작하지 않음)
+//   - 🆕 afterLightWarning({faceFound})  ← (11/16) 1단계 확정으로 경고 화면 없이 알림만 울릴 때 부름 (_lightWarn 앞)
+//       계속 감고 · 숙이고 있으면 시작부터 약 6초에 사진 없이 한 번 더 (→ 서버 '1단계에서 또 졸면 2단계')
+//       눈을 뜨고 고개를 든 첫 프레임부터 10초 봐줌 (안 부르면 계속 자도 눈을 뜰 때까지 2단계가 안 됨)
 //   - onFrameResult(eyeOpenProb, perclos, ear)  ← (선택) 0단계 화면 표시용, 모름이면 eyeOpenProb · ear = null
 //   - analyzeFile(String path) → 눈 뜸 확률
 //   - analyzeFileDetail(String path) → EyeReading(눈 뜸 확률 · 폰 EAR · 처리 ms) — 사진 비교 · KPI ① 측정용
@@ -124,6 +127,9 @@ class EyeMonitor {
   // 🆕 (11/10) 경고 뒤 봐주기 — reset 뒤 첫 '뜸' 프레임에서 _quietUntil = 그 시각 + graceAfterWarningSec
   bool _graceArmed = false;
   DateTime? _quietUntil;
+  // 🆕 (11/16) 1단계 가벼운 알림 뒤 (afterLightWarning) — 얼굴이 정상 (눈 뜸 · 고개 듦) 으로 돌아오는 첫 프레임에서
+  //   10초 봐주기를 켜고 남은 재전송을 지움
+  bool _lightPending = false;
   // 🆕 (11/10) 마지막 반쯤 확인 사진 시각 · 보낸 횟수 · JPG 변환 시간 (시험 앱 기록용)
   DateTime? _lastHalfCheckAt;
   int halfChecks = 0;
@@ -161,6 +167,8 @@ class EyeMonitor {
   Rect? lastFaceBox;   // 마지막 프레임 얼굴 위치 (얼굴을 놓치면 null)
   Size? lastImageSize; // 마지막 프레임 사진 크기 (회전 전 카메라 프레임 크기)
   bool get isHeadDown => _headDown;
+  // (11/16 팀장) 지금 이어서 감고 있는 감김의 시작 시각 (뜨면 null) — drive_screen 이 2단계 경고 뒤 계속 자는지 볼 때 씀
+  DateTime? get closedSince => _closedStartTime;
 
   // 감긴 순간의 프레임 임시 보관
   CameraImage? _lastClosedFrame; // PERCLOS 사진용 (최근 감긴 프레임 1장)
@@ -339,6 +347,13 @@ class EyeMonitor {
         _graceArmed = false;
         _quietUntil = now.add(Duration(milliseconds: (AppConfig.graceAfterWarningSec * 1000).round()));
       }
+      // (11/16) 1단계 알림 뒤 눈을 뜨고 고개를 든 첫 프레임 → 깨어난 것 → 재전송 지우고 그때부터 10초 봐줌
+      //   (알람을 듣고 눈을 비비다 1.5초 감아도 바로 2단계가 되지 않게)
+      if (_lightPending && !eyesClosed && !_headDown) {
+        _lightPending = false;
+        _cancelledAt = null;
+        _quietUntil = now.add(Duration(milliseconds: (AppConfig.graceAfterWarningSec * 1000).round()));
+      }
       _checkAfterCancel(now, !_headDown && !eyesClosed, avgProb);
 
       // 눈 감김 · PERCLOS 는 눈만으로 (고개만 숙이고 눈 뜬 프레임은 '뜸')
@@ -463,6 +478,29 @@ class EyeMonitor {
     _normalSince = null;
   }
 
+  /// 🆕 (11/16) 서버가 1단계로 확정해 경고 화면 없이 알림만 울릴 때 drive_screen 이 부름 (_onSuspect · _onHalfCheck 의 _lightWarn 앞)
+  ///   1단계는 경고 화면이 없어 reset() 이 안 불림 → 전에는 이번 감김 · 숙임으로 의심을 이미 낸 상태 (_microsleepTriggered)
+  ///   그대로라 알람을 듣고도 계속 자면 눈을 뜰 때까지 다시 안 보냄 → 2단계가 안 됨 (11/16 A 발견, 팀장 확인)
+  ///   - 아직 감고 있거나 숙이고 있으면 → 서버 취소 때처럼 시작부터 약 6초 (headResendSec) 에 사진 없이 한 번 더
+  ///       서버는 '1단계에서 또 졸면 최소 2단계' → 2단계 경고 화면
+  ///   - 눈을 뜨고 고개를 든 첫 프레임 → 그 재전송을 지우고 그때부터 graceAfterWarningSec (10초) 봐줌 (reset 뒤와 같음)
+  ///   faceFound 는 serverCancelled 와 이름을 맞춘 것 — 1단계는 서버가 졸음을 확정한 것이라 얼굴 여부와 상관없이 6초
+  void afterLightWarning({bool? faceFound}) {
+    lastCancelHeadFace = false;
+    _lightPending = true;
+    _quietUntil = null;
+    final eyeStill = _closedStartTime != null;
+    final headStill = _headTriggered && _headStartTime != null;
+    if (!eyeStill && !headStill) {
+      _cancelledAt = null; // 이미 깨어 있음 → 다음 정상 프레임에서 봐주기만
+      return;
+    }
+    _cancelCause = eyeStill ? 'eye' : 'head';
+    _cancelFace = false;
+    _cancelledAt = DateTime.now();
+    _normalSince = null;
+  }
+
   /// 서버 취소 뒤 얼굴이 정상으로 (고개 들고 눈 뜸) 돌아오지 않은 채 시간이 지나면 사진 없이 한 번 더
   ///   숙임 각도만 보면 얼굴이 화면 밖으로 나갈 때 숙임이 풀려서 재전송이 안 됨 (11/04 시연 폰 시험)
   void _checkAfterCancel(DateTime now, bool normal, double? avgProb) {
@@ -483,6 +521,7 @@ class EyeMonitor {
     final resendSec = _cancelFace ? AppConfig.headResendFaceSec : AppConfig.headResendSec;
     if (waited < resendSec - firstSec) return;
     _cancelledAt = null;
+    _lightPending = false; // (11/16) 1단계 뒤 재전송이면 → 2단계 경고 화면이 닫힐 때 reset() 이 봐주기를 켬
     _lastSuspectAt = now;
     _send('microsleep', '${_cancelCause}_resend', firstSec + waited, _calculatePerclos(),
         avgProb ?? _lastEyeOpenProb, const [], 270);
@@ -504,6 +543,7 @@ class EyeMonitor {
     //   → 돌아온 뒤 첫 '뜸' 프레임부터 graceAfterWarningSec 봐줌 (계속 감고 있으면 안 봐줌)
     _graceArmed = true;
     _quietUntil = null;
+    _lightPending = false;
     _lastHalfCheckAt = DateTime.now();
     _history.clear();
     _windowStart = null; // PERCLOS 는 다시 30초를 채운 뒤부터 판정

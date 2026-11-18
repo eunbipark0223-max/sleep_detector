@@ -8,6 +8,7 @@
 #   - GET /events/my — 내 경고 목록 (앱 운행 기록 화면)
 #   - PATCH /events/{id}/status — 관리자가 상태 변경. '조치완료'면 sleep_state reset → 3단계 해제 (앱은 다음 ping 에서 0단계)
 #     '확인'은 미확인일 때만 바뀐다 (관리자 웹이 상세를 열 때 자동으로 보냄, 11/09)
+#     '조치완료'는 그 기사의 미처리 긴급 경고(3단계 · 음성 응답 없음)를 모두 함께 조치완료로 바꾼다 — 응답 resolved_ids (11/16)
 #   - GET /events/{id}/photo — 졸음 확정 사진 (얼굴 사진이라 로그인 필요: 그 경고의 기사 본인 또는 관리자만, 11/10)
 #     uploads/events/ 폴더를 주소로 공개하지 않고 이 API 로만 내준다. 관리자 웹은 토큰을 붙여 받아서 그린다
 #
@@ -24,7 +25,7 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 import config
@@ -77,16 +78,27 @@ def update_status(
         return {"success": True, "id": event.id, "status": event.status, "stage_reset": False}
     event.status = body.status
     stage_reset = body.status == "조치완료"
-    if stage_reset:
-        # (11/18 C) 관리자 [조치완료] = 그 기사를 0단계로 완전히 해제 → 그 기사의 아직 처리 안 된 경고(미확인 · 확인)도 모두 조치완료.
-        #   예전에는 누른 경고 하나만 바뀌어서, 다른 3단계 경고가 '미확인'으로 남아 서버를 다시 켜면 3단계로 되살아났음
-        #   (restore_all 은 조치완료보다 나중 경고를 다시 셈)
-        for other in db.scalars(
-            select(SleepEvent).where(SleepEvent.user_id == event.user_id, SleepEvent.status.in_(("미확인", "확인")))
-        ):
+    resolved_ids: list[int] = []
+    if stage_reset and event.user_id is not None:
+        # (11/16 D) 같은 기사의 미처리 긴급 경고(3단계 · 음성 응답 없음)를 한꺼번에 조치완료 — 배너 · 옛 줄이 남지 않게
+        # (11/18 C) + 그 기사의 아직 처리 안 된 경고(미확인 · 확인)도 모두 조치완료 — [조치완료] = 0단계로 완전 해제.
+        #   한 줄만 바뀌면 서버를 다시 켤 때 restore_all 이 남은 경고로 단계를 되살렸음
+        # user_id 가 비어 있는 경고는 묶지 않는다 (IS NULL 로 엉뚱한 경고까지 바뀌지 않게) — 눌린 그 줄만
+        others = db.execute(
+            select(SleepEvent).where(
+                SleepEvent.user_id == event.user_id,
+                SleepEvent.id != event.id,
+                or_(
+                    SleepEvent.status.in_(("미확인", "확인")),
+                    and_(SleepEvent.status != "조치완료", or_(SleepEvent.stage == 3, SleepEvent.reason == "no_response")),
+                ),
+            )
+        ).scalars().all()
+        for other in others:
             other.status = "조치완료"
-    db.commit()
-
+            resolved_ids.append(other.id)
+    db.commit()    # 누른 줄과 함께 풀린 줄이 한 번에 저장됨 (중간에 실패하면 모두 그대로)
     if stage_reset:
         sleep_state.reset(event.user_id)  # 앱은 다음 ping 에서 0단계를 받는다
-    return {"success": True, "id": event.id, "status": event.status, "stage_reset": stage_reset}
+    return {"success": True, "id": event.id, "status": event.status, "stage_reset": stage_reset,
+            "resolved_ids": resolved_ids}   # 함께 조치완료된 다른 경고 번호 (없으면 [])

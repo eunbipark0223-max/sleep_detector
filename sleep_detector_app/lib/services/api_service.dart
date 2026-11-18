@@ -186,6 +186,15 @@ class ApiService {
   // endDrive (운행 종료 — 서버가 진행 중인 운행을 끝냄. 2 · 3단계는 그대로 이어짐)
   static Future<Map<String, dynamic>> endDrive() => _postJson('/drive/end');
 
+  // (11/18 팀장) 운행 종료 리포트의 AI 문장 — /drive/end 가 준 report_id 로. {done, summary, advice, is_real}
+  static Future<Map<String, dynamic>> fetchDriveReport(String reportId) async {
+    final headers = await AuthService.authHeaders();
+    final res = await http.get(_uri('/drive/report/$reportId'), headers: headers).timeout(const Duration(seconds: 10));
+    await _checkUnauthorized(res);
+    if (res.statusCode != 200) throw Exception(_errorMessage(res));
+    return Map<String, dynamic>.from(jsonDecode(utf8.decode(res.bodyBytes)) as Map);
+  }
+
   // startDrive (운전 시작했어요)
   static Future<Map<String, dynamic>> startDrive() => _postJson('/drive/start');
 

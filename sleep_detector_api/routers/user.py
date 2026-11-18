@@ -6,6 +6,7 @@
 #
 # [이 파일이 하는 일]
 #   - POST /users/signup {email, password, name, phone?, vehicle_no?, privacy_agreed?} · /users/login · /users/google  ·  GET /users/me
+#     · /users/google {email, name, firebase_uid, id_token?} — 관리자 계정은 id_token 검증 필수 (services/firebase_verify.py) · GET /users/google/config = 관리자 웹용 Firebase 웹 설정
 #     (회원가입 화면이 전화번호 · 차량번호를 같이 보냄. privacy_agreed=false 면 422. 동의 여부는 DB 칸을 늘리지 않아 저장하지 않음)
 #   - 프로필 사진 POST · GET · DELETE /users/me/photo (수업 그대로, profile_screen)
 #   - PATCH /users/me  {name?, phone?, vehicle_no?} — 기사 연락용 전화번호 · 차량번호 (profile_screen 에서 입력, 관리자 웹 연락처에 보임) · 이름은 관리자 설정 화면
@@ -51,6 +52,7 @@ from database.db_connection import get_session
 from models.models import User
 from auth.password import hash_password, verify_password
 from auth.jwt      import create_access_token, get_current_user
+from services import firebase_verify
 
 router = APIRouter(tags=["User"])
 
@@ -203,6 +205,17 @@ def google_login_handler(
     stmt = select(User).where(User.email == body.email)
     user = session.scalar(stmt)
 
+    # (11/16) 이 요청은 앱이 보낸 이메일 · uid 를 그대로 믿는다 → 관리자 계정(또는 FIREBASE_VERIFY=true)은 구글이 서명한 id_token 을 확인해야 함
+    if config.FIREBASE_VERIFY or (user is not None and user.role == "admin"):
+        try:
+            firebase_verify.verify_id_token(body.id_token or "", str(body.email), body.firebase_uid)
+        except firebase_verify.FirebaseNotConfigured:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                                detail="서버에 구글 로그인 설정(FIREBASE_PROJECT_ID)이 없어요")
+        except firebase_verify.FirebaseVerifyError as e:
+            print(f"[google] 토큰 검증 실패 {body.email}: {e}")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="구글 인증을 확인할 수 없어요")
+
     if user is None:
         user = User(
             email          =str(body.email),
@@ -228,6 +241,19 @@ def google_login_handler(
             session.commit()
 
     return _login_response(user)
+
+@router.get("/users/google/config")
+def google_config_handler():
+    """관리자 웹 로그인 화면이 구글 창을 띄우는 데 쓰는 Firebase 웹 설정 (공개 값). 서버 .env 에 없으면 enabled=false"""
+    ready = bool(config.FIREBASE_PROJECT_ID and config.FIREBASE_API_KEY)
+    return {
+        "enabled"   : ready,
+        "apiKey"    : config.FIREBASE_API_KEY if ready else "",
+        "authDomain": f"{config.FIREBASE_PROJECT_ID}.firebaseapp.com" if ready else "",
+        "projectId" : config.FIREBASE_PROJECT_ID if ready else "",
+        "appId"     : config.FIREBASE_APP_ID if ready else "",
+    }
+
 
 def _me_dict(user: User) -> dict:
     return {

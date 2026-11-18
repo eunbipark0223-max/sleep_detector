@@ -6,9 +6,12 @@
 #
 # [이 파일이 하는 일]
 #   - 도구: 최근 졸음 기록 조회 · 규정 검색 (Function Calling)
-#   - 만드는 것: ① 단계 ② 기사 안내문 guidance ③ 관리자 보고서 report(5칸) ④ 기사 음성 보고 driver_voice
-#   - 바닥 · 천장 규칙: 규칙 단계 ≤ Agent 단계 ≤ 규칙 단계 + 1 (최대 3) — 서버 코드가 한 번 더 검사
-#   - driver_voice 숫자는 sleep_state 의 facts 와 같아야 함 → 다르거나 길거나 비면 템플릿 문장으로 교체
+#   - (11/18 팀장) 지금 Agent 가 하는 일 = 경고 뒤 '뒤에서' 관리자 보고서 report(5칸) 만
+#       · 안내문 guidance 도 만들지 않음 — 경고 기록의 '기사님께 전달한 안내' 는 기사가 실제로 들은 규칙 문장 (detect.py)
+#       · 단계 · 기사 음성은 detect.py 가 규칙으로 바로 정함 (11/16) → Agent 에게 묻지 않음 (예전 지시문은 단계 · 음성까지 시켜서
+#         쓰지 않는 칸을 만드느라 시간 · 무료 한도만 썼음)
+#       · 돌려주는 모양은 그대로 (stage = 규칙 단계, driver_voice = 템플릿) — 받는 쪽 코드 · 시험이 안 바뀌게
+#   - 바닥 · 천장 규칙: 규칙 단계 ≤ 단계 ≤ 규칙 단계 + AGENT_MAX_STEP_UP (지금 0 → 규칙 단계 그대로) — 서버 코드가 검사
 #
 # [만들 것 (이름 약속 — detect.py 가 이 이름으로 부름)]
 #   - generate_response(eye, analysis, regulations, facts, rule_stage, location="")
@@ -38,10 +41,12 @@ from services import rag_service, sleep_state
 
 USE_REAL_AI = config.USE_REAL_AI
 FALLBACK_ON_ERROR = config.FALLBACK_ON_ERROR
-AGENT_TIMEOUT_SEC = 6      # 실시간 경고 경로 — 늦으면 규칙 단계 · 기본 문장으로 (11/12 팀장: 20 → 6초)
+# (11/18 팀장) 시간 제한을 '뒤에서 쓰는 보고서' 기준으로 — 경고는 이미 규칙으로 나갔으니 기사가 기다리지 않음
+#   예전: 한 번 6초 · 전체 7초 (실시간 경고 경로였을 때, 11/12 · 11/16) → 보고서가 AI 로 채워지기 전에 끊기는 일이 잦았음
+AGENT_TIMEOUT_SEC = 15     # Gemini 한 번 호출 제한
 MAX_TOOL_TURNS = 3         # 도구를 부르는 횟수 제한 (수업 안전장치 ①)
-AGENT_DEADLINE_SEC = 7     # (11/16 팀장) Agent 전체 마감 — 도구를 여러 번 불러도 합쳐서 7초. 넘으면 템플릿 문장으로 바로 경고
-#   (위 6초는 Gemini 한 번 호출 제한이라, 도구 3번 + 답 1번이면 최대 24초까지 늦어질 수 있었음)
+AGENT_DEADLINE_SEC = 30    # Agent 전체 마감 (도구를 여러 번 불러도 합쳐서). 넘으면 템플릿 보고서 그대로
+# (11/18 팀장) [운행 종료] 리포트도 템플릿을 먼저 보여 주고 AI 문장은 뒤에서 (drive_report_template → drive_report) — 같은 15초
 
 GUIDANCE = {
     1: "창문을 열고 환기해 주세요. 졸음이 계속되면 쉬어 가세요.",
@@ -83,11 +88,11 @@ def _template_voice(stage, facts, guidance):
         if closed <= 0:   # 피로 누적(PERCLOS) — 한 번에 감은 초가 없음 → 없는 '1초' 를 말하지 않게 (11/02 KPI ⑥)
             return "눈을 자주 감고 있어요. 정신 차려 주세요."
         return f"{max(1, round(closed))}초 동안 눈을 감았어요. 정신 차려 주세요."
-    # (11/12 팀장) 주의 단계에서 다시 졸아 올라간 단계면 '10분 동안 1번' 대신 그 이유 (단계와 말이 맞게)
-    head = "주의 단계에서 또 졸았어요." if facts.get("stage_note") else f"10분 새 {n}번 졸았어요."
+    # (11/17 팀장) 2 · 3단계 음성은 '이름 + 할 일' 만 — 숫자 · 이유('10분 새 2번', '주의 단계에서 또')는 상황과 어긋날 수 있어 뺌
+    #   (단계는 횟수 말고도 계속 감음 · 퀴즈 실패로도 오름). 실제 횟수는 앱 화면에 sleep_count_10min 으로 작게 보여 줌
     if stage == 2:
-        return f"{head} 가까운 쉼터에서 쉬어 가세요."
-    return f"{head} 지금 바로 정차하세요."
+        return "쉼터에서 쉬어 가세요."
+    return "지금 바로 정차하세요."
 
 
 def _allowed_numbers(facts):
@@ -138,11 +143,16 @@ def _check_voice(text, facts):
     return s
 
 
+def _note_label(note):
+    """stage_note ("주의 단계에서 다시 졸음" / "휴식 권고 단계에서 다시 졸음") → 앞 단계 이름 (11/16)"""
+    return str(note or "").split(" 단계에서")[0] or "주의"
+
+
 def _base_report(eye, analysis, regulations, rule_stage, location):
     reason = REASON_KO.get(eye.get("reason"), "졸음")
     return {
         "situation": analysis.get("summary") or f"{reason} 감지",
-        "stage_reason": (f"주의 단계에서 다시 졸아 {rule_stage}단계" if eye.get("stage_note")
+        "stage_reason": (f"{_note_label(eye.get('stage_note'))} 단계에서 다시 졸아 {rule_stage}단계" if eye.get("stage_note")
                          else f"10분 안 졸음 횟수 기준 {rule_stage}단계"),
         "regulation": regulations[0]["title"] if regulations else "",
         "recommended_action": ACTION.get(rule_stage, ACTION[1]),
@@ -184,32 +194,34 @@ def _mock_generate(eye, analysis, regulations, facts, rule_stage, location):
 TOOLS = [
     {"type": "function", "function": {
         "name": "get_recent_sleeps",
-        "description": "이 기사의 최근 10분 졸음 기록(횟수 · 마지막 눈 감은 시간 · 현재 단계)과 연속 운전 시간을 조회한다. 단계를 올릴지 판단할 때 쓴다.",
+        "description": "이 기사의 최근 10분 졸음 기록(횟수 · 마지막 눈 감은 시간 · 현재 단계)과 연속 운전 시간을 조회한다. 보고서의 상황 · 단계 이유를 쓸 때 확인한다.",
         "parameters": {"type": "object", "properties": {}, "required": []}}},
     {"type": "function", "function": {
         "name": "search_regulations",
-        "description": "졸음운전 · 휴게시간 관련 법령과 예방 자료를 검색한다. 안내문이나 보고서에 근거가 더 필요할 때 쓴다.",
+        "description": "졸음운전 · 휴게시간 관련 법령과 예방 자료를 검색한다. 보고서의 근거 규정이 더 필요할 때 쓴다.",
         "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "검색할 내용 (한국어)"}},
                        "required": ["query"]}}},
 ]
 
-SYSTEM_PROMPT = """너는 화물 · 버스 운수회사 졸음운전 관제 Agent 다. 졸음이 확정된 기사의 경고 단계와 안내를 정한다.
+SYSTEM_PROMPT = """너는 화물 · 버스 운수회사 졸음운전 관제 Agent 다. 졸음 경고가 이미 기사에게 나간 뒤, 관리자가 읽을 보고서를 쓴다.
 
-단계: 1 주의 / 2 휴식 권고 / 3 긴급 (관리자 호출).
-규칙:
-- 규칙 단계(rule_stage)보다 낮게 정하지 않는다. 올리는 것은 1단계까지만, 최대 3.
-- 단계를 올리려면 근거(짧은 간격의 반복 졸음, 높은 PERCLOS, 긴 눈 감김, 긴 운행 시간)가 있어야 한다. 필요하면 도구를 써서 확인한다.
+- 경고 단계(stage)는 규칙으로 이미 정해졌다. 바꾸지 말고 그 단계에 맞게 쓴다 (1 주의 / 2 휴식 권고 / 3 긴급).
+- 필요하면 도구로 최근 졸음 기록과 규정을 확인한다.
 - 숫자는 facts 에 있는 값만 쓴다. 새 숫자를 만들지 않는다.
-- 연속 운전이 {limit}분 미만이면 휴게시간 규정(2시간마다 15분 휴식 등)은 단계 근거로 쓰지 말고 참고로만 언급한다.
-- driver_voice 는 기사가 운전 중에 귀로 듣는 말이다. 짧은 두 마디, {max_chars}자 이내, 해요체, 영어 금지.
-  사실 하나 + 행동 하나만 말한다 (이름은 앱이 앞에 붙이니 쓰지 않는다).
-  사실에는 facts 의 숫자를 꼭 넣는다 (2단계 이상: "10분 새 N번 졸았어요", 1단계: "N초 동안 눈을 감았어요").
-  행동은 단계에 맞게 하나만 (1단계: 정신 차리기, 2단계: 쉼터에서 쉬기, 3단계: 바로 정차).
-  단, facts 에 stage_note 가 있으면 횟수 대신 그 이유로 시작한다 (예: "주의 단계에서 또 졸았어요").
+- 근거 규정(regulation) 고르는 기준:
+  · 연속 운전이 {limit}분 미만이면 '도로교통법 제45조(과로한 때 등의 운전 금지)' 하나만 쓴다. 휴게시간 규정(2시간마다 15분 휴식 등)은 근거로 쓰지 않는다.
+  · 연속 운전이 {limit}분 이상이면 휴게시간 규정(화물 · 버스)과 도로교통법 제45조를 함께 쓴다.
+- 관리자가 읽는 글이다. PERCLOS · EAR · 확률 같은 지표 이름과 0.45 같은 소수는 쓰지 말고 쉬운 말로 바꾼다
+  (예: PERCLOS 0.45 → '최근 30초 중 45% 동안 눈을 감음', 눈 감김 6.1초 → '6.1초 동안 눈을 감음').
+- 관리자가 할 일(recommended_action)은 관리자가 실제로 할 수 있는 아래 세 가지 안에서만 고른다
+  (무선 · 방송 · 원격으로 운행 중단처럼 이 시스템에 없는 기능은 쓰지 않는다):
+  ① 기사에게 전화하기 ② 정차했는지 · 쉬는 중인지 확인하기 (관리자 웹 상태 · 휴식 기록) ③ 확인이 끝나면 관리자 웹에서 [조치완료] 누르기
+  목록을 그대로 옮기지 말고, 이 단계에 맞게 한 문장으로 쓴다.
+  (예: 2단계 '기사에게 전화해 쉼터에서 쉬고 있는지 확인해 주세요.' / 3단계 '바로 전화해 정차했는지 확인하고, 확인되면 [조치완료]를 눌러 주세요.')
+- 짧고 사실대로, 한국어로 쓴다.
 
 반드시 아래 JSON 하나로만 답한다:
-{{"stage": 1~3, "guidance": "기사 안내 한 문장", "driver_voice": "음성 보고",
-  "report": {{"situation": "", "stage_reason": "", "regulation": "근거 규정 제목", "recommended_action": "관리자가 할 일"}}}}"""
+{{"report": {{"situation": "무슨 일이 있었나", "stage_reason": "왜 이 단계인가", "regulation": "근거 규정 제목", "recommended_action": "관리자가 할 일"}}}}"""
 
 _client = None
 
@@ -248,22 +260,22 @@ def _extract_json(text):
 
 def _real_generate(eye, analysis, regulations, facts, rule_stage, location, user_id):
     user = {
-        "rule_stage": rule_stage,
+        "stage": rule_stage,
         "facts": facts,
         "eye": {k: eye.get(k) for k in ("reason", "closed_sec", "perclos", "eye_open_prob", "ear", "method")},
         "summary": analysis.get("summary", ""),
         "regulations": [{"title": r["title"], "content": r["content"][:300]} for r in regulations],
     }
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT.format(limit=config.DRIVE_LIMIT_MIN, max_chars=config.DRIVER_VOICE_MAX_CHARS)},
+        {"role": "system", "content": SYSTEM_PROMPT.format(limit=config.DRIVE_LIMIT_MIN)},
         {"role": "user", "content": json.dumps(user, ensure_ascii=False)},
     ]
     used = []
     deadline = time.monotonic() + AGENT_DEADLINE_SEC
     for _ in range(MAX_TOOL_TURNS + 1):
         left = deadline - time.monotonic()
-        if left < 1:   # 남은 시간이 1초도 안 되면 더 묻지 않는다 → 빈 답 → 규칙 단계 · 템플릿 문장
-            print(f"[agent_service] 전체 마감 {AGENT_DEADLINE_SEC}초 지남 (도구 {len(used)}번) → 템플릿으로 경고")
+        if left < 1:   # 남은 시간이 1초도 안 되면 더 묻지 않는다 → 빈 답 → 템플릿 보고서
+            print(f"[agent_service] 전체 마감 {AGENT_DEADLINE_SEC}초 지남 (도구 {len(used)}번) → 템플릿 보고서")
             return {}, used
         try:
             r = _get_client().chat.completions.create(
@@ -271,7 +283,7 @@ def _real_generate(eye, analysis, regulations, facts, rule_stage, location, user
                 timeout=min(AGENT_TIMEOUT_SEC, left))   # 이번 호출은 남은 시간까지만 기다림
         except Exception as e:
             if time.monotonic() >= deadline - 0.05:   # 마감에 걸려 끊긴 것 → 오류가 아니라 늦은 것: 항상 템플릿
-                print(f"[agent_service] 전체 마감 {AGENT_DEADLINE_SEC}초 지남 ({type(e).__name__}) → 템플릿으로 경고")
+                print(f"[agent_service] 전체 마감 {AGENT_DEADLINE_SEC}초 지남 ({type(e).__name__}) → 템플릿 보고서")
                 return {}, used
             raise
         msg = r.choices[0].message
@@ -291,7 +303,7 @@ def _real_generate(eye, analysis, regulations, facts, rule_stage, location, user
 
 
 def generate_response(eye, analysis, regulations, facts, rule_stage, location="", user_id=None):
-    """졸음 확정 1건 → 단계 · 안내문 · 보고서 · 기사 음성 보고. 항상 정해진 모양으로 돌려준다."""
+    """졸음 확정 1건 → 보고서 · 안내문 (11/18: 단계는 규칙 그대로, 음성은 템플릿). 항상 정해진 모양으로 돌려준다."""
     eye, analysis, regulations, facts = eye or {}, analysis or {}, regulations or [], facts or {}
     raw, used, is_real = {}, [], False
     if USE_REAL_AI:
@@ -370,6 +382,12 @@ def _template_report(stats):
     if rests:
         summary += f" 휴식은 {rests}번 했어요."
     return summary, advice
+
+
+def drive_report_template(stats):
+    """(11/18 팀장) AI 없이 바로 — [운행 종료] 응답에 먼저 넣는 템플릿 문장 (AI 문장은 뒤에서 drive_report)"""
+    summary, advice = _template_report(stats or {})
+    return {"summary": summary, "advice": advice, "is_real": False}
 
 
 def drive_report(stats):

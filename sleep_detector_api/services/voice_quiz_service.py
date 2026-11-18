@@ -20,7 +20,7 @@
 #
 # [주의]
 #   - 거꾸로 말하기는 넣지 않는다 (기획안 8-3)
-#   - 최소 2분 간격 · 2번 기회는 detect.py · quiz.py 가 지킴
+#   - 2단계에 들어갈 때마다 낸다 (11/18 2분 간격 뺌) · 2번 기회는 detect.py · quiz.py 가 지킴
 #   - 문제는 서버 메모리에만 있음 → 서버를 다시 켜면 사라짐 (quiz.py 가 404 → 앱은 퀴즈만 끝냄)
 #
 # 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」 8-3 · 8-4 · 9-6
@@ -121,7 +121,7 @@ def make_quiz(user_id, qtype=None, event_id=None):
         qtype = "add"
     first = qtype is None
     qtype = qtype if qtype in ("repeat", "add") else random.choice(["repeat", "add"])
-    intro = "잠을 깨워 볼게요. " if first else ""
+    intro = "깨어 있는지 확인할게요. " if first else ""  # (11/18 팀장) 퀴즈를 하는 이유를 먼저 말함
 
     if qtype == "repeat":
         sentences = _load_sentences()

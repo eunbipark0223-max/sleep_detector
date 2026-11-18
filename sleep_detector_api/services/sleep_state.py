@@ -54,7 +54,7 @@ def get_state(user_id: int) -> dict:
             "drive_started_at": datetime.now(),
             "rest_started_at": None,     # [정차했어요] 누른 시각
             "quiz_fails": 0,             # 운전 중 퀴즈 연속 실패 횟수
-            "last_quiz_at": None,        # 마지막 퀴즈 출제 시각 (2분 간격 제한용)
+            "last_quiz_at": None,        # 마지막 퀴즈 출제 시각 (기록만 · 11/18 2분 간격 뺌)
             "last_ping_at": None,        # 마지막 ping 수신 시각
             "reset_count": 0,            # 관리자 [조치완료] 횟수 (/detect 가 AI 처리 중 해제됐는지 확인)
             "open_ear": None,            # 🆕 출발 전 측정 뜬 눈 EAR 중간값 (face_service.calibrate, 실패면 None)
@@ -119,9 +119,10 @@ def record_sleep(user_id: int, closed_sec: float = 0.0) -> int:
 
     count = len(state["sleep_times"])
     rule_stage = min(3, count)
-    if state["stage"] == 1:
+    if state["stage"] >= 1:
         # 1단계에서 또 졸면 최소 2단계 — 휴식 후 1단계는 10분 기록이 비어 있어도 "다시 졸면 바로 2단계" (기획안 8-5)
-        rule_stage = max(rule_stage, 2)
+        # (11/16 팀장) 2단계에서 또 졸면 3단계 — 2단계 경고 뒤에도 계속 감고 있으면 앱이 다시 보냄 → 퀴즈 없이 바로 3단계
+        rule_stage = max(rule_stage, state["stage"] + 1)
 
     set_stage(user_id, rule_stage)
     return state["stage"]

@@ -62,7 +62,7 @@ CALIB_MAX = 0.25              # 기준 상한 (실패하면 EAR_THRESHOLD)
 
 # ── 경고 단계 (sleep_state · agent_service) ───────────
 WINDOW_MIN = 3 if DEMO_MODE else 10      # 졸음 횟수를 세는 창 · 1단계 자동 해제 시간
-AGENT_MAX_STEP_UP = 1         # 천장 규칙: Agent 는 규칙 단계보다 최대 +1
+AGENT_MAX_STEP_UP = 0         # (11/16 팀장) 단계는 규칙만 — Agent 는 경고 뒤에 보고서 · 요약만 쓴다 (전: 최대 +1)
 STAGE_MAX = 3
 STAGE_LABELS = {0: "정상", 1: "주의", 2: "휴식 권고", 3: "긴급"}
 STAGE3_REPEAT_SEC = 30        # 3단계 경고 반복 간격 (앱)
@@ -85,7 +85,6 @@ DRIVER_VOICE_MAX_CHARS = 50   # (11/16) 한 번에 듣고 이해되는 길이 �
 
 # ── 음성 퀴즈 (voice_quiz_service, /quiz/answer) ──────
 QUIZ_MODE = "voice"           # 10/29 STT 시험으로 부품 A 확정 (STT 안 되면 "screen" = 부품 B)
-VOICE_QUIZ_GAP_SEC = 120      # 퀴즈 사이 최소 간격
 VOICE_QUIZ_MAX_TRIES = 2      # 이만큼 실패하면 단계 +1, reason = no_response
 LISTEN_SEC = 10               # 앱이 듣는 시간 — 10/29 STT 시험 7 → 10 (말을 시작하는 데 ~3초, 계산하느라 6~7초에 답하기도 함)
 REPEAT_MIN_SCORE = 0.7        # 따라 말하기 유사도 통과 기준 — 11/02 KPI ⑤ 0.8 → 0.7
@@ -97,6 +96,11 @@ QUIZ_RETRY_WAIT_MIN = 5       # (부품 B) 복귀 퀴즈 실패 후 다시 시�
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_BASE_URL = os.getenv("GEMINI_BASE_URL") or "https://generativelanguage.googleapis.com/v1beta/openai/"
 GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-3.5-flash-lite"
+# ── 구글(Firebase) 로그인 — 관리자 웹 (11/16). 자세한 설명: services/firebase_verify.py ──
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "").strip()
+FIREBASE_API_KEY = os.getenv("FIREBASE_API_KEY", "").strip()      # 웹 API 키 (공개용)
+FIREBASE_APP_ID = os.getenv("FIREBASE_APP_ID", "").strip()
+FIREBASE_VERIFY = _env_bool("FIREBASE_VERIFY", False)               # True 면 기사 앱의 구글 로그인도 id_token 검증 (앱이 id_token 을 보내야 함)
 GEMINI_EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL") or "gemini-embedding-2"  # 11/04 001 → 2 (벡터 공간이 달라 색인 다시 만듦)
 
 # ── 경로 ──────────────────────────────────────────────

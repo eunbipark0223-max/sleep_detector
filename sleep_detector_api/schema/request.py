@@ -187,6 +187,7 @@ class GoogleLoginRequest(BaseModel):
     email       : EmailStr = Field(..., description="구글 계정 이메일")
     name        : str      = Field(..., min_length=1, max_length=50,  description="이름")
     firebase_uid: str      = Field(..., min_length=1, max_length=128, description="Firebase UID")
+    id_token    : Optional[str] = Field(None, max_length=4096, description="Firebase ID 토큰 — 관리자 웹은 항상 보냄 (관리자 계정은 이 검증을 통과해야 로그인)")
 
 
 # ── 채팅 (수업 그대로) ────────────────────────────────────────

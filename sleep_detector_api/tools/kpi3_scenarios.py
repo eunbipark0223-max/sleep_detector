@@ -68,6 +68,7 @@ with redirect_stdout(io.StringIO()):      # 서버 시작 문구 · AI 가짜 �
     from routers import detect  # noqa: E402
 main.app.dependency_overrides[get_session] = _override
 main.app.dependency_overrides[get_db] = _override
+detect.BG_SESSION = TestSession   # 뒤에서 AI 보고서를 채울 때도 시험 DB (11/16)
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -86,7 +87,6 @@ def new_driver():
     h = {"Authorization": f"Bearer {tok}"}
     uid = client.get("/users/me", headers=h).json()["id"]
     client.post("/drive/start", headers=h)
-    detect._last_quiz_at.pop(uid, None)
     sleep_state.get_state(uid)["pre_warned"] = True   # 예비 경고는 이미 지난 기사 — 여기서는 단계 규칙만 (예비 경고는 보너스, 11/12)
     return h, uid
 
@@ -301,24 +301,53 @@ def bonus_drive_end():
 
 
 def bonus_reset_race():
-    """AI 처리 중 관리자 [조치완료] → 끝나도 단계가 다시 안 오름 · 퀴즈 없음 · 경고는 조치완료로 기록 (11/05)"""
+    """(11/16 팀장) 경고는 규칙 단계로 바로 답하고, AI 는 뒤에서 기록만 채움 — Agent 가 +1 올리려 해도 단계 그대로"""
     h, uid = new_driver()
+    doze(h)                             # 첫 졸음 = 1단계 (AI 를 부르지 않음)
     real = agent_service.generate_response
-    doze(h)                             # 첫 졸음 = 1단계 (AI 를 부르지 않음, 11/16) → 두 번째 졸음에서 AI 가 돈다
+    order = []
 
-    def slow(*a, **k):                  # AI 가 도는 사이에 관리자가 누른 것과 같음
-        sleep_state.reset(uid)
-        return real(*a, **k)
+    def bump(*a, **k):                  # AI 가 한 단계 올리려는 것과 같음
+        order.append("agent")
+        out = real(*a, **k)
+        out["stage"] = min(3, out["stage"] + 1)
+        return out
 
-    agent_service.generate_response = slow
+    agent_service.generate_response = bump
     try:
         r = doze(h)
     finally:
         agent_service.generate_response = real
     with TestSession() as s:
-        status = (s.query(SleepEvent).filter(SleepEvent.user_id == uid)
-                  .order_by(SleepEvent.id.desc()).first().status)
-    return f"단계 {r['stage']} · ping {ping(h)['stage']} · 퀴즈 {r['voice_quiz'] is not None} · {status}"
+        ev = (s.query(SleepEvent).filter(SleepEvent.user_id == uid).order_by(SleepEvent.id.desc()).first())
+        rep = json.loads(ev.report)
+    return (f"단계 {r['stage']} · ping {ping(h)['stage']} · 기록 {ev.stage}단계 · Agent {len(order)}번 · "
+            f"보고서 {bool(rep.get('situation'))} · 규정 {'regulations' in rep}")
+
+
+def bonus_stage2_still_asleep():
+    """(11/16 팀장) 휴식 뒤 1단계 → 졸음 2단계 → 2단계 경고 뒤에도 계속 감음(사진 없이 다시 보냄) → 퀴즈 없이 3단계 · 음성은 '이름 + 지금 바로 정차' (11/17)"""
+    h, uid = new_driver()
+    doze(h); doze(h)                                    # 2단계
+    client.post("/drive/rest", headers=h)
+    back(uid, config.REST_MIN + 1)
+    client.post("/drive/resume", headers=h)             # 1단계 · 10분 기록 비움
+    r2 = doze(h)                                        # 1단계에서 또 졸음 → 2단계 (10분 1번)
+    r3 = client.post("/detect", data={"reason": "microsleep", "closed_sec": "6.0", "perclos": "0.2"}, headers=h).json()
+    return (f"{r2['stage']} → {r3['stage']} · 퀴즈 {r3['voice_quiz'] is not None} · "
+            f"음성 {r3['driver_voice'].endswith('님, 지금 바로 정차하세요.')}")
+
+
+def bonus_quiz_every_stage2():
+    """(11/18 팀장) 2분 간격 뺌 — 2단계에 들어갈 때마다 퀴즈 (휴식 뒤 곧바로 다시 2단계여도 퀴즈가 나옴)"""
+    h, uid = new_driver()
+    doze(h)
+    q1 = doze(h)                                        # 2단계 첫 진입
+    client.post("/drive/rest", headers=h)
+    back(uid, config.REST_MIN + 1)
+    client.post("/drive/resume", headers=h)             # 1단계
+    q2 = doze(h)                                        # 몇 초 만에 다시 2단계
+    return f"{q1['stage']} · 퀴즈 {q1['voice_quiz'] is not None} → {q2['stage']} · 퀴즈 {q2['voice_quiz'] is not None}"
 
 
 def bonus_stage1_no_ai():
@@ -442,13 +471,14 @@ def bonus_quiz_message():
 
 
 def bonus_detect_timing():
-    """[detect] 단계별 시간: 확정은 단계별 줄, 취소는 눈판정 시간"""
+    """[detect] 시간 기록: 바로 답한 합계 + 2단계부터 뒤에서 AI 보고서 (LLM · RAG · Agent) 줄 (11/16)"""
     h, _ = new_driver()
     out = io.StringIO()
     with redirect_stdout(out):
         doze(h)
+        doze(h)
     text = out.getvalue()
-    return " · ".join(k for k in ("눈판정", "LLM", "RAG", "Agent", "합계") if "걸린 시간" in text and k in text)
+    return " · ".join(k for k in ("눈판정", "합계", "AI 보고서 채움", "LLM", "RAG", "Agent") if "걸린 시간" in text and k in text)
 
 
 def bonus_pre_warning():
@@ -494,7 +524,7 @@ def bonus_drive_report():
     doze(h)
     r2 = doze(h)
     rep = client.post("/drive/end", headers=h).json()["report"]
-    voice_ok = r2["driver_voice"].startswith(f"기사{_n} 기사님, ") and len(r2["driver_voice"]) <= 60
+    voice_ok = r2["driver_voice"].startswith(f"기사{_n}님, ") and len(r2["driver_voice"]) <= 60
     return (f"졸음 {rep['sleep_count']} · 최고 {rep['max_stage']} · 시간표 {len(rep['timeline'])} · "
             f"요약 {bool(rep['summary'])} · 조언 {bool(rep['advice'])} · 음성 {voice_ok}")
 
@@ -508,11 +538,13 @@ BONUS = [("(보너스) 3단계는 휴식으로 안 풀림 → 3단계", 3, bonus
          ("(보너스) 재시작 복원: 3단계 · 2단계 · 휴식 뒤", "3 · 2 · 0", bonus_restore),
          ("(보너스) 운행 종료 뒤 연속 운전 시간 유지", "배너 False · 100분", bonus_drive_end),
          ("(보너스) 서버 판정 오류 → 앱 판단대로 확정", "확정", bonus_error),
-         ("(보너스) AI 처리 중 조치완료 → 단계 안 오름", "단계 0 · ping 0 · 퀴즈 False · 조치완료", bonus_reset_race),
+         ("(보너스) 바로 경고 · AI 는 뒤에서 기록만", "단계 2 · ping 2 · 기록 2단계 · Agent 1번 · 보고서 True · 규정 True", bonus_reset_race),
+         ("(보너스) 2단계 뒤 계속 감음 → 퀴즈 없이 3단계", "2 → 3 · 퀴즈 False · 음성 True", bonus_stage2_still_asleep),
+         ("(보너스) 2단계 들어갈 때마다 퀴즈 (2분 간격 없음)", "2 · 퀴즈 True → 2 · 퀴즈 True", bonus_quiz_every_stage2),
          ("(보너스) 1단계는 AI 없이 기록만", "첫 졸음 1단계 · AI 0·0 · 기록 1건 · 요약 True · 두 번째 AI 1·1", bonus_stage1_no_ai),
          ("(보너스) 경고 사진 권한", "401 · 200 · 404 · 200 · 404", bonus_photo_access),
          ("(보너스) 퀴즈 통과 음성: 2 · 3단계", "쉼터까지 조심히 가세요. / 안전한 곳에 정차해 주세요.", bonus_quiz_message),
-         ("(보너스) [detect] 단계별 시간 기록", "눈판정 · LLM · RAG · Agent · 합계", bonus_detect_timing),
+         ("(보너스) [detect] 시간 기록 · 뒤에서 AI", "눈판정 · 합계 · AI 보고서 채움 · LLM · RAG · Agent", bonus_detect_timing),
          ("(보너스) 운행 중 첫 졸음 = 예비 경고", "True · 0단계 · 기록 0건 · 다시 1단계 · 새 운행 True", bonus_pre_warning),
          ("(보너스) 반쯤 감은 눈 확인", "기준 저장 True · 조용 True · 3번째 확정 True · 경고 1건 perclos·half · 사진 1 · 기준 없음 확정 False", bonus_half_check)]
 

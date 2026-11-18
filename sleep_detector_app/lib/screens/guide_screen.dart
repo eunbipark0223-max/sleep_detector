@@ -28,7 +28,7 @@ class GuideScreen extends StatelessWidget {
     ('경고가 들리면 따라 주세요', '단계별 안내에 따라 안전한 곳에서 쉬어 주세요'),
   ];
 
-  static const List<String> _stageNames = ['정상', '주의', '휴식 권고', '긴급'];
+  static const List<String> _stageNames = ['정상', '주의', '휴식 권고', '긴급']; // 설명 글은 stage_texts.dart (경고 화면과 같은 말)
 
   @override
   Widget build(BuildContext context) {
