@@ -93,7 +93,7 @@ String _koreanNumber(int n) {
 List<_Quiz> _makeQuizzes(Random rnd) {
   final sentences = [..._sentences]..shuffle(rnd);
   final out = <_Quiz>[
-    for (final s in sentences.take(10)) _Quiz('repeat', s, s, '따라 말하세요. $s.'),
+    for (final s in sentences.take(10)) _Quiz('repeat', s, s, '크게 말하세요. $s.'),
   ];
   for (var i = 0; i < 10; i++) {
     // 받아올림 없는 두 자리 + 두 자리, 일의 자리 1~8 (서버 _make_add 와 같음)

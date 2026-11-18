@@ -85,6 +85,8 @@ DRIVER_VOICE_MAX_CHARS = 50   # (11/16) 한 번에 듣고 이해되는 길이 �
 
 # ── 음성 퀴즈 (voice_quiz_service, /quiz/answer) ──────
 QUIZ_MODE = "voice"           # 10/29 STT 시험으로 부품 A 확정 (STT 안 되면 "screen" = 부품 B)
+VOICE_QUIZ_TYPES = ("repeat",)  # (11/19 팀장) 운전 중 음성 퀴즈는 따라 말하기만 — 덧셈은 숫자를 기억해 계산하느라 자꾸 폰 화면을 보게 됨 (시연에서 찾음)
+                                #   덧셈 출제 · 채점 코드는 voice_quiz_service 에 남겨 둠 → ("repeat", "add") 로 되돌릴 수 있음
 VOICE_QUIZ_MAX_TRIES = 2      # 이만큼 실패하면 단계 +1, reason = no_response
 LISTEN_SEC = 10               # 앱이 듣는 시간 — 10/29 STT 시험 7 → 10 (말을 시작하는 데 ~3초, 계산하느라 6~7초에 답하기도 함)
 REPEAT_MIN_SCORE = 0.7        # 따라 말하기 유사도 통과 기준 — 11/02 KPI ⑤ 0.8 → 0.7

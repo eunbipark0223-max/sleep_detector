@@ -68,6 +68,7 @@ PRE_WARN_ON = os.getenv("PRE_WARN_ON", "false").lower() in ("1", "true", "yes") 
 DRIVE_LIMIT_MIN = 120                                         # 연속 운전 휴게 알림
 CALIB_FRAMES = 5                                              # 개인 기준 측정 사진 수
 LISTEN_SEC = 10                                               # 음성 퀴즈 듣는 시간 (10/29 STT 시험으로 7 → 10)
+MOCK_QUIZ_TYPES = ("repeat",)                                 # (11/19 팀장) 운전 중 음성 퀴즈는 따라 말하기만 (덧셈은 화면을 보게 됨) — 진짜 서버 config.VOICE_QUIZ_TYPES
 REPEAT_MIN_SCORE = 0.7                                        # 따라 말하기 통과 유사도 (11/02 STT 시험 결과 0.8 → 0.7, 진짜 서버 config 와 같게)
 VOICE_QUIZ_MAX_TRIES = 2
 MAX_PHOTO_BYTES = 10 * 1024 * 1024
@@ -308,10 +309,10 @@ def parse_number(text: str) -> Optional[int]:
 
 def make_quiz(user_id: int, qtype: Optional[str] = None, event_id: Optional[int] = None) -> dict:
     """문제 dict 를 돌려준다 (정답은 서버 QUIZZES 에만 보관, 응답에는 없음). qtype 을 주면 같은 유형 새 문제."""
-    qtype = qtype or random.choice(["repeat", "add"])
+    qtype = qtype if qtype in MOCK_QUIZ_TYPES else random.choice(MOCK_QUIZ_TYPES)  # (11/19 팀장) 진짜 서버 config.VOICE_QUIZ_TYPES 와 같게 — 따라 말하기만
     if qtype == "repeat":
         sentence = random.choice(_repeat_sentences())
-        speak, display, asked, answer = f"따라 말하세요. {sentence}", sentence, sentence, sentence
+        speak, display, asked, answer = f"깨어 있는지 확인할게요. 크게 말하세요. {sentence}.", sentence, sentence, sentence  # (11/19 팀장) 진짜 서버와 같은 질문
     else:
         while True:  # 받아올림 없는 2자리 + 2자리
             a, b = random.randint(10, 89), random.randint(10, 89)
