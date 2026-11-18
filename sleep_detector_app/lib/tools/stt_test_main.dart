@@ -10,6 +10,8 @@
 // [하는 일]
 //   - 사람(a · b · c · d · t) · 환경(quiet 조용한 곳 / noise 주행 소음)을 고르고 [시작]
 //   - 서버 voice_quiz_service 와 같은 문제 20개: 따라 말하기 10 + 덧셈 10 (섞어서)
+//       (11/19) 운전 중 퀴즈가 따라 말하기만이 되어 → 100문장을 한 번씩 모두 (섞어서, _withAdd = false)
+//       질문: '깨어 있는지 확인할게요. 크게 말하세요. (문장).' — 서버 make_quiz 와 같게
 //   - 말하기 · 듣기는 앱과 똑같이 lib/services/voice_service.dart 로 (11/02 — 시험 = 실제 서비스 검증)
 //       VoiceService.speak(문제) → VoiceService.listen(type, display) — 듣는 방식은 voice_service 맨 위 설명
 //       (10/29 이 도구로 11차례 시험해 정한 방식을 voice_service 로 옮김: 조용한 곳 95%)
@@ -90,18 +92,23 @@ String _koreanNumber(int n) {
   return '${t == 0 ? '' : '${t == 1 ? '' : _sinoDigits[t]}십'}${_sinoDigits[u]}';
 }
 
+// (11/19) 서버 make_quiz 의 새 퀴즈 앞 안내 (11/18 팀장) — 문제마다 새 퀴즈라 모두 붙임 (두 번째 기회 문제만 안 붙음)
+const _intro = '깨어 있는지 확인할게요. ';
+// (11/19 팀장) 운전 중 퀴즈는 따라 말하기만 (서버 config.VOICE_QUIZ_TYPES) → 100문장을 한 번씩 모두 (덧셈 코드는 남김, false)
+const _withAdd = false;
+
 List<_Quiz> _makeQuizzes(Random rnd) {
   final sentences = [..._sentences]..shuffle(rnd);
   final out = <_Quiz>[
-    for (final s in sentences.take(10)) _Quiz('repeat', s, s, '크게 말하세요. $s.'),
+    for (final s in _withAdd ? sentences.take(10) : sentences) _Quiz('repeat', s, s, '$_intro크게 말하세요. $s.'),
   ];
-  for (var i = 0; i < 10; i++) {
+  for (var i = 0; _withAdd && i < 10; i++) {
     // 받아올림 없는 두 자리 + 두 자리, 일의 자리 1~8 (서버 _make_add 와 같음)
     final t1 = 1 + rnd.nextInt(8), t2 = 1 + rnd.nextInt(9 - t1);
     final u1 = 1 + rnd.nextInt(8), u2 = 1 + rnd.nextInt(9 - u1);
     var a = t1 * 10 + u1, b = t2 * 10 + u2;
     if (rnd.nextBool()) (a, b) = (b, a);
-    out.add(_Quiz('add', '$a + $b = ?', '${a + b}', '${_koreanNumber(a)} 더하기 ${_koreanNumber(b)}. 답을 말해 주세요.'));
+    out.add(_Quiz('add', '$a + $b = ?', '${a + b}', '$_intro${_koreanNumber(a)} 더하기 ${_koreanNumber(b)}. 답을 말해 주세요.'));
   }
   return out..shuffle(rnd);
 }
@@ -233,7 +240,7 @@ class _SttTestScreenState extends State<SttTestScreen> {
             const SizedBox(height: 8),
             FilledButton(
               onPressed: !_ready ? null : (_running ? () => setState(() => _stopAsked = true) : _run),
-              child: Text(_running ? '그만 (지금 문제까지 저장)' : '시작 (20문제)'),
+              child: Text(_running ? '그만 (지금 문제까지 저장)' : '시작 (${_withAdd ? 20 : _sentences.length}문제)'),
             ),
             const SizedBox(height: 12),
             Text(_status),
