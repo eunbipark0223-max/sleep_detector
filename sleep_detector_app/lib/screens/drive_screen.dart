@@ -339,7 +339,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
         _offlineDialogCtx = ctx;
         return AlertDialog(
           title: const Text('인터넷 연결이 끊겼어요'),
-          content: const Text('와이파이나 데이터를 확인해 주세요.', style: TextStyle(fontSize: 15, height: 1.4)),
+          content: const Text('와이파이나 데이터를 확인해 주세요', style: TextStyle(fontSize: 15, height: 1.4)),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('닫기')),
             ValueListenableBuilder<bool>(
@@ -413,7 +413,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
         return; // 켜졌으면 끝
       } catch (e) {
         if (attempt == 3) {
-          if (mounted) setState(() => _notice = '카메라를 켤 수 없어요. 앱을 다시 켜 주세요.');
+          if (mounted) setState(() => _notice = '카메라를 켤 수 없어요\n앱을 다시 켜 주세요');
           return;
         }
         await Future.delayed(const Duration(seconds: 1));
@@ -754,7 +754,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('운행을 끝낼까요?', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
-        content: const Text('운행을 끝내면 졸음 감지가 멈춰요.', style: TextStyle(fontSize: 18, height: 1.45, color: AppColors.textPrimary)),
+        content: const Text('운행을 끝내면 졸음 감지가 멈춰요', style: TextStyle(fontSize: 18, height: 1.45, color: AppColors.textPrimary)),
         actionsPadding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
         actions: [
           Row(

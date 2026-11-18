@@ -63,7 +63,7 @@ Future<bool> confirmRest(BuildContext context) async {
       // (11/11) 글자 크게 + [취소] · [네, 정차했어요] 를 큰 버튼으로, 서로 떨어뜨려서 잘못 누르지 않게
       return AlertDialog(
         title: const Text('정차하셨나요?', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
-        content: const Text('휴식을 시작하면 쉬는 시간이 끝나야\n운행을 다시 시작할 수 있어요.',
+        content: const Text('휴식을 시작하면 쉬는 시간이 끝나야\n운행을 다시 시작할 수 있어요',
             style: TextStyle(fontSize: 18, height: 1.45, color: AppColors.textPrimary)),
         actionsPadding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
         actions: [
@@ -444,7 +444,9 @@ class _WarningScreenState extends State<WarningScreen> {
   Timer? _wakeTick;
 
   // 운행 중 2 · 3단계 경고는 뒤로 가기로 끌 수 없다 (2단계는 쉬어야, 3단계는 관리자만 해제). 사진 1장 테스트는 나갈 수 있음
-  bool get _locked => widget.liveStage != null && _stage >= 2;
+  // (11/18 사용자 요청) 2 · 3단계 경고 화면에도 뒤로 가기(<) 버튼을 다시 — 운행 화면으로 돌아갈 수 있게
+  //   (예전엔 반복 음성 · [정차했어요] 가 끊기지 않게 막아 두었음, 11/04)
+  bool get _locked => false;
 
   @override
   void initState() {

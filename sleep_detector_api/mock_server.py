@@ -1041,6 +1041,10 @@ def event_status(event_id: int, body: StatusUpdate, admin: dict = Depends(requir
     event["status"] = body.status
     reset = body.status == "조치완료"
     if reset:  # 3단계 해제 — 앱은 다음 ping 에서 0단계
+        # (11/18 C) 진짜 서버와 같게: 그 기사의 처리 안 된 경고(미확인 · 확인)도 모두 조치완료
+        for other in EVENTS:
+            if other["user_id"] == event["user_id"] and other["status"] in ("미확인", "확인"):
+                other["status"] = "조치완료"
         reset_state(state_of(event["user_id"]))
     return {"success": True, "id": event_id, "status": event["status"], "stage_reset": reset}
 

@@ -25,6 +25,7 @@ import '../models/sleep_event.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../theme.dart';
+import '../widgets/auth_ui.dart';
 import '../widgets/web_ui.dart';
 import '../widgets/home_ui.dart';
 import 'calibration_screen.dart';
@@ -305,27 +306,35 @@ class _HomeScreenState extends State<HomeScreen> {
                         StatItem('긴급', '${urgent.length}', '건', alert: urgent.isNotEmpty),
                       ],
                     ),
-                    if (shown.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 28),
-                        child: Text(empties[_tab], style: const TextStyle(fontSize: 14, color: AppColors.textMuted)),
-                      ),
-                    for (var i = 0; i < shown.length; i++) ...[
-                      if (i > 0) const Divider(height: 1, thickness: 1, color: AppColors.line),
-                      _EventTile(event: shown[i]),
-                    ],
-                    if (lists[_tab].length > _tabCount && widget.onOpenRecords != null) ...[
-                      const Divider(height: 1, thickness: 1, color: AppColors.line),
-                      TextButton(
-                        onPressed: widget.onOpenRecords,
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppColors.navy,
-                          minimumSize: const Size.fromHeight(48),
-                        ),
-                        child: Text('${lists[_tab].length}건 전체 보기',
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                      ),
-                    ],
+                    // (11/18 사용자 요청) 칸을 바꾸면 목록이 옆으로 부드럽게 미끄러짐 · 목록을 옆으로 밀어도 바뀜
+                    SlideSwitcher(
+                      index: _tab,
+                      onSwipe: (d) => setState(() => _tab = (_tab + d).clamp(0, 2)),
+                      child: Column(children: [
+                        if (shown.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 28),
+                            child: Center(
+                                child: Text(empties[_tab], style: const TextStyle(fontSize: 14, color: AppColors.textMuted))),
+                          ),
+                        for (var i = 0; i < shown.length; i++) ...[
+                          if (i > 0) const Divider(height: 1, thickness: 1, color: AppColors.line),
+                          _EventTile(event: shown[i]),
+                        ],
+                        if (lists[_tab].length > _tabCount && widget.onOpenRecords != null) ...[
+                          const Divider(height: 1, thickness: 1, color: AppColors.line),
+                          TextButton(
+                            onPressed: widget.onOpenRecords,
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.navy,
+                              minimumSize: const Size.fromHeight(48),
+                            ),
+                            child: Text('${lists[_tab].length}건 전체 보기',
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                          ),
+                        ],
+                      ]),
+                    ),
                   ],
                 ),
               );
@@ -357,37 +366,17 @@ class _ResumeInCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // (11/18 사용자 요청) 상태 설명 글(관리자 조치 · 휴식 안내)은 빼고 알림으로. 두 버튼은 같은 크기 · 같은 알약 모양
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(_detail, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-        const SizedBox(height: 14),
-        FilledButton(onPressed: onResume, child: const Text('이어서 운행')),
-        const SizedBox(height: 8),
-        FilledButton(
-          onPressed: onNew,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.fill.withValues(alpha: 0.7),
-            foregroundColor: const Color(0xFF2E333D),
-            minimumSize: const Size.fromHeight(46),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-          ),
-          child: const Text('새로운 운행 시작'),
-        ),
+        AuthButton(text: '이어서 운행', onPressed: onResume),
+        const SizedBox(height: 10),
+        AuthButton(text: '새로운 운행 시작', primary: false, onPressed: onNew),
       ],
     );
   }
 
-  String get _detail {
-    if (state.resting) {
-      final min = (state.restLeftSec / 60).ceil();
-      return state.restLeftSec <= 0 ? '충분히 쉬었어요. [이어서 운행]을 눌러 주세요' : '쉬는 중이에요 (약 $min분 남음)';
-    }
-    if (state.stage >= 3) return '관리자가 조치하기 전까지 3단계가 이어져요';
-    if (state.stage == 2) return '쉬어야 2단계가 풀려요';
-    return '운행 중이던 상태 그대로 이어서 운행해요';
-  }
 }
 
 /// 예전 [이어서 운행] 흰 상자 (안 씀 — 되돌릴 때 참고)

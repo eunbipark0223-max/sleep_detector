@@ -49,11 +49,11 @@ class _SignupScreenState extends State<SignupScreen> {
   ];
 
   static const String _consentText =
-      '졸음 가드는 회원가입과 졸음 경고 대응을 위해 아래 개인정보를 수집 · 이용해요.\n\n'
+      '졸음 가드는 회원가입과 졸음 경고 대응을 위해 아래 개인정보를 수집 · 이용해요\n\n'
       '• 수집 항목: 사번, 이름, 이메일, 비밀번호(암호화해서 저장), 전화번호, 차량번호\n'
       '• 이용 목적: 로그인 등 계정 관리, 졸음 경고가 났을 때 관리자가 기사님께 연락\n'
       '• 보관 기간: 서비스를 이용하는 동안\n\n'
-      '동의하지 않으면 회원가입을 할 수 없어요.';
+      '동의하지 않으면 회원가입을 할 수 없어요';
 
   final _formKey = GlobalKey<FormState>();
   final _empNoInput = TextEditingController();

@@ -199,7 +199,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     // 얼굴을 못 찾음 → 아직 기회가 있으면 같은 화면으로 돌아가 다시 측정을 권한다 (기본 설정으로 바로 가지 않음, 11/11)
     if (threshold == null && _failures + 1 < _maxTries) {
       _failures++;
-      const msg = '얼굴이 잘 보이지 않았어요.\n정면을 보고 다시 측정해 주세요';
+      const msg = '얼굴이 잘 보이지 않았어요\n정면을 바라보고 다시 시도해 주세요';
       setState(() {
         _retryMessage = msg;
         _phase = _Phase.ready;
@@ -210,7 +210,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
 
     final value = threshold ?? AppConfig.eyeClosedProb;
     setState(() {
-      _result = threshold == null ? '얼굴을 확인하지 못해 기본 설정으로 시작해요' : '준비됐어요. 출발하세요'; // 숫자 · 서버 용어는 기사에게 안 보임 (11/11)
+      _result = threshold == null ? '얼굴을 확인하지 못해 기본 설정으로 시작해요' : '준비됐어요\n안전 운전하세요'; // 숫자 · 서버 용어는 기사에게 안 보임 (11/11)
       _note = serverOk ? '' : '연결이 불안정해 기본 설정으로 시작해요';
       _phase = _Phase.finishing;
     });
@@ -258,7 +258,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     return PopScope(
       canPop: canLeave, // 측정 중에는 뒤로 가기로 나갈 수 없다
       child: Scaffold(
-        appBar: AppBar(title: const Text('눈 크기 측정하기'), automaticallyImplyLeading: canLeave),
+        appBar: AppBar(title: const Text('얼굴 인식'), centerTitle: true, automaticallyImplyLeading: canLeave),
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -300,20 +300,20 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
             const SizedBox(height: 12),
           ] else ...[
             // 처음 측정 때만 안내 — 다시 측정할 때는 위 '얼굴이 잘 보이지 않았어요' 문구만 (11/12 팀장)
-            const Text('정면을 보고 눈을 편하게 뜨세요', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            const Text('화면을 정면으로 바라봐 주세요', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
             const SizedBox(height: 6),
-            const Text('폰을 거치대에 고정하고 눌러 주세요.',
+            const Text('휴대폰을 거치대에 고정한 뒤 시작해 주세요',
                 textAlign: TextAlign.center, style: TextStyle(fontSize: 14, height: 1.4, color: AppColors.textSecondary)),
           ],
           const SizedBox(height: 24),
-          FilledButton(onPressed: _measure, child: Text(_failures > 0 ? '다시 측정' : '측정 시작')),
+          FilledButton(onPressed: _measure, child: Text(_failures > 0 ? '다시 시도' : '시작')),
           // [기본 기준으로 시작] 은 두지 않는다 — 출발 전 측정은 필수 (반쯤 감은 눈 확인의 기준이 됨, 11/11 팀장)
         ];
       case _Phase.measuring:
         return [
           _Preview(controller: _controller),
           const SizedBox(height: 20),
-          const Text('정면을 보고 눈을 편하게 뜨세요', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          const Text('그대로 정면을 바라봐 주세요', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
           const SizedBox(height: 16),
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
@@ -326,7 +326,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
         return [
           const Icon(Icons.check_circle_outline, size: 56, color: AppColors.normal),
           const SizedBox(height: 12),
-          const Text('측정이 끝났어요', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          const Text('얼굴 인식이 완료됐어요', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
           const SizedBox(height: 6),
           Text(_result, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, color: AppColors.textSecondary)),
           if (_note.isNotEmpty) ...[

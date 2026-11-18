@@ -139,7 +139,7 @@ Future<void> showRegulationSheet(BuildContext context, List<Regulation> regulati
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
           const SizedBox(height: 12),
           if (regulations.isEmpty)
-            const Text('표시할 규정이 없어요.', style: TextStyle(color: AppColors.textMuted)),
+            const Text('표시할 규정이 없어요', style: TextStyle(color: AppColors.textMuted)),
           for (final r in regulations) RegulationCard.fromRegulation(r),
         ],
       ),

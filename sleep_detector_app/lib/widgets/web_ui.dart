@@ -82,6 +82,13 @@ class StageBadge extends StatelessWidget {
   }
 }
 
+/// (11/18 사용자 요청) 화면 글자에는 마침표를 쓰지 않는다 — 서버가 준 문장(AI 분석 · 안내)도 화면에 보일 때
+///   끝 마침표는 지우고, 문장이 여러 개면 줄을 바꾼다. "A 했어요. B 해 주세요." → "A 했어요\nB 해 주세요"
+String noDot(String text) => text
+    .trim()
+    .replaceAll(RegExp(r'\.\s+'), '\n')
+    .replaceAll(RegExp(r'\.$'), '');
+
 /// 단계 이름 (배지용 짧은 이름) — 관리자 웹과 같은 말
 String stageShortName(int stage) {
   switch (stage.clamp(0, 3)) {
@@ -107,10 +114,11 @@ class WebCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         width: double.infinity,
         padding: padding,
+        // (11/18 사용자 요청) 흰 바탕 위에서 그림자 대신 얇은 회색 테두리로 구분 (애플 · 관리자 웹 표 느낌)
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(22),
-          boxShadow: const [BoxShadow(color: Color(0x0A1F2A5C), blurRadius: 12, offset: Offset(0, 2))],
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.cardBorder),
         ),
         child: child,
       );
@@ -134,6 +142,25 @@ class StatTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // (11/18 사용자 요청) 고른 칸 밑줄이 옆 칸으로 부드럽게 미끄러져 감
+    return LayoutBuilder(builder: (context, c) {
+      final w = c.maxWidth / items.length;
+      return Stack(children: [
+        Positioned(left: 0, right: 0, bottom: 0, child: Container(height: 1, color: AppColors.line)),
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+          left: w * selected,
+          width: w,
+          bottom: 0,
+          child: Container(height: 2.5, color: AppColors.navy),
+        ),
+        _row(),
+      ]);
+    });
+  }
+
+  Widget _row() {
     return Row(children: [
       for (var i = 0; i < items.length; i++)
         Expanded(
@@ -141,11 +168,6 @@ class StatTabs extends StatelessWidget {
             onTap: onSelect == null ? null : () => onSelect!(i),
             child: Container(
               padding: const EdgeInsets.fromLTRB(16, 16, 8, 14),
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: i == selected ? AppColors.navy : AppColors.line, width: i == selected ? 2.5 : 1),
-                ),
-              ),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(items[i].label,
                     maxLines: 1,
@@ -167,6 +189,66 @@ class StatTabs extends StatelessWidget {
           ),
         ),
     ]);
+  }
+}
+
+/// (11/18 사용자 요청) 내용이 옆으로 부드럽게 미끄러지며 바뀌는 칸 — 홈 숫자 칸 목록 · 운행 기록 달력
+///   index 가 커지면 오른쪽에서 들어오고, 작아지면 왼쪽에서 들어옴. 손가락으로 옆으로 밀면 onSwipe(+1 / -1)
+class SlideSwitcher extends StatefulWidget {
+  final int index;
+  final Widget child;
+  final ValueChanged<int>? onSwipe;
+  const SlideSwitcher({super.key, required this.index, required this.child, this.onSwipe});
+
+  @override
+  State<SlideSwitcher> createState() => _SlideSwitcherState();
+}
+
+class _SlideSwitcherState extends State<SlideSwitcher> {
+  int _dir = 1;
+
+  @override
+  void didUpdateWidget(covariant SlideSwitcher old) {
+    super.didUpdateWidget(old);
+    if (old.index != widget.index) _dir = widget.index > old.index ? 1 : -1;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final current = ValueKey(widget.index);
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragEnd: widget.onSwipe == null
+          ? null
+          : (d) {
+              final v = d.primaryVelocity ?? 0;
+              if (v.abs() < 250) return;
+              widget.onSwipe!(v < 0 ? 1 : -1); // 왼쪽으로 밀면 다음
+            },
+      child: ClipRect(
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 280),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeOutCubic,
+            layoutBuilder: (cur, prev) => Stack(alignment: Alignment.topCenter, children: [...prev, ?cur]),
+            transitionBuilder: (child, anim) {
+              // 들어오는 칸: 미는 방향 반대편에서 · 나가는 칸: 미는 방향으로
+              final incoming = child.key == current;
+              final from = Offset(incoming ? _dir.toDouble() : -_dir.toDouble(), 0);
+              return SlideTransition(
+                position: Tween<Offset>(begin: from, end: Offset.zero).animate(anim),
+                child: FadeTransition(opacity: anim, child: child),
+              );
+            },
+            child: KeyedSubtree(key: current, child: widget.child),
+          ),
+        ),
+      ),
+    );
   }
 }
 

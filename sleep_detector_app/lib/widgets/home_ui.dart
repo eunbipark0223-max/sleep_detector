@@ -76,8 +76,7 @@ class HomeStateCard extends StatelessWidget {
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('지금 상태', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                const SizedBox(height: 8),
+                // (11/18 사용자 요청) '지금 상태' 글자 없이 단계 배지부터
                 StageBadge(stage: s, fontSize: 13),
                 const SizedBox(height: 12),
                 Text(big,
@@ -95,12 +94,14 @@ class HomeStateCard extends StatelessWidget {
               child: Row(children: [
                 for (var i = 0; i < stats.length; i++) ...[
                   if (i > 0) const VerticalDivider(width: 24, thickness: 1, color: AppColors.line),
+                  // (11/18 사용자 요청) 운행 시간 · 졸음 · 휴식 숫자를 칸 가운데로
                   Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
                       Text(stats[i].$1,
+                          textAlign: TextAlign.center,
                           style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                       const SizedBox(height: 2),
-                      Text(stats[i].$2, style: const TextStyle(fontSize: 13, color: AppColors.textMuted)),
+                      Text(stats[i].$2, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: AppColors.textMuted)),
                     ]),
                   ),
                 ],

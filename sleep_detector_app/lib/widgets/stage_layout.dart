@@ -105,9 +105,19 @@ class StageMessage extends StatelessWidget {
   final String text;
   const StageMessage(this.text, {super.key});
 
+  // (11/18 사용자 요청) 캐릭터 옆 안내는 간단하게 두 줄까지만 — 문장이 더 있으면 앞 두 문장만 (나머지는 음성으로 들려줌)
   @override
   Widget build(BuildContext context) {
-    return Text(text.replaceAll('.', '').replaceAll('\n\n', '\n'),
+    final lines = text
+        .replaceAll('.', '\n')
+        .split('\n')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .take(2)
+        .join('\n');
+    return Text(lines,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
         style: const TextStyle(fontSize: 21, height: 1.45, fontWeight: FontWeight.w500, color: AppColors.textPrimary));
   }
 }

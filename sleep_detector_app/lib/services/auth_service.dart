@@ -93,6 +93,12 @@ class AuthService {
       DateTime.tryParse(await _storage.read(key: _noticeSeenKey) ?? '');
   static Future<void> saveNoticeSeenAt(DateTime t) => _storage.write(key: _noticeSeenKey, value: t.toIso8601String());
 
+  // (11/18 C) 알림 = 관리자가 조치를 완료한 경고만. 조치 시각은 서버가 안 알려 줘서 '이미 본 경고 id' 로 읽음을 가린다
+  static const String _noticeIdsKey = 'notice_seen_ids';
+  static Future<Set<int>> getNoticeSeenIds() async =>
+      (await _storage.read(key: _noticeIdsKey) ?? '').split(',').map(int.tryParse).whereType<int>().toSet();
+  static Future<void> saveNoticeSeenIds(Set<int> ids) => _storage.write(key: _noticeIdsKey, value: ids.join(','));
+
   /// 로그인이 필요한 요청에 붙일 헤더 (토큰이 없으면 Authorization 없이)
   static Future<Map<String, String>> authHeaders() async {
     final token = await getToken();
@@ -235,14 +241,22 @@ class AuthService {
   /// 내 전화번호 · 차량번호 저장 (관리자가 경고를 보고 바로 연락할 때 쓴다).
   /// 넘기지 않은(null) 칸은 그대로 두고, 빈 글자('')를 넘기면 서버가 지운다. 돌려받는 것은 바뀐 내 정보.
   /// 형식이 틀리면(422) 서버 문구가 AuthException 으로 온다 (예: '전화번호 형식이 올바르지 않아요 (예: 010-1234-5678)').
-  static Future<Map<String, dynamic>> updateProfile({String? phone, String? vehicleNo}) async {
+  static Future<Map<String, dynamic>> updateProfile({String? phone, String? vehicleNo, String? name}) async {
     final body = <String, dynamic>{
+      'name': ?name, // (11/18) 내 정보에서 이름 바꾸기
       'phone': ?phone,
       'vehicle_no': ?vehicleNo,
     };
     final res = await _send(() async => http.patch(_uri('/users/me'), headers: await authHeaders(), body: jsonEncode(body)));
     if (res.statusCode != 200) throw _error(res);
     return _decode(res);
+  }
+
+  /// (11/18 C) 비밀번호 변경 — PUT /users/me/password. 지금 비밀번호가 틀리거나 새 비밀번호 규칙이 틀리면 서버 문구로 AuthException
+  static Future<void> changePassword({required String current, required String next}) async {
+    final res = await _send(() async => http.put(_uri('/users/me/password'),
+        headers: await authHeaders(), body: jsonEncode({'current_password': current, 'new_password': next})));
+    if (res.statusCode != 200) throw _error(res);
   }
 
   // ── 프로필 사진 (서버: POST · GET · DELETE /users/me/photo) ──────────────
@@ -290,6 +304,7 @@ class AuthService {
     } catch (_) {}
     try {
       await _storage.delete(key: _noticeSeenKey); // (11/17) 다른 계정으로 들어오면 알림을 처음부터 '안 읽음' 으로
+      await _storage.delete(key: _noticeIdsKey);
     } catch (_) {}
     try {
       await FirebaseAuth.instance.signOut();

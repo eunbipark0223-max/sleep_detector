@@ -20,6 +20,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/sleep_event.dart';
 import '../services/api_service.dart';
 import '../theme.dart';
+import '../widgets/owl_says.dart' show keepWords;
 import '../widgets/web_ui.dart';
 
 class EventDetailScreen extends StatefulWidget {
@@ -154,28 +155,26 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 ),
 
                 // 위치 줄 — 관리자 웹처럼 아이콘 + '지도에서 보기' 파란 글씨
+                // (11/18 사용자 요청) '경고가 난 곳' → '위치', 위아래 여백을 위 시각 줄과 같게 (16)
+                //   한 줄: [위치 아이콘] 위치 ……… 지도에서 보기 >
                 if (hasPlace) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   const Divider(height: 1, thickness: 1, color: AppColors.line),
                   InkWell(
                     onTap: () => launchUrl(
                         Uri.parse('https://map.kakao.com/link/map/경고 위치,${e.latitude},${e.longitude}'),
                         mode: LaunchMode.externalApplication),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        const Icon(Icons.location_on, size: 19, color: AppColors.textSecondary),
+                      padding: const EdgeInsets.fromLTRB(2, 16, 0, 2),
+                      child: Row(children: [
+                        const Icon(Icons.location_on_rounded, size: 20, color: AppColors.textSecondary),
                         const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            const Text('경고가 난 곳',
-                                style: TextStyle(fontSize: 14, color: AppColors.textPrimary)),
-                            const SizedBox(height: 3),
-                            Text('지도에서 보기',
-                                style: TextStyle(
-                                    fontSize: 13, fontWeight: FontWeight.w600, color: Colors.blue.shade700)),
-                          ]),
+                        const Expanded(
+                          child: Text('위치', style: TextStyle(fontSize: 15, color: AppColors.textPrimary)),
                         ),
+                        const Text('지도에서 보기',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.navy)),
+                        const Icon(Icons.chevron_right_rounded, size: 20, color: AppColors.navy),
                       ]),
                     ),
                   ),
@@ -199,7 +198,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     '무슨 일이 있었나요?',
                     closedSec is num && closedSec > 0
                         ? situation.replaceAll(RegExp(r'눈 감(김|긴) 시간은 짧았어요\.?'),
-                            '눈 감긴 시간은 ${closedSec.toStringAsFixed(1)}초였어요.')
+                            '눈 감긴 시간은 ${closedSec.toStringAsFixed(1)}초였어요')
                         : situation),
                 _aiRow('왜 이 단계인가요?', reason),
                 if (closedSec is num && closedSec > 0) _aiRow('눈을 감은 시간', '약 ${closedSec.toStringAsFixed(1)}초'),
@@ -257,7 +256,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         children: [
           Text(label, style: TextStyle(fontSize: 12.5, color: Colors.white.withValues(alpha: 0.65))),
           const SizedBox(height: 4),
-          Text(value,
+          Text(keepWords(noDot(value)),
               style: const TextStyle(fontSize: 15, height: 1.45, fontWeight: FontWeight.w600, color: Colors.white)),
         ],
       ),
@@ -273,7 +272,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         children: [
           Text(label, style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontSize: 15, height: 1.45, color: AppColors.textPrimary)),
+          Text(keepWords(noDot(value)), style: const TextStyle(fontSize: 15, height: 1.45, color: AppColors.textPrimary)),
         ],
       ),
     );

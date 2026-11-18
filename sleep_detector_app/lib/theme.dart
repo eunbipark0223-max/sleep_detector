@@ -25,7 +25,7 @@ class AppColors {
   static const Color navy = Color(0xFF1F2A5C); // 브랜드 · 알약 버튼 · AI 분석 카드 (관리자 웹 남색)
   static const Color navyDeep = Color(0xFF151D42); // 더 진한 남색 (눌림 · 강조)
   static const Color aiPurple = Color(0xFF6A4CC2); // AI 안내 · 기사 음성 보고 카드
-  static const Color background = Color(0xFFF3F4F8); // 화면 바탕 (관리자 웹 바탕)
+  static const Color background = Color(0xFFFFFFFF); // 화면 바탕 — (11/18 사용자 요청) 전체 흰색, 카드는 회색 테두리로 구분
   static const Color card = Color(0xFFFFFFFF); // 흰 카드
   static const Color fill = Color(0xFFE6E8EF); // 회색 칸 · 구분선
   static const Color field = Color(0xFFF3F4F8); // 입력칸 바탕 (관리자 웹 로그인 입력칸)
@@ -41,7 +41,7 @@ class AppColors {
   static const Color textPrimary = Color(0xFF0D111B); // 제목 · 본문 (readdy foreground-950)
   static const Color textSecondary = Color(0xFF595E67); // 설명 · 부제 (foreground-600)
   static const Color textMuted = Color(0xFF8F929A); // 시각 · 힌트 · 비활성 (foreground-400)
-  static const Color cardBorder = Color(0xFFDFE2E8); // 카드 · 입력창 테두리 (background-200)
+  static const Color cardBorder = Color(0xFFE6E8ED); // 카드 · 입력창 테두리 — 흰 바탕 위 옅은 회색 (애플 구분선 느낌)
 
   /// 단계 바탕 (부엉이가 잘 보이는 연한 단계 색 — 사용자 지정 11/16): 정상 · 주의 · 휴식 권고 · 긴급
   static const List<Color> _stagePastel = [Color(0xFFB8DBCA), Color(0xFFF3D9A2), Color(0xFFF2BB86), Color(0xFFE9A6A5)];

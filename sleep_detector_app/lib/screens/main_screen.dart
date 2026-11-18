@@ -53,7 +53,8 @@ class _MainScreenState extends State<MainScreen> {
 
   int _index = 0;
   String _callName = '기사님'; // (11/16 팀장) 홈 인사에 이름 — 음성 · 리포트와 같은 부르는 말
-  String _email = ''; // MY 탭 프로필 카드에 보임
+  String _email = '';
+  String _plainName = ''; // (11/18) MY 카드 — '기사님' 붙이지 않은 이름
 
   @override
   void initState() {
@@ -74,6 +75,7 @@ class _MainScreenState extends State<MainScreen> {
 
   void _setName(Map<String, dynamic>? user) {
     final name = AuthService.callName(user?['name'] as String?);
+    _plainName = (user?['name'] as String? ?? '').trim(); // MY 카드에는 '기사님' 없이 이름만
     final email = (user?['email'] as String? ?? '').trim();
     if (mounted && (name != _callName || email != _email)) {
       setState(() {
@@ -160,9 +162,9 @@ class _MainScreenState extends State<MainScreen> {
 
   Future<void> _loadUnread() async {
     try {
-      final seen = await AuthService.getNoticeSeenAt();
-      final events = await ApiService.fetchMyEvents();
-      final n = events.where((e) => seen == null || e.createdAt.isAfter(seen)).length;
+      // (11/18) 알림 = 관리자가 조치완료한 경고 중 아직 안 본 것 (notice_screen 과 같은 기준)
+      final seen = await AuthService.getNoticeSeenIds();
+      final n = noticeEvents(await ApiService.fetchMyEvents()).where((e) => !seen.contains(e.id)).length;
       if (mounted && n != _unread) setState(() => _unread = n);
     } catch (_) {} // 서버 연결이 안 되면 숫자 없이
   }
@@ -295,7 +297,7 @@ class _MainScreenState extends State<MainScreen> {
   // ── MY 탭 (11/17 사용자 요청 — ≡ 메뉴 대신, 다른 앱의 아래 'MY' 탭처럼) ─────────────
   //   애플 설정 화면처럼 흰 카드 묶음: [내 프로필 카드] · [사용 가이드] · [로그아웃]
   Widget _myPage() {
-    final initial = _callName == '기사님' ? '기' : _callName.characters.first;
+    final initial = _plainName.isEmpty ? '나' : _plainName.characters.first;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
@@ -310,8 +312,9 @@ class _MainScreenState extends State<MainScreen> {
               decoration: BoxDecoration(color: AppColors.navy.withValues(alpha: 0.08), shape: BoxShape.circle),
               child: Text(initial, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.navy)),
             ),
-            title: _callName,
-            sub: _email.isEmpty ? '내 정보 보기' : _email,
+            // (11/18 사용자 요청) '기사님' · 이메일 빼고 이름만 + '내 정보 보기'
+            title: _plainName.isEmpty ? '내 정보' : _plainName,
+            sub: '내 정보 보기',
             height: 84,
           ),
         ]),

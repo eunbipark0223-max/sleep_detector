@@ -76,9 +76,17 @@ def update_status(
     if body.status == "확인" and event.status != "미확인":
         return {"success": True, "id": event.id, "status": event.status, "stage_reset": False}
     event.status = body.status
+    stage_reset = body.status == "조치완료"
+    if stage_reset:
+        # (11/18 C) 관리자 [조치완료] = 그 기사를 0단계로 완전히 해제 → 그 기사의 아직 처리 안 된 경고(미확인 · 확인)도 모두 조치완료.
+        #   예전에는 누른 경고 하나만 바뀌어서, 다른 3단계 경고가 '미확인'으로 남아 서버를 다시 켜면 3단계로 되살아났음
+        #   (restore_all 은 조치완료보다 나중 경고를 다시 셈)
+        for other in db.scalars(
+            select(SleepEvent).where(SleepEvent.user_id == event.user_id, SleepEvent.status.in_(("미확인", "확인")))
+        ):
+            other.status = "조치완료"
     db.commit()
 
-    stage_reset = body.status == "조치완료"
     if stage_reset:
         sleep_state.reset(event.user_id)  # 앱은 다음 ping 에서 0단계를 받는다
     return {"success": True, "id": event.id, "status": event.status, "stage_reset": stage_reset}
