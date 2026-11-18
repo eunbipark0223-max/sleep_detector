@@ -9,6 +9,7 @@
 #   - 질문 → rag_service.search_by_text 로 규정 근거 → Gemini 가 근거 안에서만 답변
 #   - 근거에 없는 질문은 "제공된 자료에서 확인되지 않습니다" (노션 「RAG 전체 흐름 테스트」 채팅 시험 프롬프트를 운전자용으로)
 #     → (11/18 팀장) 기사에게는 이 말 대신 NOT_FOUND_ANSWER 안내 + 근거 카드 숨김 (관계없는 법령 카드가 붙어 헷갈렸음)
+#       주제는 맞는데 자료에 없는 대상(택시 등)이면 "택시 규정은 제가 가진 자료에 없어요 …" (_not_found_answer, 11/18)
 #   - "버스는요?" 같은 이어지는 질문은 직전 사용자 질문을 붙여서 검색
 #   - (11/18) 일상어 질문 — 검색어에만 법령 낱말을 덧붙임 (QUERY_WORDS 사전, AI 추가 호출 X). AI 에는 원래 질문 그대로
 #   - (11/18) 검색 결과에 법령이 하나도 없으면 법령만 한 번 더 찾아 맨 앞에 (일반 자료 1개와 바꿈)
@@ -35,6 +36,12 @@ from services import llm_service, rag_service
 HELLO = "안녕하세요, 졸음 가드 규정 도우미예요. 졸음운전 · 연속 운전 휴게시간 규정을 물어보세요."
 NO_AI_ANSWER = "지금은 AI 답변을 만들 수 없어요. 질문과 관련된 규정 원문을 아래에 보여 드릴게요."
 NOT_FOUND_ANSWER = "저는 규정 도우미예요. 졸음운전 · 휴게시간 규정을 물어봐 주세요."  # (11/18 팀장) 자료에 없는 질문 — 근거 카드 없이
+# (11/18) 주제는 맞는데 자료에 없는 질문 ('택시도 2시간마다 쉬어야 해?') 에 위 안내는 어색함 — 규정을 물었는데 규정을 물어보라는 셈
+#   → 자료에 없는 대상이면 그 대상을 밝혀 안내, 주제는 맞는데 대상이 없으면 IN_TOPIC_NOT_FOUND. 둘 다 카드는 숨김 (팀장 확인)
+SCOPE_HINT = "화물차 · 시외버스 · 전세버스 규정은 물어봐 주세요."
+OUT_OF_SCOPE_TARGETS = ("택시", "오토바이", "이륜차", "자전거", "킥보드", "승용차", "자가용", "렌터카", "대리운전")  # knowledge/ 에 휴식 규정 없음
+TOPIC_WORDS = ("운전", "쉬", "휴게", "휴식", "졸", "피곤", "과로", "기사", "버스", "화물", "트럭", "처벌", "벌금", "규정", "법")
+IN_TOPIC_NOT_FOUND = f"물어보신 내용은 제가 가진 자료에 없어요. {SCOPE_HINT}"
 # SYSTEM_PROMPT 가 자료에 없을 때 쓰라고 한 말 "만" 답했을 때 — "…는 확인되지 않습니다. 다만 …" 처럼 쓸 내용이 붙은 답은 그대로 둔다
 NOT_FOUND_ONLY = re.compile(r"^[^.]*확인되지\s*않습니다[.\s]*(\[[\d,\s]+\][.\s]*)*$")   # 한 문장짜리 '…확인되지 않습니다 [1, 2]' 까지
 CHAT_TIMEOUT_SEC = 20  # (11/18 팀장) 규정 도우미만 — 경고 보고서용 llm_service 5초와 따로
@@ -169,6 +176,16 @@ def _law_first(sources, search_query):
     return (law + sources[: len(sources) - len(law)]) if law else sources
 
 
+def _not_found_answer(query):
+    """AI 가 '확인되지 않습니다' 만 답했을 때 기사에게 보여 줄 말. query = 검색에 쓴 질문 (이어지는 질문이면 직전 질문 포함)"""
+    target = next((t for t in OUT_OF_SCOPE_TARGETS if t in query), None)
+    if target:
+        return f"{target} 규정은 제가 가진 자료에 없어요. {SCOPE_HINT}"
+    if any(w in query for w in TOPIC_WORDS):
+        return IN_TOPIC_NOT_FOUND
+    return NOT_FOUND_ANSWER
+
+
 def answer(message, history=None):
     query = _search_query(message, history)
     search_query = _expand(query)
@@ -188,7 +205,7 @@ def answer(message, history=None):
         return {"answer": NO_AI_ANSWER, "sources": sources, "is_real": False}
     if NOT_FOUND_ONLY.match(text.strip()):
         # (11/18 팀장) 자료에 없는 질문 — '확인되지 않습니다' 대신 안내, 관계없는 근거 카드는 숨김
-        return {"answer": NOT_FOUND_ANSWER, "sources": [], "is_real": True}
+        return {"answer": _not_found_answer(query), "sources": [], "is_real": True}
     return {"answer": text, "sources": sources, "is_real": True}
 
 

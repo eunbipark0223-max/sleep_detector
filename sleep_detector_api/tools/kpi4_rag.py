@@ -197,7 +197,7 @@ def _grade(q, r, searched):
     from services import chat_service
     ans = r["answer"]
     titles = " | ".join(searched)
-    refused = ans == chat_service.NOT_FOUND_ANSWER or "확인되지 않" in ans
+    refused = ans == chat_service.NOT_FOUND_ANSWER or "확인되지 않" in ans or "자료에 없어요" in ans
     gold_hit = any(g.strip() and g.strip() in titles for g in q["gold"].split(";"))
     facts = all(f.strip() in ans for f in q["key_facts"].split(";") if f.strip())
     if q["answerable"] == "yes":
