@@ -1365,6 +1365,42 @@ def chat_hello():
     return {"message": "안녕하세요, 졸음 가드 규정 도우미예요. 졸음운전 · 연속 운전 휴게시간 규정을 물어보세요. (규정 원문 검색)"}
 
 
+# (11/18 C) 졸음쉼터 도로 거리 · 걸리는 시간 — 진짜 서버 routers/rest_area.py (B) 와 같은 주소 · 같은 응답 모양
+#   서버 .env 에 KAKAO_API_KEY 가 있으면 B 의 route_distance_service(카카오 자동차 길찾기)를 그대로 부르고,
+#   없으면 연습용 어림값: 도로 거리 = 직선 × 1.3, 평균 시속 60km (화면 확인용 — 진짜 서버는 키가 없으면 시간 없이 거리만)
+@app.post("/rest-areas/road-distance")
+async def rest_area_road_distance(request: Request, user: dict = Depends(current_user)):
+    import math
+    body = await read_body(request)
+    lat, lng = to_float(body.get("lat")), to_float(body.get("lng"))
+    dests = [d for d in (body.get("destinations") or []) if isinstance(d, dict)][:20]
+    if lat is None or lng is None:
+        raise HTTPException(status_code=422, detail="lat · lng 가 필요해요")
+    try:
+        from services import route_distance_service
+        if route_distance_service.available():
+            results = route_distance_service.road_distances(lat, lng, dests)
+            return {"available": True, "results": results}
+    except Exception as e:  # 카카오 오류면 아래 어림값으로
+        print(f"[mock] 카카오 길찾기 실패 → 어림값: {type(e).__name__}: {e}")
+
+    def straight_m(a_lat, a_lng, b_lat, b_lng):
+        r = 6371000.0
+        p1, p2 = math.radians(a_lat), math.radians(b_lat)
+        dp, dl = p2 - p1, math.radians(b_lng - a_lng)
+        h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+        return 2 * r * math.asin(math.sqrt(h))
+
+    results = {}
+    for d in dests:
+        d_lat, d_lng = to_float(d.get("lat")), to_float(d.get("lng"))
+        if d_lat is None or d_lng is None or not d.get("key"):
+            continue
+        road_m = straight_m(lat, lng, d_lat, d_lng) * 1.3
+        results[str(d["key"])] = {"distance_m": int(road_m), "duration_s": int(road_m / (60_000 / 3600))}
+    return {"available": True, "results": results}
+
+
 @app.post("/chat")
 def chat(body: ChatRequest, user: dict = Depends(current_user)):
     if _real_ai_available():

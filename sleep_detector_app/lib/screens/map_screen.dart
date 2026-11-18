@@ -338,7 +338,16 @@ class _MapScreenState extends State<MapScreen> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                     const SizedBox(height: 3),
-                    Text(dist, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                    // (11/18 사용자 요청) 걸리는 시간을 앞에 굵게 (B 의 도로 거리 로직 — 서버 /rest-areas/road-distance)
+                    //   '12분 · 9.3km' · 시간을 못 구하면 '거리 9.3km'
+                    near.roadMin == null
+                        ? Text(dist, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary))
+                        : Text.rich(TextSpan(children: [
+                            TextSpan(
+                                text: '${near.roadMin}분',
+                                style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.navy)),
+                            TextSpan(text: ' · ${near.bestKm.toStringAsFixed(1)}km'),
+                          ]), style: const TextStyle(fontSize: 13.5, color: AppColors.textSecondary)),
                   ],
                 ),
               ),
