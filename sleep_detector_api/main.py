@@ -129,6 +129,14 @@ async def lifespan(app: FastAPI):   # ← app: FastAPI 매개변수 필수!
     print(f"ℹ️  DEMO_MODE={config.DEMO_MODE}  USE_REAL_AI={config.USE_REAL_AI}  USE_CNN={config.USE_CNN}  "
           f"GEMINI_MODEL={config.GEMINI_MODEL}")
 
+    # (11/19) 메일 — 켜졌는지 한눈에. 꺼져 있으면 인증번호가 응답(demo_code)에 실리니 배포 서버에서는 꼭 켜져 있어야 함
+    if config.MAIL_ENABLED:
+        print(f"✅ 메일: 구글 SMTP 켜짐 ({config.SMTP_HOST}:{config.SMTP_PORT}, 하루 {config.MAIL_DAILY_LIMIT}통 상한)")
+    elif config.SMTP_USER or config.SMTP_PASSWORD:
+        print("⚠️ 메일: SMTP_USER · SMTP_PASSWORD 중 하나만 있어서 꺼짐 — 둘 다 넣어야 켜짐 (지금은 시연용: 인증번호를 응답으로 줌)")
+    else:
+        print("ℹ️  메일: 꺼짐 — 시연용 (이메일 인증번호를 응답 demo_code 로 줌). 켜려면 .env 에 SMTP_USER · SMTP_PASSWORD")
+
     _warm_up_eye_models()
     threading.Thread(target=_warm_up_rag, name="rag-warm-up", daemon=True).start()
 

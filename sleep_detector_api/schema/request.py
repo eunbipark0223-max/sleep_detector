@@ -114,6 +114,42 @@ class EmailVerifyRequest(BaseModel):
     code : str = Field(..., min_length=4, max_length=10)
 
 
+class EmailChangeRequest(BaseModel):
+    """(11/19) POST /users/me/email/request — 이메일 변경 인증번호 받기 (관리자 웹 '내 정보')"""
+    new_email       : EmailStr = Field(..., description="바꿀 새 이메일")
+    current_password: str      = Field(..., min_length=1, max_length=128, description="지금 비밀번호")
+
+
+class EmailChangeConfirm(BaseModel):
+    """(11/19) POST /users/me/email/confirm — 인증번호 확인 → 이메일 바꾸기"""
+    new_email: EmailStr = Field(..., description="인증번호를 받은 새 이메일")
+    code     : str      = Field(..., min_length=4, max_length=10, description="메일로 받은 6자리")
+
+
+class AdminEmployeeCheck(BaseModel):
+    """(11/19) POST /admin/signup/check — 관리자 가입 사번 확인 (관리자 웹 admin_signup.html 이 보내는 모양 그대로)"""
+    employee_no: str = Field(..., max_length=30, description="관리자용 인증된 사번 (숫자 4~12자리)")
+
+
+class AdminSignupRequest(BaseModel):
+    """(11/19) POST /admin/signup — 관리자 가입. 비밀번호 규칙은 기사 가입과 같음"""
+    employee_no: str      = Field(..., max_length=30, description="관리자용 인증된 사번 (숫자 4~12자리)")
+    name       : str      = Field(..., min_length=1, max_length=50, description="이름")
+    email      : EmailStr = Field(..., description="로그인에 쓸 이메일")
+    password   : str      = Field(..., description="비밀번호 (가입 규칙 그대로)")
+
+    @field_validator("name")
+    def check_admin_name(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("이름을 입력해 주세요")
+        return value
+
+    @field_validator("password")
+    def validate_admin_password(cls, value):
+        return check_password_rules(value)
+
+
 class LoginRequest(BaseModel):
     email   : EmailStr = Field(..., description="사용자 이메일 주소")
     password: str      = Field(..., min_length=8, description="비밀번호(평문 입력)")

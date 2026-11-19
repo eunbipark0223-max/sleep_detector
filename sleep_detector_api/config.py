@@ -103,6 +103,30 @@ FIREBASE_APP_ID = os.getenv("FIREBASE_APP_ID", "").strip()
 FIREBASE_VERIFY = _env_bool("FIREBASE_VERIFY", False)               # True 면 기사 앱의 구글 로그인도 id_token 검증 (앱이 id_token 을 보내야 함)
 GEMINI_EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL") or "gemini-embedding-2"  # 11/04 001 → 2 (벡터 공간이 달라 색인 다시 만듦)
 
+# ── 메일 발송 (구글 SMTP) ← .env (11/19). 자세한 설명: services/mail_service.py ──
+#   🔴 구조는 [앱 → 우리 서버 → 구글 SMTP]. 구글 계정 · 앱 비밀번호는 서버 .env 에만 둔다 (앱 코드 · GitHub 에 절대 X)
+#   SMTP_USER · SMTP_PASSWORD 둘 다 있어야 켜짐. 없으면 시연용(인증번호를 응답 demo_code 로 줌)으로 동작
+SMTP_HOST = os.getenv("SMTP_HOST", "").strip() or "smtp.gmail.com"
+SMTP_PORT = int(os.getenv("SMTP_PORT") or 587)                        # 587 = STARTTLS · 465 = SSL
+SMTP_USER = os.getenv("SMTP_USER", "").strip()                        # 메일 전용 구글 계정 (개인 계정 X)
+SMTP_PASSWORD = "".join(os.getenv("SMTP_PASSWORD", "").split())       # 앱 비밀번호 — 구글이 'abcd efgh ijkl mnop' 처럼 띄어 써 줘서 공백 제거
+SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "").strip() or "졸음 가드"
+SMTP_TIMEOUT_SEC = 10
+MAIL_ENABLED = bool(SMTP_USER and SMTP_PASSWORD)
+
+# 메일 남용 막기 — 아무나 부르는 /users/email/send 가 스팸 발사대가 되면 구글이 계정을 정지한다 (메모리에만 기록, 서버 재시작하면 0)
+MAIL_COOLDOWN_SEC = 60        # 같은 이메일로 다시 보내기까지
+MAIL_PER_EMAIL_HOURLY = 5     # 같은 이메일로 1시간에 보낼 수 있는 최대 횟수
+MAIL_DAILY_LIMIT = int(os.getenv("MAIL_DAILY_LIMIT") or 100)   # 서버 전체 하루 최대 (개인 구글 계정은 하루 500통 — 넘으면 계정이 막히니 여유를 둠)
+
+# ── 관리자 가입 (관리자 웹 '사번으로 가입하기', 11/19) ← .env. 자세한 설명: routers/admin.py ──
+#   회사가 따로 정한 '인증된 사번'만 관리자 계정을 만들 수 있다 (기사 사번 employees 표와 별개). 한 사번 = 한 계정 (users.emp_no 에 기록)
+#   🔴 이 목록이 사실상 관리자 초대 코드 → 배포 서버는 순서대로 이어지는 번호(20240001, 20240002 …) 대신 알아맞히기 어려운 번호로
+#   비어 있으면 관리자 가입이 닫힘 (관리자는 tools/make_admin.py 로만 만듦)
+ADMIN_EMPLOYEE_NOS = frozenset(s.strip() for s in os.getenv("ADMIN_EMPLOYEE_NOS", "").split(",") if s.strip())
+ADMIN_SIGNUP_MAX_FAILS = 5        # 같은 접속 주소에서 사번을 이만큼 틀리면
+ADMIN_SIGNUP_LOCK_MIN = 10        # 이 시간 동안 막음 (사번 알아맞히기 방지)
+
 # ── 경로 ──────────────────────────────────────────────
 FACE_LANDMARKER_PATH = os.path.join(BASE_DIR, "ml_models", "face_landmarker.task")
 KNOWLEDGE_DIR = os.path.join(BASE_DIR, "knowledge")
