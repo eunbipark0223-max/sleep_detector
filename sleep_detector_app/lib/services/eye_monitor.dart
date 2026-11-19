@@ -339,7 +339,9 @@ class EyeMonitor {
       //   졸면서 크게 웃는 경우는 거의 없어서, 웃는 프레임은 감김으로 세지 않음
       final bool smiling = (lastSmileProb ?? 0) >= AppConfig.smileOpenProb;
       // 완전히 감음 = 뜸 확률, (useContourEar 켜면) 반쯤 감음 = 폰 EAR
-      final bool eyesClosed = !smiling &&
+      // (11/19) 고개를 옆으로 25° 넘게 돌리면 눈 확률이 틀려서 감김으로 세지 않음 (옆을 볼 때 졸음 오판)
+      final bool turned = (face.headEulerAngleY ?? 0).abs() > 25;
+      final bool eyesClosed = !smiling && !turned &&
           (avgProb < threshold || (AppConfig.useContourEar && ear != null && ear < AppConfig.earClosed));
       _headDown = AppConfig.headRuleOn && _isHeadDown(face.headEulerAngleX, now, eyesClosed, smiling);
       // (11/10) 경고 뒤 첫 '뜸' 프레임 → 그때부터 graceAfterWarningSec 봐줌

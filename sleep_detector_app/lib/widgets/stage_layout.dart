@@ -41,7 +41,7 @@ class StageLayout extends StatelessWidget {
     return LayoutBuilder(builder: (context, box) {
       final camH = (box.maxHeight * (camRatio ?? (header == null ? cameraRatio : 0.36))).clamp(180.0, 560.0);
       return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 8), // (11/19) 아래 버튼을 조금 더 아래로
+        padding: const EdgeInsets.fromLTRB(20, 22, 20, 8), // (11/19 사용자 요청) 너무 위에 붙어 있어 전체를 아래로 · 버튼은 맨 아래
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -196,10 +196,10 @@ class StageMessage extends StatelessWidget {
                 : Padding(
                     padding: const EdgeInsets.only(top: 12),
                     child: _CardChip(
-                      lead: const Icon(Icons.schedule_rounded, size: 14, color: Color(0xB32D2C2B)),
+                      lead: const Icon(Icons.schedule_rounded, size: 14, color: Color(0xB31C2033)),
                       text: '${DriveClock.label(m)} 운전 중',
                       bg: Colors.white.withValues(alpha: 0.55),
-                      color: const Color(0xD92D2C2B),
+                      color: const Color(0xD91C2033),
                     ),
                   ),
           ),
@@ -208,7 +208,7 @@ class StageMessage extends StatelessWidget {
             lead: Container(width: 8, height: 8, decoration: BoxDecoration(color: AppColors.stage(s), shape: BoxShape.circle)),
             text: s >= 1 ? '$s단계 | ${StageBadge.labels[s]}' : '안전 운전 중',
             bg: s >= 1 ? AppColors.stageTint(s) : Colors.white.withValues(alpha: 0.55),
-            color: s >= 1 ? AppColors.stageInk(s) : const Color(0xD92D2C2B),
+            color: s >= 1 ? AppColors.stageInk(s) : const Color(0xD91C2033),
           ),
         ],
       ]),

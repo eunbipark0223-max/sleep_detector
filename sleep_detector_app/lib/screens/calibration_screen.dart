@@ -46,6 +46,7 @@ import '../design_tokens.dart';
 import '../theme.dart';
 import '../widgets/auth_ui.dart';
 import '../widgets/stage_layout.dart';
+import '../widgets/buddy.dart';
 
 class CalibrationScreen extends StatefulWidget {
   /// 사진 1장 찍고 파일 경로를 돌려준다. 비우면 전면 카메라로 찍는다 (이때만 카메라를 열고 미리보기를 보여 준다).
@@ -268,6 +269,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
           child: _cameraPhase
               ? StageLayout(
                   header: const _CalHeader(),
+                  camRatio: 0.5, // (11/19) 운행 화면과 같은 카메라 크기
                   camera: _Preview(controller: _controller, fill: true),
                   // (11/18 팀장) 거치대 안내가 안 보였음 → 카메라 위쪽에 겹쳐서 늘 보이게 (측정 전)
                   cameraOverlay: (_phase == _Phase.ready || _phase == _Phase.measuring) ? const Center(child: _MountTip()) : null,
@@ -289,42 +291,60 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
 
   // 카메라 아래 글 (운행 화면의 큰 글 자리)
   // (11/18 피드백) 글 시작점 = 카메라 안쪽(둥근 모서리만큼 들어간 곳) = 거치대 알약 글자 시작점 → 왼쪽 12 띄움
+  // ignore: unused_field
   static const double _inset = 0; // 틀(StageLayout)이 이미 12 들여씀
 
+  // (11/19 사용자 요청 · Headspace) 카메라 아래 그라데이션 카드 — 작은 '운행 전 준비' · 큰 안내 · (측정 중) 진행 막대
+  Widget _calCard(String title, {Color? color, Widget? extra}) => HsCard(
+        stage: 0,
+        face: 0,
+        minHeight: 124,
+        orb: 150,
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('운행 전 준비', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Color(0xB31C2033))),
+          const SizedBox(height: 6),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(title,
+                maxLines: 1,
+                style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700, letterSpacing: -0.5, color: color ?? AppColors.textPrimary)),
+          ),
+          if (extra != null) ...[const SizedBox(height: 12), extra],
+        ]),
+      );
+
   List<Widget> _message() {
-    // (11/18 피드백) 너무 굵고 검정이라 혼자 튐 → 한 단계 가볍게 · 진회색
-    const big = TextStyle(fontSize: 20, height: 1.3, fontWeight: FontWeight.w600, letterSpacing: -0.4, color: AppleGray.softLabel);
     switch (_phase) {
       case _Phase.ready:
         return [
-          Padding(
-            padding: const EdgeInsets.only(left: _inset),
-            child: _retryMessage.isNotEmpty
-                ? Text(_retryMessage, style: big.copyWith(color: AppColors.rest))
-                : const Text('화면을 정면으로 바라봐 주세요', style: big),
-          ),
-
+          _retryMessage.isNotEmpty
+              ? _calCard(_retryMessage, color: AppColors.stageInk(2))
+              : _calCard('화면을 정면으로 바라봐 주세요'),
         ];
       case _Phase.measuring:
         return [
-          const Padding(padding: EdgeInsets.only(left: _inset), child: Text('그대로 정면을 바라봐 주세요', style: big)),
-          const SizedBox(height: 14),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-                value: widget.photoCount == 0 ? 0 : _shot / widget.photoCount,
-                minHeight: 8,
-                color: AppColors.navy,
-                backgroundColor: AppColors.cardBorder),
+          _calCard(
+            '그대로 정면을 바라봐 주세요',
+            extra: Row(children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                      value: widget.photoCount == 0 ? 0 : _shot / widget.photoCount,
+                      minHeight: 8,
+                      color: AppColors.navy,
+                      backgroundColor: Colors.white.withValues(alpha: 0.6)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text('$_shot / ${widget.photoCount}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xB31C2033))),
+            ]),
           ),
-          const SizedBox(height: 6),
-          Text('$_shot / ${widget.photoCount}', style: const TextStyle(fontSize: 13, color: AppColors.textMuted)),
         ];
       default:
-        return [
-          // (11/18 피드백) 카메라 왼쪽 끝에 맞춘 한 줄만 ('준비됐어요 · 안전 운전하세요' 같은 문장은 뺌)
-          const Padding(padding: EdgeInsets.only(left: _inset), child: Text('눈 기준 측정이 끝났어요', style: big)),
-        ];
+        return [_calCard('눈 기준 측정이 끝났어요')];
     }
   }
 

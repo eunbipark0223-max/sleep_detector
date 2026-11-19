@@ -420,7 +420,7 @@ class _WarningScreenState extends State<WarningScreen> {
   // 운행 중 2 · 3단계 경고는 뒤로 가기로 끌 수 없다 (2단계는 쉬어야, 3단계는 관리자만 해제). 사진 1장 테스트는 나갈 수 있음
   // (11/18 사용자 요청) 2 · 3단계 경고 화면에도 뒤로 가기(<) 버튼을 다시 — 운행 화면으로 돌아갈 수 있게
   //   (예전엔 반복 음성 · [정차했어요] 가 끊기지 않게 막아 두었음, 11/04)
-  bool get _locked => false;
+  bool get _locked => _stage >= 3 && widget.liveStage != null; // (11/19) 3단계는 관리자 해제 전까지 못 나감
 
   @override
   void initState() {
@@ -734,7 +734,8 @@ class _WarningScreenState extends State<WarningScreen> {
           // (11/16 R안) 위에 '● 단계' + 큰 제목, 부엉이 말풍선 대신 큰 글
           child: StageLayout(
             // (11/19 사용자 요청) 위 제목('쉬어 가세요')은 빼고 작은 '● 운행 중' 만 — 단계 · 운전 시간은 아래 카드에
-            camRatio: 0.42,
+            camRatio: 0.5, // (11/19) 운행 화면과 같은 카메라 크기
+            actionsHeight: 176,
             cameraOverlay: (widget.faceLost == null && widget.checking == null)
                 ? null
                 : Column(mainAxisSize: MainAxisSize.min, children: [
@@ -766,7 +767,7 @@ class _WarningScreenState extends State<WarningScreen> {
               // 3단계: 아주 큰 [깨어 있어요] + 남은 시간
               if (_stage >= 3 && driving) ...[
                 SizedBox(
-                  height: 186,
+                  height: 168,
                   child: ElevatedButton(
                     onPressed: _wakePressed ? null : _onWakePressed,
                     style: ElevatedButton.styleFrom(

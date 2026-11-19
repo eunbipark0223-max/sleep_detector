@@ -50,7 +50,6 @@ class HomeStateCard extends StatelessWidget {
     return _today(s, big); // (11/19 사용자 요청) Headspace '오늘' 카드 — 예전 흰 카드는 _readdy (되돌릴 때 참고)
   }
 
-  static const _week = ['월', '화', '수', '목', '금', '토', '일'];
 
   // ignore: unused_element
   static Color _titleColor(int s) => switch (s) {
@@ -64,13 +63,13 @@ class HomeStateCard extends StatelessWidget {
   //   아래 흰 칸 = 날짜 · 큰 글 · (운행 중이면) 운행 요약 · 버튼
   Widget _today(int s, String big) {
     final now = DateTime.now();
-    final date = '${now.month}월 ${now.day}일 ${_week[now.weekday - 1]}요일';
+    final date = '${now.month}/${now.day}'; // (11/19 사용자 요청) '11월 19일 목요일' 대신 짧게
     final title = idle && s == 0 ? '오늘도 안전 운전해요' : big;
     final sub = idle && s == 0 ? '졸음은 제가 옆에서 지켜볼게요' : null;
     return Container(
       decoration: BoxDecoration(
         color: AppColors.card,
-        borderRadius: BorderRadius.circular(AppIllust.heroRadius),
+        borderRadius: BorderRadius.circular(AppRadius.card), // (11/19) 홈 모든 카드 둥글기 같게
         boxShadow: AppShadow.card,
       ),
       clipBehavior: Clip.antiAlias,
@@ -84,7 +83,7 @@ class HomeStateCard extends StatelessWidget {
             // (11/19 사용자 요청) 큰 글은 진한 검정 대신 단계 색 — 정상은 남색 · 주의는 진한 노랑 · 휴식 권고 주황 · 긴급은 투명도 준 빨강
             Text(keepWords(title), style: AppType.title2.copyWith(color: AppColors.textPrimary)),
             if (sub != null) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 12), // (11/19 사용자 요청) 큰 글 아래 한 줄 띄우고
               Text(sub, style: AppType.subheadline.copyWith(color: AppColors.textSecondary)),
             ],
             if (stats.isNotEmpty) ...[

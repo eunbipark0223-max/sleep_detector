@@ -23,9 +23,9 @@ import 'package:flutter/material.dart';
 class AppleGray {
   AppleGray._();
   static const Color page = Color(0xFFF9F5F1); // 화면 바탕 — Headspace 크림 (#F9F4F2 계열)
-  static const Color label = Color(0xFF2D2C2B); // 제목 · 본문 — Headspace 글자색 (따뜻한 진회색)
+  static const Color label = Color(0xFF1C2033); // 제목 · 본문 — (11/19 사용자 요청) 남색 한 방울 섞은 검정
   static const Color secondaryLabel = Color(0xFF63605D); // 설명 · 부제 — Headspace
-  static const Color softLabel = Color(0xFF44423F); // 큰 제목 · 안내 문장 — Headspace 보조 진회색
+  static const Color softLabel = Color(0xFF363B50); // 큰 제목 · 안내 문장 — 남색 기운 진회색
   static const Color tertiaryLabel = Color(0xFF8E8A84); // 시각 · 힌트 · 비활성 (따뜻한 회색)
   static const Color separator = Color(0xFFE2DED9); // 카드 테두리 · 구분선 — Headspace
   static const Color opaqueSeparator = Color(0xFFECE7E1); // 목록 줄 사이 얇은 선

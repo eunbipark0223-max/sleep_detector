@@ -28,6 +28,7 @@ class MonthReport extends StatefulWidget {
 
 class _MonthReportState extends State<MonthReport> {
   late final Future<(List<SleepEvent>, List<DriveSpan>)> _data = _load();
+  DateTime _sel = DateTime(DateTime.now().year, DateTime.now().month); // (11/19) 고른 달
 
   static Future<(List<SleepEvent>, List<DriveSpan>)> _load() async {
     final ev = await ApiService.fetchMyEvents().catchError((_) => <SleepEvent>[]);
@@ -47,8 +48,14 @@ class _MonthReportState extends State<MonthReport> {
           return const SizedBox(height: 120, child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
         }
         final (events, spans) = snap.data!;
-        final now = DateTime.now();
+        final now = _sel; // (11/19 사용자 요청) 위에서 고른 달 기준
         bool inMonth(DateTime t, int y, int m) => t.year == y && t.month == m;
+        // 고를 수 있는 달 — 기록이 있는 달 + 이번 달 (최근 순)
+        final thisMonth = DateTime(DateTime.now().year, DateTime.now().month);
+        final months = <DateTime>{thisMonth, for (final e in events) DateTime(e.createdAt.toLocal().year, e.createdAt.toLocal().month)}
+            .where((m) => !m.isAfter(thisMonth))
+            .toList()
+          ..sort((a, b) => b.compareTo(a));
         final mine = events.where((e) => inMonth(e.createdAt.toLocal(), now.year, now.month)).toList();
         final prevM = now.month == 1 ? 12 : now.month - 1;
         final prevY = now.month == 1 ? now.year - 1 : now.year;
@@ -68,7 +75,39 @@ class _MonthReportState extends State<MonthReport> {
         final diff = mine.length - prev;
 
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          _heading('이번 달 운행 분석'),
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 10),
+            child: Row(children: [
+              const Text('운행 분석', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+              const Spacer(),
+              // (11/19 사용자 요청) 달 고르기 — 눌러서 아래로 펼침
+              PopupMenuButton<DateTime>(
+                initialValue: now,
+                onSelected: (m) => setState(() => _sel = m),
+                color: AppColors.card,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                itemBuilder: (_) => [
+                  for (final m in months)
+                    PopupMenuItem(
+                      value: m,
+                      child: Text(m.year == thisMonth.year ? '${m.month}월' : '${m.year}년 ${m.month}월',
+                          style: TextStyle(
+                              fontWeight: m == now ? FontWeight.w700 : FontWeight.w500,
+                              color: m == now ? AppColors.navy : AppColors.textPrimary)),
+                    ),
+                ],
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
+                  decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(999), boxShadow: AppShadow.card),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text(now.year == thisMonth.year ? '${now.month}월' : '${now.year}년 ${now.month}월',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.navy)),
+                    const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: AppColors.navy),
+                  ]),
+                ),
+              ),
+            ]),
+          ),
           // ① 그라데이션 카드
           HsCard(
             stage: 2,
@@ -76,11 +115,11 @@ class _MonthReportState extends State<MonthReport> {
             minHeight: 140,
             orb: 170,
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${now.month}월', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xB32D2C2B))),
+              Text('${now.month}월', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xB31C2033))),
               const SizedBox(height: 6),
               Text.rich(TextSpan(children: [
                 const TextSpan(text: '졸음 경고 '),
-                TextSpan(text: '${mine.length}', style: const TextStyle(fontSize: 30)),
+                TextSpan(text: '${mine.length}', style: TextStyle(fontSize: 30, color: AppColors.urgent.withValues(alpha: 0.74))), // (11/19) 빨강 · 살짝 투명
                 const TextSpan(text: '건'),
               ]), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: AppColors.textPrimary)),
               const SizedBox(height: 6),
@@ -90,7 +129,7 @@ class _MonthReportState extends State<MonthReport> {
                     : diff == 0
                         ? '지난달과 같아요'
                         : '지난달보다 ${diff.abs()}건 ${diff < 0 ? '줄었어요' : '늘었어요'}',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xCC2D2C2B)),
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xCC1C2033)),
               ),
             ]),
           ),
@@ -138,13 +177,13 @@ class _MonthReportState extends State<MonthReport> {
           ),
           const SizedBox(height: 22),
           // ④ 이번 달 정리
-          _heading('이번 달 정리'),
+          _heading('${now.month}월 정리'),
           WebCard(
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              for (final line in _summary(mine.length, peak, topReason, n(3), drives)) ...[
+              for (final (i, line) in _summary(mine.length, peak, topReason, n(3), drives).indexed) ...[
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
+                  padding: EdgeInsets.only(top: i == 0 ? 0 : 10), // (11/19) 위아래 여백 같게
                   child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Padding(
                       padding: const EdgeInsets.only(top: 7),
@@ -196,22 +235,13 @@ class _MonthReportState extends State<MonthReport> {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              color: c,
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.card, width: 1.5),
-              boxShadow: [BoxShadow(color: c.withValues(alpha: 0.3), spreadRadius: 1.5)],
-            ),
-          ),
+          Buddy(stage: stage ?? 0, size: 22, breathe: false), // (11/19 사용자 요청) 동그라미 대신 캐릭터
           const SizedBox(width: 8),
           Text(label, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
         ]),
         const SizedBox(height: 8),
         Text.rich(TextSpan(children: [
-          TextSpan(text: value, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          TextSpan(text: value, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: c.withValues(alpha: 0.72))), // 단계 색 (운행은 남색) · (11/19) 살짝 투명
           TextSpan(text: unit, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
         ])),
       ]),

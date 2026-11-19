@@ -312,7 +312,7 @@ def make_quiz(user_id: int, qtype: Optional[str] = None, event_id: Optional[int]
     qtype = qtype if qtype in MOCK_QUIZ_TYPES else random.choice(MOCK_QUIZ_TYPES)  # (11/19 팀장) 진짜 서버 config.VOICE_QUIZ_TYPES 와 같게 — 따라 말하기만
     if qtype == "repeat":
         sentence = random.choice(_repeat_sentences())
-        speak, display, asked, answer = f"깨어 있는지 확인할게요. 크게 말하세요. {sentence}.", sentence, sentence, sentence  # (11/19 팀장) 진짜 서버와 같은 질문
+        speak, display, asked, answer = f"크게 말하세요. {sentence}.", sentence, sentence, sentence  # (11/19 C) 안내는 한 문장  # (11/19 팀장) 진짜 서버와 같은 질문
     else:
         while True:  # 받아올림 없는 2자리 + 2자리
             a, b = random.randint(10, 89), random.randint(10, 89)
@@ -984,7 +984,11 @@ def _driver_name(name) -> str:
 @app.post("/drive/start")
 def drive_start(user: dict = Depends(current_user)):
     st = state_of(user["id"])
+    # (11/19 C) 진짜 서버처럼 2 · 3단계는 새 운행을 시작해도 유지 (관리자 [조치완료] 로만 풀림) — 0 · 1단계만 처음부터
+    keep = {k: st[k] for k in ("stage", "sleeps", "rest_started", "rest_event_id")} if st.get("stage", 0) >= 2 else None
     reset_state(st)
+    if keep:
+        st.update(keep)
     st["session"] = (datetime.now(), _next["event"] - 1)   # (11/16) 운행 종료 리포트: 이 뒤의 경고만
     st.update({"drive_start": time.time(), "drive_offset_min": 0, "rest_due_sent": False, "last_quiz_at": 0.0, "last_ping": time.time(),
                "pre_warned": False})  # (11/12 팀장) 운행마다 첫 졸음은 예비 경고 한 번

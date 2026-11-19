@@ -34,6 +34,7 @@ import 'drive_screen.dart';
 import 'event_detail_screen.dart';
 import '../widgets/buddy.dart';
 import '../services/drive_log.dart';
+import 'history_screen.dart' show HistoryEventRow;
 
 // (사진 1장 테스트 · 개발용 숨김은 main_screen 의 ≡ 메뉴로 옮김 — SHOW_DEV_TOOLS, 11/11)
 
@@ -73,6 +74,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _tab = 0; // 0 오늘 경고 · 1 이번 주 · 2 긴급
   static const int _driveCount = 3; // (11/19) 처음에 보이는 운행 카드 수
+  bool _scrolled = false; // (11/19) 아래로 내렸는지 — 내렸을 때만 위쪽을 흐리게
   bool _expanded = false; // (11/18 피드백) [n건 전체 보기] 를 누르면 그 자리에서 아래로 펼침 (운행 기록 탭으로 가지 않음)
 
   // (11/16 팀장) 홈의 '출발 준비 (카메라 · 음성 안내)' 줄은 뺐다 — 권한은 [운행 시작] 때 안내창 → 휴대폰 권한 창으로 받음
@@ -91,6 +93,12 @@ class _HomeScreenState extends State<HomeScreen> {
           if (!await p.isGranted) p,
       ];
       if (need.isEmpty) return true;
+      // (11/19 사용자 요청) 안내창은 처음 한 번만 — 그 뒤에는 휴대폰 권한 창만 (다시 묻지 않음 상태면 그냥 진행)
+      if (await AuthService.getPermAsked()) {
+        await need.request();
+        return true;
+      }
+      AuthService.setPermAsked().ignore();
       if (!mounted) return false;
       final ok = await showPermissionSheet(
         context,
@@ -235,17 +243,26 @@ class _HomeScreenState extends State<HomeScreen> {
       onRefresh: () async => _reload(),
       // (11/19 사용자 요청) 아래로 스크롤하면 '김기사 기사님' 머리줄 아래에서 카드가 네모나게 뚝 잘리던 것 →
       //   위쪽 28 만큼 부드럽게 사라지게 (선 · 모서리 없이)
-      child: ShaderMask(
+      //   (맨 위에 있을 때는 흐려지지 않게 — 내렸을 때만)
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (n) {
+          final down = n.metrics.pixels > 2;
+          if (n.depth == 0 && down != _scrolled) setState(() => _scrolled = down);
+          return false;
+        },
+        child: ShaderMask(
         blendMode: BlendMode.dstIn,
         shaderCallback: (r) => LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: const [Color(0x00000000), Color(0x00000000), Color(0xFF000000)],
+          colors: _scrolled
+              ? const [Color(0x00000000), Color(0x00000000), Color(0xFF000000)]
+              : const [Color(0xFF000000), Color(0xFF000000), Color(0xFF000000)],
           stops: [0, (6 / r.height).clamp(0.0, 1.0), (40 / r.height).clamp(0.0, 1.0)],
         ).createShader(r),
         child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 110), // (11/19) 떠 있는 탭바 높이만큼
         children: [
           // 지금 상태 카드 (11/16 R안 · readdy 흰 카드) + 운행 요약 숫자 + 버튼
           FutureBuilder<DriveState?>(
@@ -352,10 +369,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   child: Center(
                                       child: Text(empties[_tab], style: const TextStyle(fontSize: 14, color: AppColors.textMuted))),
                                 ),
-                              for (var i = 0; i < visible; i++) ...[
-                                if (i > 0) const _CenterLine(),
-                                _DriveCard(group: shown[i]),
-                              ],
+                              for (var i = 0; i < visible; i++) _DriveCard(group: shown[i]), // (11/19) 줄 사이 선 없음
                               // [n개 운행 전체 보기] ↔ [접기] — 그 자리에서 펼치고 접음
                               if (shown.length > _driveCount) ...[
                                 const _CenterLine(),
@@ -383,7 +397,13 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
           ),
+          // (11/19 사용자 요청) 마지막 카드 아래 안내
+          const Padding(
+            padding: EdgeInsets.only(top: 12, left: 4), // (11/19) 위 카드와 같은 시작선 · 왼쪽 정렬
+            child: Text('› 를 누르면 분석 보고서를 볼 수 있어요', style: TextStyle(fontSize: 13.5, color: AppColors.textMuted)),
+          ),
         ],
+      ),
       ),
       ),
     );
@@ -411,7 +431,7 @@ class _DriveCard extends StatelessWidget {
     return InkWell(
       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => _DriveDetailScreen(group: g))),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 18, 4, 18),
+        padding: const EdgeInsets.fromLTRB(14, 22, 4, 14), // (11/19) 칸 안에서 살짝 아래로
         // (11/19 사용자 요청) 운행 줄 높이 모두 같게 — 시간이 길든 짧든 72 로 고정
         child: SizedBox(
           height: 72,
@@ -543,12 +563,15 @@ class _DriveDetailScreen extends StatelessWidget {
                     padding: EdgeInsets.symmetric(vertical: 28),
                     child: Center(child: Text('경고 없이 운행했어요', style: TextStyle(fontSize: 14, color: AppColors.textMuted))),
                   )
-                : Column(children: [
-                    for (var i = 0; i < events.length; i++) ...[
-                      if (i > 0) const _CenterLine(),
-                      _EventTile(event: events[i]),
-                    ],
-                  ]),
+                : Padding(
+                    // (11/19 사용자 요청) 운행 기록 탭과 같은 타임라인 — 이 운행의 경고만 · 최신이 위
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Column(children: [
+                      for (var i = 0; i < events.length; i++)
+                        HistoryEventRow(
+                            event: events[events.length - 1 - i], first: i == 0, last: i == events.length - 1),
+                    ]),
+                  ),
           ),
         ],
       ),
@@ -690,6 +713,7 @@ class _OldResumeInCard extends StatelessWidget {
 }
 
 /// 최근 경고 한 줄 (시안의 흰 카드 모양 — 모서리 18, 왼쪽 단계 동그라미)
+// ignore: unused_element
 class _EventTile extends StatelessWidget {
   final SleepEvent event;
   const _EventTile({required this.event});

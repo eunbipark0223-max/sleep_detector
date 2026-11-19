@@ -309,7 +309,7 @@ class _MainScreenState extends State<MainScreen> {
     // (11/18 피드백) 로그아웃은 맨 아래 (아래 여백 조금) · 투명도 있는 남색 알약
     return Column(children: [
       Expanded(child: ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24), // (11/18) 다른 탭과 같은 위쪽 여백
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 110), // (11/18) 다른 탭과 같은 위쪽 여백 · (11/19) 떠 있는 탭바 높이만큼
       children: [
         // 내 프로필 — 누르면 내 정보 화면
         _myGroup([
@@ -405,6 +405,9 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // (11/19 사용자 요청) 홈 · 운행 기록 · MY 는 내용이 떠 있는 탭바 뒤로 자연스럽게 흐름 (탭바 둘레 아이보리 틀 없이)
+      //   졸음쉼터(지도) · 규정 도우미(아래 입력칸)는 가리지 않게 그대로
+      extendBody: _index == 0 || _index == 1 || _index == _myTab,
       appBar: _index == _mapTab
           ? null
           : _index == 0
@@ -454,46 +457,60 @@ class _TabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // (11/18 피드백 · 애플 탭바) 선 없이 아주 연한 회색 바탕 — 흰 화면과 자연스럽게 구분 (iOS 탭바 #F9F9F9 계열)
-    return Container(
-      // (11/18 피드백) 위는 화면과 같은 흰색 → 아래로 갈수록 연한 회색 (선 없이 자연스럽게 이어짐)
-      // (11/19 Headspace 탭바) 흰 바탕 · 선 대신 위로 아주 옅은 그림자 · 고른 탭은 진한 글자 + 채운 아이콘 + 굵게
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        boxShadow: [BoxShadow(color: Color(0x0F2D2C2B), blurRadius: 16, offset: Offset(0, -2))],
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.only(top: 4, bottom: 14), // (11/19 사용자 요청) 아래 여백 넉넉히 — 글자가 바닥에 붙지 않게
-          child: SizedBox(
+    // (11/19 사용자 요청 · Headspace 탭바) 화면 위에 둥둥 떠 있는 둥근 흰 알약 — 고른 탭 뒤에 연한 둥근 칸이 미끄러져 옴
+    //   색은 남색 하나 (평소 연한 남색 · 고르면 진한 남색)
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
+        child: Container(
           height: 64,
-          child: Row(
-            children: [
-              for (var i = 0; i < _items.length; i++)
-                Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => onTap(i),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(i == index ? _items[i].$2 : _items[i].$1,
-                            size: 26, color: i == index ? AppColors.navy : _soft),
-                        const SizedBox(height: 4),
+          padding: const EdgeInsets.all(5),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.94), // 뒤로 흐르는 내용이 아주 살짝 비침
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: const [
+              BoxShadow(color: Color(0x142D2C2B), blurRadius: 24, offset: Offset(0, 6)),
+              BoxShadow(color: Color(0x0A2D2C2B), blurRadius: 4, offset: Offset(0, 1)),
+            ],
+          ),
+          child: LayoutBuilder(builder: (context, c) {
+            final w = c.maxWidth / _items.length;
+            return Stack(children: [
+              // 고른 탭 뒤 연한 둥근 칸 (따뜻한 연회색 — 사진처럼)
+              AnimatedPositioned(
+                duration: AppMotion.normal,
+                curve: AppMotion.curve,
+                left: w * index,
+                top: 0,
+                bottom: 0,
+                width: w,
+                child: Container(
+                  decoration: BoxDecoration(color: AppleGray.fill, borderRadius: BorderRadius.circular(999)),
+                ),
+              ),
+              Row(children: [
+                for (var i = 0; i < _items.length; i++)
+                  Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => onTap(i),
+                      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        Icon(_items[i].$2, size: 21, color: i == index ? AppColors.navy : _soft), // (11/19) 애플처럼 조금 작게
+                        const SizedBox(height: 3),
                         Text(_items[i].$3,
+                            maxLines: 1,
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 10.5,
                               fontWeight: i == index ? FontWeight.w700 : FontWeight.w500,
                               color: i == index ? AppColors.navy : _soft,
                             )),
-                      ],
+                      ]),
                     ),
                   ),
-                ),
-            ],
-          ),
-        ),
+              ]),
+            ]);
+          }),
         ),
       ),
     );

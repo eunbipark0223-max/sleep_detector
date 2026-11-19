@@ -30,6 +30,7 @@ import '../services/api_service.dart';
 import '../services/voice_service.dart';
 import '../design_tokens.dart';
 import '../theme.dart';
+import '../widgets/buddy.dart';
 
 class QuizScreen extends StatefulWidget {
   final VoiceQuiz quiz;
@@ -160,39 +161,46 @@ class _QuizScreenState extends State<QuizScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // (11/18 피드백) 운행 화면과 같은 단계 표시 — 단계 색 점(흰 테두리 + 고리) + '2단계 휴식 권고'
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      color: AppColors.stage(_stage),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                      boxShadow: [BoxShadow(color: AppColors.stage(_stage).withValues(alpha: 0.35), spreadRadius: 1.5)],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text('$_stage단계 ${const ['정상', '주의', '휴식 권고', '긴급'][_stage.clamp(0, 3)]}',
-                      style: AppType.subheadline.copyWith(fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                ]),
-                const SizedBox(height: 12),
-                // 문제 종류 (알약)
+                // (11/19 사용자 요청 · Headspace) 단계 알약 + 큰 흰 카드 안에 따라 말할 문장 (운전석에서 한눈에 읽히게 아주 크게)
                 Center(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(color: AppleGray.fill, borderRadius: BorderRadius.circular(AppRadius.pill)),
-                    child: Text(_typeLabel, style: AppType.footnote.copyWith(fontWeight: FontWeight.w600, color: _sub)),
+                    padding: const EdgeInsets.fromLTRB(12, 7, 14, 7),
+                    decoration: BoxDecoration(color: AppColors.stageTint(_stage), borderRadius: BorderRadius.circular(999)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Container(
+                        width: 9,
+                        height: 9,
+                        decoration: BoxDecoration(color: AppColors.stage(_stage), shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 7),
+                      Text('$_stage단계 | ${const ['정상', '주의', '휴식 권고', '긴급'][_stage.clamp(0, 3)]} · $_typeLabel',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.stageInk(_stage))),
+                    ]),
                   ),
                 ),
-                const SizedBox(height: 22),
-                Text('큰 소리로 말해 주세요', textAlign: TextAlign.center, style: AppType.subheadline.copyWith(color: _sub)),
-                const SizedBox(height: 10),
-                // 문제 — 크게
-                Text(question,
-                    textAlign: TextAlign.center,
-                    maxLines: 4,
-                    style: AppType.largeTitle.copyWith(color: AppColors.textPrimary)),
+                const SizedBox(height: 18),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 26),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(28),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [for (final c in AppIllust.cardGradient[2]) c.withValues(alpha: 0.78)],
+                    ),
+                  ),
+                  child: Column(children: [
+                    Buddy(stage: 0, size: 44, breathe: false),
+                    const SizedBox(height: 10),
+                    const Text('크게 말하세요',
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xB31C2033))),
+                    const SizedBox(height: 12),
+                    Text(question,
+                        textAlign: TextAlign.center,
+                        maxLines: 3,
+                        style: const TextStyle(fontSize: 38, height: 1.3, fontWeight: FontWeight.w800, letterSpacing: -1.0, color: AppColors.textPrimary)),
+                  ]),
+                ),
                 const Spacer(),
                 // 마이크 (듣는 중이면 물결)
                 Center(child: _MicOrbit(active: listening, color: stateColor)),

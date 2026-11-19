@@ -141,13 +141,15 @@ class _OrbPainter extends CustomPainter {
         canvas.drawOval(Rect.fromCenter(center: const Offset(50, 51), width: 7, height: 8), ink);
         _z(canvas, const Offset(78, 4), 9, ink);
         _z(canvas, const Offset(90, -6), 6, ink..strokeWidth = 2.6);
-      default: // 3 긴급 — 놀란 눈 · 벌린 입
+      default: // 3 긴급 — (11/19) 귀여운 깜짝 얼굴: 동그란 눈 + 반짝 · 위로 올라간 짧은 눈썹 · 작은 'o' 입 · 분홍 볼
         for (final e in [l, r]) {
-          canvas.drawCircle(e, 6, Paint()..color = Colors.white);
-          canvas.drawCircle(e, 6, ink);
-          canvas.drawCircle(e, 2.4, inkFill);
+          canvas.drawCircle(e, 4.6, inkFill);
+          canvas.drawCircle(e.translate(-1.5, -1.6), 1.4, Paint()..color = Colors.white);
+          canvas.drawPath(Path()..moveTo(e.dx - 5, e.dy - 10)..quadraticBezierTo(e.dx, e.dy - 14, e.dx + 5, e.dy - 10), ink);
         }
-        canvas.drawOval(Rect.fromCenter(center: const Offset(50, 53), width: 11, height: 9), inkFill);
+        canvas.drawOval(Rect.fromCenter(center: const Offset(50, 52), width: 8, height: 9), ink);
+        canvas.drawCircle(const Offset(28, 46), 4.5, Paint()..color = const Color(0x66FFFFFF));
+        canvas.drawCircle(const Offset(72, 46), 4.5, Paint()..color = const Color(0x66FFFFFF));
     }
     canvas.restore();
   }
@@ -242,7 +244,12 @@ class HsCard extends StatelessWidget {
       constraints: BoxConstraints(minHeight: minHeight),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
-        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: AppIllust.cardGradient[s]),
+        // (11/19 사용자 요청) 카드 바탕은 살짝 투명하게 — 크림 화면이 은은하게 비침
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [for (final c in AppIllust.cardGradient[s]) c.withValues(alpha: 0.78)],
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(alignment: Alignment.centerLeft, children: [

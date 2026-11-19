@@ -98,6 +98,9 @@ class AuthService {
 
   // (11/18 피드백) 자동 로그인 — 로그인 화면 체크 (기본 켬). 끄면 앱을 다시 열 때 로그인 화면부터
   static const String _autoLoginKey = 'auto_login';
+  // (11/19) 카메라 · 마이크 · 위치 안내창을 이미 한 번 보여 줬는지
+  static Future<bool> getPermAsked() async => (await _storage.read(key: 'perm_asked_v1')) == '1';
+  static Future<void> setPermAsked() => _storage.write(key: 'perm_asked_v1', value: '1');
   static Future<void> setAutoLogin(bool on) => _storage.write(key: _autoLoginKey, value: on ? '1' : '0');
   static Future<bool> getAutoLogin() async => (await _storage.read(key: _autoLoginKey)) != '0';
   static Future<Set<int>> getNoticeSeenIds() async =>

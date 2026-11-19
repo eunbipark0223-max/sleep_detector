@@ -437,7 +437,7 @@ class _Section extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 6, bottom: 8),
+          padding: const EdgeInsets.only(left: 20, bottom: 8), // (11/19) 칸 안 글과 같은 시작선
           child: Text(title, style: AppType.footnote.copyWith(fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
         ),
         Container(
@@ -449,7 +449,7 @@ class _Section extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: Column(children: [
             for (var i = 0; i < rows.length; i++) ...[
-              if (i > 0) const Divider(height: 1, thickness: 1, indent: 16, endIndent: 16, color: AppColors.line), // 좌우 대칭
+              if (i > 0) const Divider(height: 1, thickness: 1, indent: 20, endIndent: 20, color: AppColors.line), // 좌우 대칭 · 글 시작선 · 끝선과 같게
               rows[i],
             ],
           ]),
@@ -472,7 +472,7 @@ class _Row extends StatelessWidget {
       onTap: onTap,
       child: Container(
         constraints: const BoxConstraints(minHeight: AppSize.rowMin),
-        padding: EdgeInsets.fromLTRB(16, 12, onTap == null ? 16 : 10, 12),
+        padding: EdgeInsets.fromLTRB(20, 12, onTap == null ? 20 : 14, 12),
         child: Row(
           children: [
             Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, letterSpacing: -0.2, color: AppColors.textPrimary)),

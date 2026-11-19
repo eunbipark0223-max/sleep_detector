@@ -48,6 +48,7 @@ import 'drive_report_screen.dart';
 import 'rest_screen.dart';
 import 'warning_screen.dart';
 import '../services/drive_log.dart';
+import 'quiz_screen.dart';
 
 class DriveScreen extends StatefulWidget {
   /// 측정 화면(D)이 돌려준 "내 눈 기준값". 측정을 건너뛰었으면 null → 기본 기준을 쓴다.
@@ -219,6 +220,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
 
   // 단계를 바꾸고 경고 화면에도 알린다
   void _setStage(int stage) {
+    if (stage < 2) _stage2Announced = false; // (11/19)
     final changed = stage != _stage;
     setState(() {
       _stage = stage;
@@ -640,6 +642,48 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   // 경고 화면 띄우기 — 이미 떠 있으면 새 경고로 바로 바꾼다 (새 알람 · 음성 · 퀴즈)
   //   퀴즈 · 휴식 화면이 위에 떠 있으면 그대로 둔다 (대답하는 중 · 쉬는 중을 끊지 않게)
   Future<void> _showWarning(SleepResponse res, {bool silent = false, bool resumeRest = false}) async {
+    // (11/19 사용자 요청) 2단계는 경고 화면을 띄우지 않음 — 운행 화면 카드 + 알람 + 한 문장 + 아래 버튼
+    if (res.stage < 3 && !resumeRest) {
+      _setStage(res.stage);
+      if (!silent && (!_stage2Announced || res.voiceQuiz != null)) {
+        _stage2Announced = true;
+        await VoiceService.alarm();
+        if (!mounted) return;
+        await VoiceService.speak(res.driverVoice.isNotEmpty ? res.driverVoice : StageTexts.headline(2));
+        if (!mounted) return;
+      }
+      // (11/19 사용자 요청) 2단계 음성 퀴즈는 다시 넣음 — 경고 화면 없이 운행 화면 위로 바로 (팀장 11/18: 2단계 퀴즈 필수)
+      final quiz = res.voiceQuiz;
+      if (quiz != null && !_quizOpen) {
+        _quizOpen = true;
+        _pauseDetect.value = true; // 퀴즈 동안 졸음 판정 쉼
+        final newStage = await Navigator.of(context).push<int>(
+          MaterialPageRoute(builder: (_) => QuizScreen(quiz: quiz, stage: 2)),
+        );
+        _quizOpen = false;
+        if (!mounted) return;
+        _pauseDetect.value = false;
+        _eye.reset(); // 퀴즈 동안 쌓인 눈 감김으로 바로 의심이 나지 않게
+        if (newStage != null && newStage >= 3) {
+          // 2번 실패로 3단계 → 3단계 경고 화면
+          _showWarning(SleepResponse(
+            isSleep: true,
+            stage: newStage,
+            status: '긴급',
+            reason: '',
+            method: '',
+            summary: '',
+            guidance: '',
+            driverVoice: '',
+            sleepCount10min: 0,
+            regulations: _lastRegs,
+          ));
+        } else if (newStage != null) {
+          _setStage(newStage);
+        }
+      }
+      return;
+    }
     final old = _warningRoute;
     if (old != null && !old.isCurrent) {
       // 퀴즈 · 휴식 화면이 위에 떠 있으면 그대로 둔다 — 단 3단계는 퀴즈 위라도 바로 (11/16: 2단계 뒤 계속 자면 퀴즈 없이 3단계)
@@ -880,7 +924,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
           top: false,
           child: StageLayout(
             // (11/19 사용자 요청) '운행 중' 은 맨 위 줄로 옮기고 그 자리만큼 카메라를 크게 — 단계 · 운전 시간은 아래 카드에
-            camRatio: 0.58,
+            camRatio: 0.5, // (11/19 사용자 요청) 측정 · 운행 · 경고 화면 카메라 크기 모두 같게
             actionsHeight: 76,
             // 카메라 확인 · 확인 중 띠 — 카메라 위에 겹침
             cameraOverlay: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -892,11 +936,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
               duration: const Duration(milliseconds: 200),
               // (11/18 피드백) 진한 단계 색 테두리는 뺌 — 둥근 네모만 (단계는 위 '● 주의' 와 바탕색으로 알림)
               decoration: BoxDecoration(borderRadius: BorderRadius.circular(26)),
-              // (11/18 팀장) 카메라 둘레에 얇은 남색 선
-              foregroundDecoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(26),
-                border: Border.all(color: AppColors.navy, width: 2),
-              ),
+              // (11/19 사용자 요청) 카메라 둘레 남색 선도 뺌 — 테두리 없이 둥근 칸만
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(26),
                 child: (_controller != null && _controller!.value.isInitialized)
@@ -963,17 +1003,41 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
               ],
             ],
             actions: [
-              FilledButton(
-                onPressed: _confirmEnd, // 한 번 묻고 끝냄 (11/12)
-                style: stageButton('white', height: 60), // 흰 반투명 + 남색 글 · 카메라와 같은 폭 · 둥글기 26
-                child: const Text('운행 종료'),
-              ),
+              if (_stage == 2)
+                Row(children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => listenRestMap(context, _restVoice ??= nearRestVoice(_lat, _lng)),
+                      style: stageButton('white', height: 60),
+                      icon: const Icon(Icons.location_on_rounded, size: 22),
+                      label: const FittedBox(child: Text('쉼터 안내')),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _goRest,
+                      style: stageButton('navy', height: 60),
+                      icon: const Icon(Icons.local_parking_rounded, size: 22),
+                      label: const FittedBox(child: Text('정차했어요')),
+                    ),
+                  ),
+                ])
+              else
+                FilledButton(
+                  onPressed: _confirmEnd, // 한 번 묻고 끝냄 (11/12)
+                  style: stageButton('white', height: 60), // 흰 반투명 + 남색 글 · 카메라와 같은 폭 · 둥글기 26
+                  child: const Text('운행 종료'),
+                ),
             ],
           ),
         ),
       ),
     );
   }
+
+  bool _quizOpen = false; // (11/19) 2단계 퀴즈 화면이 떠 있는지
+  bool _stage2Announced = false; // (11/19) 2단계 알람 · 문장을 이미 들려줬는지 (ping 마다 반복하지 않게)
 
   // 단계별 큰 글자 (0 정상 · 1 주의 · 2 휴식 권고 · 3 긴급) — 경고 화면 · 홈 화면 · 음성과 같은 문구 (stage_texts.dart, 11/11)
   String _stageTitle(int stage) => StageTexts.headline(stage);

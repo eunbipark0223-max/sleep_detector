@@ -123,16 +123,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
                   final now = DateTime.now();
                   final thisMonth = DateTime(now.year, now.month);
+                  final picked = _day == null ? month : month.where((e) => sameDay(e, _day!)).toList();
                   return _scroll([
                     const SizedBox(height: 12),
-                    // (11/18 피드백) 통계(그 달 기준)를 위로 · 달력을 아래로
-                    // (11/18 사용자 요청) 날짜를 누르면 위 통계 칸이 그날 숫자로 바뀜 (따로 '보는 중' 글자 없이)
-                    _MonthDonut(
-                      month: _month,
-                      day: _day,
-                      events: _day == null ? month : month.where((e) => sameDay(e, _day!)).toList(),
-                      diff: _day == null ? month.length - prevCount : 0,
-                    ),
+                    // (11/19 사용자 요청 · Headspace) 맨 위 노랑 그라데이션 카드 — 그 달(또는 고른 날) 경고 수 · 지난달 비교
+                    _HsHero(month: _month, day: _day, total: picked.length, diff: _day == null ? month.length - prevCount : null),
+                    const SizedBox(height: 12),
+                    // 단계 비율 — 둥근 가로 막대 + 1 · 2 · 3단계 숫자 (도넛 대신)
+                    _StageBar(events: picked),
                     const SizedBox(height: 12),
                     _MonthCalendar(
                       onSwipe: (d) {
@@ -157,21 +155,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       }),
                       onDay: (d) => setState(() => _day = (_day != null && _day == d) ? null : d),
                     ),
-                    const SizedBox(height: 12),
-                    WebCard(
-                      padding: EdgeInsets.zero,
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        _FilterBar(
-                          selected: _stage,
-                          stages: _filterStages,
-                          onSelected: (stage) => setState(() => _stage = stage),
-                        ),
-                        const Divider(height: 1, thickness: 1, indent: 16, endIndent: 16, color: AppColors.line),
-                        if (shown.isEmpty)
-                          const _Hint(text: '이 조건의 경고가 없어요')
-                        else
-                          ..._byDay(shown, now),
-                      ]),
+                    const SizedBox(height: 22),
+                    // (11/19 Headspace) 둥근 알약 필터 — 고른 것만 남색
+                    _FilterBar(
+                      selected: _stage,
+                      stages: _filterStages,
+                      onSelected: (stage) => setState(() => _stage = stage),
+                    ),
+                    const SizedBox(height: 4),
+                    if (shown.isEmpty)
+                      WebCard(padding: EdgeInsets.zero, child: const _Hint(text: '이 조건의 경고가 없어요'))
+                    else
+                      ..._byDay(shown, now),
+                    // (11/19 사용자 요청) 안내는 맨 아래
+                    const Padding(
+                      padding: EdgeInsets.only(top: 12, left: 4), // (11/19) 카드와 같은 시작선 · 왼쪽 정렬
+                      child: Text('› 를 누르면 AI 분석 보고서를 볼 수 있어요', style: TextStyle(fontSize: 13.5, color: AppColors.textMuted)),
                     ),
                   ]);
                 },
@@ -189,14 +188,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
     for (final e in sorted) {
       groups.putIfAbsent(_dayKey(e.createdAt), () => []).add(e);
     }
-    // (11/17) 큰 카드 하나 안에 날짜 작은 제목 + 줄 목록
+    // (11/19 Headspace) 날짜마다 따로 둥근 흰 카드 — 위에 굵은 날짜 · 몇 건
     final out = <Widget>[];
     for (final list in groups.values) {
       out.add(_DayHeader(label: _dayLabel(list.first.createdAt, now), count: list.length));
-      // (11/18 피드백) 타임라인 — 줄 사이 선 대신 왼쪽 세로선 하나로 이어짐
-      for (var i = 0; i < list.length; i++) {
-        out.add(_EventCard(event: list[i], first: i == 0, last: i == list.length - 1));
-      }
+      out.add(WebCard(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(children: [
+          // (11/18 피드백) 타임라인 — 줄 사이 선 대신 왼쪽 세로선 하나로 이어짐
+          for (var i = 0; i < list.length; i++) _EventCard(event: list[i], first: i == 0, last: i == list.length - 1),
+        ]),
+      ));
     }
     return out;
   }
@@ -205,7 +207,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget _scroll(List<Widget> children) {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 110), // (11/19) 떠 있는 탭바 높이만큼
       children: children,
     );
   }
@@ -410,14 +412,16 @@ class _DayHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 16, bottom: 4, left: 18),
+      // (11/19 사용자 요청) '11/19' 는 카드 안 시각과, '3건' 은 카드 안 꺾쇠 끝과 같은 선
+      padding: const EdgeInsets.only(top: 18, bottom: 8, left: 18, right: 14),
       child: Semantics(
         header: true,
         label: '$label $count건',
-        child: Text(
-          label,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-        ),
+        child: Row(children: [
+          Text(label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: AppColors.textPrimary)),
+          const Spacer(),
+          Text('$count건', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textMuted)),
+        ]),
       ),
     );
   }
@@ -433,56 +437,65 @@ class _FilterBar extends StatelessWidget {
     required this.onSelected,
   });
 
-  // (11/18 사용자 요청) 옆으로 넘기지 않아도 다 보이게 — 네 칸을 똑같은 너비로 (애플 세그먼트), 고른 칸이 미끄러져 옴
+  // (11/19 Headspace) 둥근 알약 4개 — 고른 것은 남색 바탕 · 흰 글자, 나머지는 흰 바탕 (부드럽게 바뀜)
   @override
   Widget build(BuildContext context) {
     final labels = ['전체', for (final s in stages) '$s단계'];
     final index = selected == null ? 0 : stages.indexOf(selected!) + 1;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-      child: Container(
-        height: 36,
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(color: AppColors.field, borderRadius: BorderRadius.circular(10)),
-        child: LayoutBuilder(builder: (context, c) {
-          final w = c.maxWidth / labels.length;
-          return Stack(children: [
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 220),
+    return Row(children: [
+      for (var i = 0; i < labels.length; i++) ...[
+        if (i > 0) const SizedBox(width: 8),
+        Expanded(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => onSelected(i == 0 ? null : stages[i - 1]),
+            child: AnimatedContainer(
+              duration: AppMotion.normal,
               curve: AppMotion.curve,
-              left: w * index,
-              top: 0,
-              bottom: 0,
-              width: w,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: const [BoxShadow(color: Color(0x1A000000), blurRadius: 4, offset: Offset(0, 1))],
-                ),
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: i == index ? AppColors.navy : AppColors.card,
+                borderRadius: BorderRadius.circular(999),
+                boxShadow: i == index ? AppShadow.button : AppShadow.card,
               ),
-            ),
-            Row(children: [
-              for (var i = 0; i < labels.length; i++)
-                Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => onSelected(i == 0 ? null : stages[i - 1]),
-                    child: Center(
-                      child: Text(labels[i],
-                          style: TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: i == index ? FontWeight.w600 : FontWeight.w500,
-                              color: i == index ? AppColors.textPrimary : AppColors.textSecondary)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (i > 0) ...[
+                  // (11/19 사용자 요청) 타임라인 '미세수면' 옆과 같은 링 점
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: AppColors.stage(stages[i - 1]),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.card, width: 1.5),
+                      boxShadow: [BoxShadow(color: AppColors.stage(stages[i - 1]).withValues(alpha: 0.35), spreadRadius: 1.3)],
                     ),
                   ),
-                ),
-            ]),
-          ]);
-        }),
-      ),
-    );
+                  const SizedBox(width: 6),
+                ],
+                Text(labels[i],
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: i == index ? Colors.white : AppColors.textSecondary)),
+              ]),
+            ),
+          ),
+        ),
+      ],
+    ]);
   }
+}
+
+/// (11/19) 홈 운행 상세에서도 같은 타임라인 줄을 쓰려고 밖으로 내놓은 이름
+class HistoryEventRow extends StatelessWidget {
+  final SleepEvent event;
+  final bool first;
+  final bool last;
+  const HistoryEventRow({super.key, required this.event, this.first = false, this.last = false});
+  @override
+  Widget build(BuildContext context) => _EventCard(event: event, first: first, last: last);
 }
 
 class _EventCard extends StatelessWidget {
@@ -748,19 +761,19 @@ class _MonthCalendar extends StatelessWidget {
       for (var day = 1; day <= daysInMonth; day++) _dayCell(DateTime(month.year, month.month, day), stagesByDay[day], now),
     ];
 
+    // (11/19 사용자 요청) 위아래 여백 같게 — 마지막 줄 칸 아래에 점 자리가 있어 아래 여백은 그만큼 줄임
     return WebCard(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 2),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           const SizedBox(width: 4),
           Text('${month.year}년 ${month.month}월',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-          const SizedBox(width: 6),
-          Text('경고 ${events.length}건', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.4, color: AppColors.textPrimary)),
           const Spacer(),
-          IconButton(onPressed: onPrev, icon: const Icon(Icons.chevron_left, size: 22), tooltip: '이전 달'),
-          IconButton(
-              onPressed: canNext ? onNext : null, icon: const Icon(Icons.chevron_right, size: 22), tooltip: '다음 달'),
+          // (11/19 Headspace) 동그란 연한 칸 안 화살표
+          _RoundArrow(icon: Icons.chevron_left_rounded, onTap: onPrev, tooltip: '이전 달'),
+          const SizedBox(width: 8),
+          _RoundArrow(icon: Icons.chevron_right_rounded, onTap: canNext ? onNext : null, tooltip: '다음 달'),
         ]),
         const SizedBox(height: 6),
         // (11/18 사용자 요청) 회색 칸 없이 흰 바탕 그대로 · 달이 바뀌면 옆으로 부드럽게 미끄러짐
@@ -779,6 +792,7 @@ class _MonthCalendar extends StatelessWidget {
             GridView.count(
               crossAxisCount: 7,
               shrinkWrap: true,
+              padding: EdgeInsets.zero, // (11/19) 탭바 뒤로 흐르게 바꾼 뒤 아래 빈칸이 생기지 않게
               physics: const NeverScrollableScrollPhysics(),
               childAspectRatio: 1.05,
               children: cells,
@@ -796,20 +810,25 @@ class _MonthCalendar extends StatelessWidget {
     final dots = (stages?.toList() ?? <int>[])..sort((a, b) => b.compareTo(a)); // (11/18) 위험한 순: 빨강 → 주황 → 노랑
     return GestureDetector(
       onTap: future ? null : () => onDay(day),
-      child: Container(
-        margin: const EdgeInsets.all(2),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.navy.withValues(alpha: 0.08) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border: isSelected ? Border.all(color: AppColors.navy, width: 1.2) : null,
-        ),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Text('${day.day}',
-              style: TextStyle(
-                fontSize: 13.5,
-                fontWeight: isToday || isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: future ? const Color(0xFFBFC3CE) : AppColors.textPrimary, // (11/18 피드백) 오늘도 같은 검정
-              )),
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          // (11/19 Headspace) 오늘 = 연한 노랑 동그라미 · 고른 날 = 남색 동그라미 + 흰 숫자
+          AnimatedContainer(
+            duration: AppMotion.normal,
+            curve: AppMotion.curve,
+            width: 32,
+            height: 32,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isSelected ? AppColors.navy : (isToday ? AppColors.navy.withValues(alpha: 0.12) : Colors.transparent),
+            ),
+            child: Text('${day.day}',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: isToday || isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected ? Colors.white : (isToday ? AppColors.navy : (future ? const Color(0xFFBFC3CE) : AppColors.textPrimary)),
+                )),
+          ),
           const SizedBox(height: 3),
           SizedBox(
             height: 5,
@@ -824,12 +843,135 @@ class _MonthCalendar extends StatelessWidget {
             ]),
           ),
         ]),
+    );
+  }
+}
+
+/// (11/19 Headspace) 달력 위 동그란 화살표 단추
+class _RoundArrow extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onTap;
+  final String tooltip;
+  const _RoundArrow({required this.icon, required this.onTap, required this.tooltip});
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: tooltip,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(color: AppleGray.fill, shape: BoxShape.circle),
+            child: Icon(icon, size: 22, color: onTap == null ? AppleGray.chevron : AppColors.textPrimary),
+          ),
+        ),
+      );
+}
+
+/// (11/19 사용자 요청 · Headspace) 운행 기록 맨 위 노랑 그라데이션 카드 — 'n월' · '졸음 경고 n건' · 지난달 비교
+class _HsHero extends StatelessWidget {
+  final DateTime month;
+  final DateTime? day;
+  final int total;
+  final int? diff; // null = 날짜를 골랐을 때 (비교 없음)
+  const _HsHero({required this.month, required this.day, required this.total, required this.diff});
+
+  @override
+  Widget build(BuildContext context) {
+    final d = diff;
+    return HsCard(
+      stage: 2,
+      face: 0,
+      minHeight: 138,
+      orb: 168,
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(day != null ? '${day!.month}/${day!.day}' : '${month.month}월',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xB31C2033))),
+        const SizedBox(height: 6),
+        Text.rich(
+          TextSpan(children: [
+            const TextSpan(text: '졸음 경고 '),
+            TextSpan(text: '$total', style: const TextStyle(fontSize: 30)),
+            const TextSpan(text: '건'),
+          ]),
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: AppColors.textPrimary),
+        ),
+        if (d != null) ...[
+          const SizedBox(height: 6),
+          Text(d == 0 ? '지난달과 같아요' : '지난달보다 ${d.abs()}건 ${d < 0 ? '줄었어요' : '늘었어요'}',
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xCC1C2033))),
+        ],
+      ]),
+    );
+  }
+}
+
+/// (11/19 Headspace) 단계 비율 — 둥근 가로 막대(단계 색으로 나눔) + 아래 1 · 2 · 3단계 링 점 · 건수 · %
+class _StageBar extends StatelessWidget {
+  final List<SleepEvent> events;
+  const _StageBar({required this.events});
+
+  @override
+  Widget build(BuildContext context) {
+    final counts = [for (var s = 1; s <= 3; s++) events.where((e) => e.stage.clamp(1, 3) == s).length];
+    final total = events.length;
+    String pct(int n) => total == 0 ? '0%' : '${(n * 100 / total).round()}%';
+    // (11/19 사용자 요청) 가로 폭을 고르게 채움 — 칸마다 [작은 캐릭터 | 링 점 · 이름 / 건수 / %] 를 왼쪽부터 · 칸 사이 세로선
+    return WebCard(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+      child: IntrinsicHeight(
+        child: Row(children: [
+          for (var s = 1; s <= 3; s++) ...[
+            if (s > 1) const VerticalDivider(width: 21, thickness: 1, indent: 2, endIndent: 2, color: AppColors.line),
+            Expanded(
+              // (11/19 사용자 요청) '● 주의' 위에 작은 캐릭터 · 칸 왼쪽부터 · 아래 여백까지 써서 전체를 조금 아래로
+              // (11/19 사용자 요청) 캐릭터처럼 '● 주의' · 건수 · % 도 모두 칸 가운데
+              child: Padding(
+                padding: EdgeInsets.zero,
+                child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                Center(child: Buddy(stage: s, size: 22, breathe: false)), // (11/19) 캐릭터는 칸 가운데
+                const SizedBox(height: 10),
+                Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                    Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
+                      Container(
+                        width: 9,
+                        height: 9,
+                        decoration: BoxDecoration(
+                          color: AppColors.stage(s),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppColors.card, width: 1.5),
+                          boxShadow: [BoxShadow(color: AppColors.stage(s).withValues(alpha: 0.35), spreadRadius: 1.2)],
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Flexible(
+                        child: Text(stageShortName(s),
+                            maxLines: 1,
+                            overflow: TextOverflow.fade,
+                            softWrap: false,
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                      ),
+                    ]),
+                    const SizedBox(height: 6),
+                    Text.rich(TextSpan(children: [
+                      TextSpan(text: '${counts[s - 1]}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                      const TextSpan(text: '건', style: TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
+                    ])),
+                    Text(pct(counts[s - 1]), style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                  ]),
+              ]),
+              ),
+            ),
+          ],
+        ]),
       ),
     );
   }
 }
 
-/// (11/17 관리자 웹) 그 달 전체 — 도넛 그래프(가운데 총 건수) + 1 · 2 · 3단계 칸(건수 · %)
+/// (11/17 관리자 웹) 그 달 전체 — 도넛 그래프 (11/19 Headspace 카드 · 막대로 바꿔서 안 씀 · 되돌릴 때 참고)
+// ignore_for_file: unused_element_parameter
+// ignore: unused_element
 class _MonthDonut extends StatelessWidget {
   final DateTime? day; // 고른 날짜 (null = 그 달 전체)
   final List<SleepEvent> events;

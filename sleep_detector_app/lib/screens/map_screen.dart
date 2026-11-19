@@ -230,7 +230,21 @@ class _MapScreenState extends State<MapScreen> {
         toolbarHeight: 68,
         titleSpacing: _side,
         centerTitle: false,
+        // (11/19 사용자 요청) 운행 · 경고 화면에서 열어도 제목 자리가 탭 화면과 같게 — '<' 대신 오른쪽 닫기
+        automaticallyImplyLeading: false,
         title: Text('가까운 쉼터', style: AppType.title1.copyWith(color: AppColors.textPrimary)), // 다른 탭 제목과 같은 단계
+        actions: [
+          if (Navigator.of(context).canPop())
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: IconButton(
+                tooltip: '닫기',
+                onPressed: () => Navigator.of(context).pop(),
+                style: IconButton.styleFrom(backgroundColor: AppleGray.fill),
+                icon: const Icon(Icons.close_rounded, size: 22, color: AppColors.textPrimary),
+              ),
+            ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

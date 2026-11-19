@@ -18,6 +18,7 @@ import '../theme.dart';
 import '../widgets/auth_ui.dart';
 import '../widgets/web_ui.dart';
 import '../widgets/buddy.dart';
+import 'event_detail_screen.dart';
 
 class DriveReportScreen extends StatefulWidget {
   final Map<String, dynamic> report;
@@ -122,7 +123,7 @@ class _DriveReportScreenState extends State<DriveReportScreen> {
                     orb: 180,
                     child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('${DateTime.now().month}/${DateTime.now().day}',
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xB32D2C2B))),
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xB31C2033))),
                       const SizedBox(height: 8),
                       const Text('수고하셨어요',
                           style: TextStyle(fontSize: 24, height: 1.25, fontWeight: FontWeight.w700, letterSpacing: -0.7, color: AppColors.textPrimary)),
@@ -162,7 +163,11 @@ class _DriveReportScreenState extends State<DriveReportScreen> {
                     child: timeline.isEmpty
                         ? const Text('경고 없이 운행했어요 👍', style: TextStyle(fontSize: 15, color: AppColors.textSecondary))
                         : Column(children: [
-                            for (var i = 0; i < timeline.length; i++) _row(timeline[i], last: i == timeline.length - 1),
+                            for (var i = 0; i < timeline.length; i++)
+                              InkWell(
+                                onTap: () => _openReport(timeline[i]['event_id']),
+                                child: _row(timeline[i], last: i == timeline.length - 1),
+                              ),
                           ]),
                   ),
                   const SizedBox(height: 32),
@@ -185,6 +190,17 @@ class _DriveReportScreenState extends State<DriveReportScreen> {
         ),
       ),
     );
+  }
+
+  // (11/19 사용자 요청) 줄을 누르면 그 경고의 AI 보고서
+  Future<void> _openReport(dynamic id) async {
+    if (id is! num) return;
+    try {
+      final events = await ApiService.fetchMyEvents();
+      final e = events.where((x) => x.id == id.toInt()).firstOrNull;
+      if (e == null || !mounted) return;
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => EventDetailScreen(event: e)));
+    } catch (_) {}
   }
 
   // 부르는 말 — 서버 이름이 '김기사' 면 '김기사 기사님', 이미 '…님' 으로 끝나면 그대로 (예전엔 '김기사 기사님님' 이 됐음)
@@ -259,6 +275,10 @@ class _DriveReportScreenState extends State<DriveReportScreen> {
                       child: Text(extra.join(' · '),
                           style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
                     ),
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Text('AI 보고서 보기 ›', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.navy)),
+                  ),
                 ],
               ),
             ),
