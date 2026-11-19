@@ -24,6 +24,7 @@
 #
 # 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 # ═══════════════════════════════════════════════════════════════
+import ipaddress
 import os
 import re
 import threading
@@ -159,12 +160,20 @@ def stats_hourly(db: Session = Depends(get_db), _admin: User = Depends(require_a
 #   회사가 따로 정한 '인증된 사번'(.env ADMIN_EMPLOYEE_NOS)만 관리자 계정을 만들 수 있다. 로그인 없이 부르는 API (가입 전이니까)
 #   - 한 사번 = 한 계정: 가입에 쓴 사번은 users.emp_no 에 남긴다 (기사 사번과 같은 칸 → 두 목록에 같은 번호가 있어도 한 번만 쓰임)
 #   - 사번 알아맞히기 방지: 같은 접속 주소에서 10분에 5번 틀리면 429 (모의 서버와 같은 규칙)
+#     접속 주소는 PC 서버 = 연결한 주소, Railway = X-Real-IP 헤더 (config.TRUST_X_REAL_IP, 11/19 팀장 지적)
 #   - 응답 · 문구는 모의 서버(mock_server.py)와 같은 모양 → 관리자 웹 화면은 고치지 않음
 _signup_lock = threading.RLock()                # 같은 사번 동시 가입 막기 (가입 안에서 사번 확인이 한 번 더 잡으므로 RLock) (로컬 DB 의 users.emp_no 에는 고유 제약이 없을 수 있음)
 _signup_fails: dict[str, list[float]] = {}      # 접속 주소 → 사번을 틀린 시각들
 
 
 def _client_key(request: Request) -> str:
+    """사번을 틀린 횟수를 셀 '접속 주소'. Railway 에서는 X-Real-IP (모두 같은 주소로 보여서 한 사람 실수로 모두 잠기는 것 방지)."""
+    if config.TRUST_X_REAL_IP:
+        real = (request.headers.get("x-real-ip") or "").strip()
+        try:
+            return str(ipaddress.ip_address(real))       # IP 모양이 아니면 아래 기본값으로
+        except ValueError:
+            pass
     return request.client.host if request.client else "?"
 
 
