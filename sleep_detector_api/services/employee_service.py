@@ -6,7 +6,8 @@
 #                              employees 표가 비어 있으면 시연용 사번(DEMO_EMPLOYEES)을 넣는다
 #   - check_employee(...)    : 사번이 회사 명단에 있고 아직 가입 안 했는지
 #   - send_code(phone)       : 6자리 인증번호를 만들어 5분 동안 기억 (진짜 문자는 안 보냄 → 번호를 응답으로 돌려줌)
-#   - send_email_code / verify_email_code / use_email_token : 이메일도 같은 방식 (진짜 메일은 안 보냄)
+#   - send_email_code / verify_email_code / use_email_token : 이메일도 같은 방식
+#       (11/19) 이메일은 .env 에 SMTP 설정이 있으면 진짜 메일로 보냄 — 보내는 일은 routers/user.py 가 services/mail_service.py 로 (이 파일은 번호 기억 · 확인만)
 #   - verify_code(phone,code): 맞으면 가입 때 낼 인증 표(token, 30분) 를 준다
 #   - use_phone_token(...)   : 가입할 때 그 전화번호로 인증한 표인지 확인하고 한 번 쓰면 지운다
 #
@@ -14,7 +15,6 @@
 #        진짜 문자를 보내려면 send_code 안에서 문자 서비스(예: 네이버 클라우드 SENS)를 부르면 된다.
 #        인증 기록은 메모리에만 있어서 서버를 껐다 켜면 다시 인증해야 한다.
 # ═══════════════════════════════════════════════════════════════
-import random
 import re
 import secrets
 import threading
@@ -94,7 +94,7 @@ def _email_key(email: str) -> str:
 
 
 def _send(key: str) -> str:
-    code = f"{random.randint(0, 999999):06d}"
+    code = f"{secrets.randbelow(1_000_000):06d}"   # (11/19) random → secrets: 진짜 메일 인증이 되면 이 번호가 보안을 지킨다 (random 은 예측 가능)
     with _lock:
         _codes[key] = (code, time.time() + CODE_TTL_SEC, 0)
     return code
@@ -149,6 +149,12 @@ def use_phone_token(phone: str, token: str | None) -> bool:
 # (11/17 C) 이메일 인증 — 시연용: 메일을 보내지 않고 인증번호를 응답으로 돌려준다
 def send_email_code(email: str) -> str:
     return _send(_email_key(email))
+
+
+def discard_email_code(email: str) -> None:
+    """(11/19) 메일 발송이 실패했을 때: 받지도 못한 인증번호를 지운다."""
+    with _lock:
+        _codes.pop(_email_key(email), None)
 
 
 def verify_email_code(email: str, code: str) -> str:

@@ -11,11 +11,14 @@
 #   - 프로필 사진 POST · GET · DELETE /users/me/photo (수업 그대로, profile_screen)
 #   - PATCH /users/me  {name?, phone?, vehicle_no?} — 기사 연락용 전화번호 · 차량번호 (profile_screen 에서 입력, 관리자 웹 연락처에 보임) · 이름은 관리자 설정 화면
 #   - PUT /users/me/password {current_password, new_password} — 비밀번호 변경 (관리자 설정 화면, 가입과 같은 규칙. 구글 계정은 400)
+#   - (11/19) POST /users/me/email/request {new_email, current_password} · /users/me/email/confirm {new_email, code}
+#       이메일 변경 (관리자 웹 '내 정보'). 새 이메일로 6자리 인증번호(10분) → 확인하면 users.email 변경. 구글 계정은 400
 #   - (11/17 C) 앱 회원가입 = 사번 확인 → 전화번호 인증 → 가입
 #       POST /users/employee/check {emp_no, name?}   — 회사 명단(employees 표)에 있고 아직 가입 안 한 사번인지
 #       POST /users/phone/send {phone}               — 인증번호 (시연용: 문자 대신 응답 demo_code)
 #       POST /users/phone/verify {phone, code}       — 맞으면 phone_token → /users/signup 에 emp_no 와 같이 보냄
 #       POST /users/email/send · /users/email/verify — 이메일도 같은 방식 (email_token)
+#         (11/19) .env 에 구글 SMTP(SMTP_USER · SMTP_PASSWORD)가 있으면 /users/email/send 가 진짜 메일로 보냄 (services/mail_service.py) — 없으면 demo_code 시연용
 #
 # [수업에서 바꾼 것]
 #   - 요청 · 응답 이름: schema 의 SignupRequest · LoginRequest · GoogleLoginRequest · UserResponse · LoginResponse (D)
@@ -31,6 +34,9 @@
 # ═══════════════════════════════════════════════════════════════
 
 import os
+import secrets
+import threading
+import time
 import uuid
 
 from fastapi import (
@@ -38,15 +44,17 @@ from fastapi import (
     UploadFile, File,
 )
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import config
 from schema.request  import (
     SignupRequest, LoginRequest, GoogleLoginRequest, ProfileUpdate, PasswordChange,
     EmployeeCheckRequest, PhoneSendRequest, PhoneVerifyRequest, EmailSendRequest, EmailVerifyRequest,
+    EmailChangeRequest, EmailChangeConfirm,
 )
-from services import employee_service
+from services import employee_service, mail_service
 from schema.response import UserResponse, LoginResponse
 from database.db_connection import get_session
 from models.models import User
@@ -150,9 +158,32 @@ def verify_phone_code_handler(body: PhoneVerifyRequest):
 
 @router.post("/users/email/send", status_code=status.HTTP_200_OK)
 def send_email_code_handler(body: EmailSendRequest):
-    """(11/17 C) 이메일 인증번호 받기 — 시연용: 메일을 보내지 않고 응답에 demo_code 로 번호를 준다 (5분 유효)"""
-    code = employee_service.send_email_code(str(body.email))
-    return {"sent": True, "demo": True, "demo_code": code, "expires_sec": employee_service.CODE_TTL_SEC}
+    """이메일 인증번호 받기 (5분 유효).
+    - .env 에 SMTP_USER · SMTP_PASSWORD 가 있으면 (11/19): 진짜 메일로만 보낸다. 번호는 응답에 절대 싣지 않음.
+      같은 이메일 1분 간격 · 1시간 5번 · 서버 하루 100통을 넘으면 429 (Retry-After 초). 메일 서버 오류는 503.
+    - 없으면 (11/17 C 시연용): 메일 없이 응답 demo_code 로 번호를 준다.
+    """
+    email = str(body.email)
+    if not mail_service.is_enabled():
+        code = employee_service.send_email_code(email)
+        return {"sent": True, "demo": True, "demo_code": code, "expires_sec": employee_service.CODE_TTL_SEC}
+
+    try:
+        ticket = mail_service.reserve(email)
+    except mail_service.MailRateLimited as e:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=e.message,
+            headers={"Retry-After": str(e.retry_after)},
+        )
+    code = employee_service.send_email_code(email)
+    try:
+        mail_service.send_verification_code(email, code, employee_service.CODE_TTL_SEC // 60)
+    except mail_service.MailError as e:
+        mail_service.release(ticket)                  # 우리 쪽 문제로 사용자가 1분 기다리지 않게 횟수를 돌려 줌
+        employee_service.discard_email_code(email)    # 받지도 못한 번호는 지움
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=e.message)
+    return {"sent": True, "demo": False, "expires_sec": employee_service.CODE_TTL_SEC, "resend_after_sec": config.MAIL_COOLDOWN_SEC}
 
 
 @router.post("/users/email/verify", status_code=status.HTTP_200_OK)
@@ -302,6 +333,113 @@ def change_my_password_handler(
     user.hashed_password = hash_password(body.new_password)
     session.commit()
     return {"success": True}
+
+# ── 이메일 변경 (11/19, 관리자 웹 '내 정보') ─────────────────────────────
+#   이메일로 가입한 계정만. 새 이메일 + 지금 비밀번호 → 새 이메일로 6자리 인증번호(10분 · 5번까지) → 확인하면 users.email 이 바뀜
+#   응답 모양은 모의 서버(mock_server.py)와 같음 → 관리자 웹 화면은 그대로
+#   - SMTP 켜짐: 새 이메일로 진짜 메일 (횟수 제한은 가입 인증과 같은 mail_service.reserve). 번호는 응답에 싣지 않음
+#   - SMTP 꺼짐(시연용): 응답 dev_code 로 번호를 줌 (화면이 '메일 대신 여기에' 로 보여 줌)
+#   인증번호는 메모리에만 (서버를 다시 켜면 다시 받아야 함, DB 칸 추가 없음)
+EMAIL_CHANGE_TTL_SEC = 10 * 60
+EMAIL_CHANGE_MAX_TRIES = 5
+_email_change_lock = threading.Lock()
+_email_changes: dict[int, dict] = {}     # user_id → {email, code, expires, sent_at, tries}
+
+
+def _email_owner_id(session: Session, email: str) -> int | None:
+    return session.scalar(select(User.id).where(func.lower(User.email) == email.lower()))
+
+
+def _check_email_account(user: User) -> None:
+    if user.provider == "google" or not user.hashed_password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="구글 계정은 이메일을 바꿀 수 없어요")
+
+
+@router.post("/users/me/email/request", status_code=status.HTTP_200_OK)
+def request_email_change_handler(
+    body   : EmailChangeRequest,
+    session: Session = Depends(get_session),
+    user   : User    = Depends(get_current_user),
+):
+    """이메일 변경 1단계 — 지금 비밀번호 확인 뒤 새 이메일로 인증번호. 200 {success, expires_in(초)} (+ 시연용이면 dev_code)"""
+    _check_email_account(user)
+    if not verify_password(body.current_password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="지금 비밀번호가 맞지 않아요")
+    new_email = str(body.new_email).strip()
+    if new_email.lower() == (user.email or "").lower():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="지금과 같은 이메일이에요")
+    if _email_owner_id(session, new_email) not in (None, user.id):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 가입된 이메일이에요")
+
+    now = time.time()
+    with _email_change_lock:                # 한 사람이 주소를 바꿔 가며 연타하지 못하게 (같은 주소 연타는 mail_service 가 막음)
+        prev = _email_changes.get(user.id)
+        if prev and now - prev["sent_at"] < config.MAIL_COOLDOWN_SEC:
+            wait = int(prev["sent_at"] + config.MAIL_COOLDOWN_SEC - now) + 1
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                                detail=f"인증 메일을 방금 보냈어요. {wait}초 뒤에 다시 받아 주세요", headers={"Retry-After": str(wait)})
+
+    ticket = None
+    if mail_service.is_enabled():
+        try:
+            ticket = mail_service.reserve(new_email)
+        except mail_service.MailRateLimited as e:
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=e.message,
+                                headers={"Retry-After": str(e.retry_after)})
+
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    with _email_change_lock:
+        _email_changes[user.id] = {"email": new_email, "code": code, "expires": now + EMAIL_CHANGE_TTL_SEC, "sent_at": now, "tries": 0}
+
+    if ticket is None:                      # 시연용 (SMTP 없음)
+        return {"success": True, "expires_in": EMAIL_CHANGE_TTL_SEC, "dev_code": code}
+    try:
+        mail_service.send_verification_code(new_email, code, EMAIL_CHANGE_TTL_SEC // 60, title="이메일 변경 인증", where="관리자 웹")
+    except mail_service.MailError as e:
+        mail_service.release(ticket)
+        with _email_change_lock:
+            _email_changes.pop(user.id, None)
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=e.message)
+    return {"success": True, "expires_in": EMAIL_CHANGE_TTL_SEC}
+
+
+@router.post("/users/me/email/confirm", status_code=status.HTTP_200_OK)
+def confirm_email_change_handler(
+    body   : EmailChangeConfirm,
+    session: Session = Depends(get_session),
+    user   : User    = Depends(get_current_user),
+):
+    """이메일 변경 2단계 — 인증번호가 맞으면 이메일을 바꾸고 바뀐 내 정보(GET /users/me 와 같은 모양)를 돌려준다"""
+    _check_email_account(user)
+    new_email = str(body.new_email).strip()
+    with _email_change_lock:
+        entry = _email_changes.get(user.id)
+        if not entry or entry["email"].lower() != new_email.lower():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="먼저 인증번호를 받아 주세요")
+        if time.time() > entry["expires"]:
+            _email_changes.pop(user.id, None)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="인증번호가 만료됐어요. 다시 받아 주세요")
+        if not secrets.compare_digest(body.code.strip(), entry["code"]):
+            entry["tries"] += 1
+            left = EMAIL_CHANGE_MAX_TRIES - entry["tries"]
+            if left <= 0:
+                _email_changes.pop(user.id, None)
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="인증번호가 맞지 않아요. 인증번호를 다시 받아 주세요")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"인증번호가 맞지 않아요 (남은 횟수 {left}번)")
+        _email_changes.pop(user.id, None)   # 맞았으면 한 번 쓰고 지움
+        new_email = entry["email"]
+
+    if _email_owner_id(session, new_email) not in (None, user.id):   # 받는 사이에 다른 사람이 그 주소로 가입한 경우
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 가입된 이메일이에요")
+    user.email = new_email
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 가입된 이메일이에요")
+    print(f"✅ [email-change] user {user.id} 이메일 변경 → {mail_service.mask_email(new_email)}")
+    return _me_dict(user)
+
 
 @router.post("/users/me/photo", status_code=status.HTTP_200_OK)
 async def upload_my_photo_handler(
