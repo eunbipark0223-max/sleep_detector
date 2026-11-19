@@ -22,10 +22,10 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
   · 버튼은 알약: 작은 것 32(12px) · 보통 40(13px)
 
 [이 파일이 하는 일]
-  - 홈: 4칸 요약(등록 기사 · 오늘 경고 · 휴게 미준수 · 3단계 무응답) + '긴급 경고' 카드(미처리 긴급 isOpenUrgent 전부, 건수 제한 없음. 줄마다 기사 · 차량번호 · 주소 · 무응답 경과 + [전화] [조치완료], 줄을 누르면 상세.
-    0건이면 "처리할 긴급 경고가 없어요"). 이 둘만 남김 (11/16 사용자 결정 — 기사 표는 기사 관리와 겹치고, 그래프는 통계로 뺌)
+  - 홈: 맨 위 '긴급' 카드(미처리 긴급 전부, 늘 펼쳐 둠) + 그 아래 3칸 요약(운행 중 기사 · 오늘 경고 · 휴게 미준수) + 칸을 누르면 아래에 이름 목록.
+    (11/16 사용자 결정 — 기사 표는 기사 관리와 겹치고, 그래프는 통계로 뺌. 11/18 팀 의견 — 긴급은 바로 조치하게 4칸에서 빼서 맨 위 카드로)
   - 통계 #stats: 시간대별 경고 · 기사 상태 · 주간 경고 추이 · 경고 분석(단계별/종류별) 를 한 줄로. 이미 받은 경고 · 기사 목록 · 서버 /admin/stats/* 로 계산 (서버에 없는 값은 만들지 않음)
-  - 긴급 알림: 새 3단계 · "음성 응답 없음"이 생기면 알림음(삐 3번) + 탭 제목 깜빡임 + 알림 띠. 알림음은 프로필 메뉴의 스위치로 켜고 끔. 종 배지 · 사이드바 배지는 미처리 긴급 건수
+  - 긴급 알림: 새 3단계 · "음성 응답 없음"이 생기면 알림음(삐 3번) + 탭 제목 깜빡임 + 알림 띠. 알림음은 프로필 메뉴의 스위치로 켜고 끔. 종 배지는 안 읽은 긴급 건수 (11/18: 같은 숫자를 띄우던 사이드바 '졸음 경고' 배지는 뺌)
     (브라우저는 화면을 한 번 누르기 전에는 소리를 막아서, 그때는 알림 띠에 안내가 나옴)
   - 졸음 경고: 둥근 탭(전체 · 미확인 · 1단계 | 주의 · 2단계 | 휴식 권고 · 3단계 | 위험(3단계 전부) · 긴급(그중 조치완료 안 한 것만), 11/17 단계로 나눔) + 표 + 검색. 미처리 긴급이 있으면 '긴급' 탭으로 열림. 좌우 화살표로 탭 이동
     · 3단계 / "음성 응답 없음" 미처리 줄은 연한 빨강 + 그 줄에 [조치완료]. 줄을 누르면 경고 상세 패널
@@ -133,7 +133,6 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     /* macOS 사이드바처럼: 고른 메뉴는 짙은 채움이 아니라 옅은 회색 바탕 + 파란 아이콘 */
     .menu-item[aria-current="page"] { background: rgba(120, 124, 135, .16); color: var(--fg-950); font-weight: var(--fw-m); }
     .menu-item[aria-current="page"] [data-icon] { color: var(--pr-500); }
-    .menu-badge { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--rd-500); color: #fff; font-size: var(--fs-cap); font-weight: var(--fw-sb); display: none; align-items: center; justify-content: center; }
     .scrim { display: none; }
     .main-wrap { flex: 1; min-width: 0; }
     .topbar { position: sticky; top: 0; z-index: 60; display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 32px;
@@ -256,7 +255,6 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     .card-title { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sub); font-weight: var(--fw-sb); letter-spacing: var(--ls-sub); }
     .card-sub { margin-top: 4px; font-size: var(--fs-cap); color: var(--fg-400); }
     .card-meta { font-size: var(--fs-cap); font-weight: var(--fw-m); color: var(--fg-400); white-space: nowrap; font-variant-numeric: tabular-nums; }
-    .card-meta.alert { color: var(--fg-500); }      /* 긴급 경고 카드의 'N건': 빨강 대신 원래 쓰는 연한 글자색 (11/16) */
     .ping { position: relative; display: inline-flex; width: 6px; height: 6px; border-radius: 50%; background: var(--rd-500); }
     .ping::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--rd-500); opacity: .6; animation: ping 1s cubic-bezier(0, 0, .2, 1) infinite; }
     .empty-state { display: flex; align-items: center; gap: 10px; padding: 20px; color: var(--ok-700); font-weight: var(--fw-m); }
@@ -266,8 +264,8 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     /* 4칸은 탭과 같은 한 줄 통: 옅은 회색 판 위에 칸이 붙어 있고, 고른 칸만 흰 조각이 되어 옆으로 미끄러져 옮겨 다님 (칸 사이 간격 없음) */
     /* 4칸 + 이름 목록은 카드 한 장, 겹겹이 넣지 않고 단순하게: 윗줄은 옅은 회색, 고른 칸만 흰색이라 아래 흰 목록과 곧바로 이어짐 (브라우저 탭처럼) */
     .stat-unit { border-radius: 26px; background: var(--bg-50); box-shadow: var(--shadow-card); overflow: hidden; }
-    .stats { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border-bottom: .5px solid var(--sep); }
-    @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .stats { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border-bottom: .5px solid var(--sep); }      /* 11/18: 4칸 → 3칸 ('긴급' 칸은 맨 위 카드로 뺌) */
+    @media (max-width: 760px) { .stats .stat { padding: 18px 16px 20px; } }      /* 좁아도 3칸 한 줄 (2칸 + 1칸으로 깨지지 않게), 안쪽 여백만 줄임 */
     #statDetail .empty-note { padding: 18px 20px 20px; }
     .stat { position: relative; z-index: 1; display: block; width: 100%; padding: 22px 28px 24px; border: 0; background: transparent; text-align: left; transition: background .25s var(--ease); }
     .stat:hover { background: rgba(0, 0, 0, .025); }
@@ -280,9 +278,17 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     .stat-ring::after { content: ''; position: absolute; left: 0; right: 0; bottom: -.5px; height: 3px; background: var(--pr-600); }
     .stat .stat-label { transition: color .3s var(--ease); }
     .stat[aria-pressed="true"] .stat-label { color: var(--fg-950); }
-    #statDetail .sd-row:first-child { box-shadow: none; }
+    /* 긴급 카드 머리 = 아래 요약 칸(.stat)과 같은 여백 · 글자 (11/18). 늘 펼쳐 둔 카드라 글자는 고른 칸처럼 진하게 */
+    .uz-head { position: relative; padding: 22px 28px 24px; border-bottom: .5px solid var(--sep); background: var(--rd-50); }      /* 11/18: 머리 바탕 연한 빨강 (아래 목록은 흰색 그대로) */
+    /* 아래 요약 칸에서 고른 칸 밑에 생기는 남색 막대(.stat-ring::after)와 같은 막대를 긴급 머리 밑에 늘 빨강으로 (11/18 사용자 요청). 폭은 긴급 칸(카드) 끝까지 */
+    .uz-head::after { content: ''; position: absolute; left: 0; right: 0; bottom: -.5px; height: 3px; background: var(--rd-500); }
+    .uz-head .stat-label { display: flex; align-items: center; gap: 6px; color: var(--fg-950); }
+    .uz-head .stat-value.alert { color: var(--rd-600); }      /* 1건 이상일 때만 빨강 (0건이면 검정) */
+    @media (max-width: 760px) { .uz-head { padding: 18px 16px 20px; } }
+    #urgentZone { border-radius: 26px; }      /* 바로 아래 요약 카드(.stat-unit)와 같은 둥글기 — 위아래로 붙은 두 카드 모서리가 다르지 않게 */
+    #statDetail .sd-row:first-child, #urgentZone .sd-row:first-child { box-shadow: none; }      /* 첫 줄 위 선은 빼기 (카드 머리 아래 선과 겹치지 않게) */
     /* 줄 사이 선은 테두리 대신 안쪽 그림자로 (테두리는 첫 줄만 없어서 첫 줄이 1px 낮았음). 줄 높이는 44px 로 모두 같게 (11/17) */
-    .sd-row { display: flex; align-items: center; gap: 12px; box-sizing: border-box; height: 44px; padding: 0 20px; box-shadow: inset 0 1px 0 rgba(16, 19, 25, .1); text-decoration: none; transition: background .12s; }      /* 홈의 목록 줄(주행 중 기사 · 오늘 경고 · 긴급 경고 …)은 모두 높이 44px · 좌우 20px · 같은 선 (11/17) */
+    .sd-row { display: flex; align-items: center; gap: 12px; box-sizing: border-box; height: 44px; padding: 0 20px; box-shadow: inset 0 1px 0 rgba(16, 19, 25, .1); text-decoration: none; transition: background .12s; }      /* 홈의 목록 줄(운행 중 기사 · 오늘 경고 · 긴급 …)은 모두 높이 44px · 좌우 20px · 같은 선 (11/17) */
     .sd-row:hover { background: rgba(120, 124, 135, .08); }
     .sd-row > .who-dot { flex: none; margin-right: -4px; }      /* 이름 앞 상태 동그라미 (줄 간격 12px 에서 4px 당겨 8px) */
     .sd-main { flex: 1; min-width: 0; }
@@ -299,21 +305,8 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     .stat.alert .stat-value { color: var(--rd-600); }
 
 
-    /* 긴급 경고 줄: [기사 · 차량번호 · 주소] [단계 · 몇 분 전] [전화] [조치완료] › */
-    .u-row { display: flex; align-items: center; gap: 12px; box-sizing: border-box; height: 44px; padding: 0 20px; box-shadow: inset 0 1px 0 rgba(16, 19, 25, .1); transition: background .12s; cursor: pointer; }      /* 위 .sd-row 와 같은 모양 (11/17) */
-    .u-row:first-child { box-shadow: none; }
-    .u-row:hover { background: rgba(120, 124, 135, .08); }
-    .u-main { flex: 1; min-width: 0; }
-    .u-name { display: block; width: fit-content; max-width: 100%; font-weight: var(--fw-m); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .u-name:hover { text-decoration: underline; }
-    .u-sub { margin-top: 2px; font-size: var(--fs-cap); color: var(--fg-400); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .u-kind { display: grid; justify-items: end; gap: 2px; text-align: right; white-space: nowrap; }
+    /* 홈 맨 위 '긴급' 카드 줄 오른쪽의 빨간 '몇 분 전' (줄 모양은 아래 .sd-row 와 같음, 11/18) */
     .u-flag { font-size: var(--fs-cap); font-weight: var(--fw-m); color: var(--rd-600); }
-    .u-ago { font-size: var(--fs-cap); color: var(--fg-400); }
-    .u-actions { display: flex; gap: 6px; }
-    .u-chev { display: flex; flex: none; color: var(--fg-300); text-decoration: none; transition: color .15s; }      /* .sd-chev 와 같은 크기 · 위치 (11/17: 28px 동그라미 눌림 효과는 뺌) */
-    .u-chev:hover { color: var(--fg-700); }
-    @media (max-width: 760px) { .u-kind { justify-items: start; text-align: left; } }      /* 좁은 화면에서 줄을 바꾸던 규칙은 뺌 (줄에 이름 + › 만 남아서, 11/17) */
     .pill { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 14px 0 12px; border: 0; border-radius: var(--r-pill); background: var(--bg-100); color: var(--fg-800); font-size: var(--fs-cap); font-weight: var(--fw-m); text-decoration: none; white-space: nowrap; transition: background .15s; }
     .pill:hover { background: var(--bg-200); }
     /* 애플의 '옅은 색 채움' 버튼: 색을 뺀 바탕 + 진한 글자 (너무 시끄럽지 않게) */
@@ -325,18 +318,15 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     .chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
     .chart-flag { font-size: var(--fs-cap); color: var(--fg-400); white-space: nowrap; }
     .chart-flag b { margin-left: 4px; font-weight: var(--fw-sb); color: var(--rd-600); font-variant-numeric: tabular-nums; }
-    .chart-peak { text-align: right; line-height: 1.2; }
-    .chart-peak b { display: block; font-size: var(--fs-headline); font-weight: var(--fw-sb); letter-spacing: var(--ls-display); color: var(--rd-600); font-variant-numeric: tabular-nums; }
-    .chart-peak span { font-size: var(--fs-cap); color: var(--fg-400); }
     .chart-flag.dim b { font-weight: var(--fw-m); color: var(--fg-700); }
     .bars { display: flex; align-items: flex-end; gap: 8px; height: 148px; margin-top: 24px; }
     .bcol { position: relative; display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
     .bv { margin-bottom: 6px; font-size: var(--fs-cap); color: var(--fg-400); font-variant-numeric: tabular-nums; opacity: 0; transition: opacity .15s; }
     .bcol:hover .bv, .bv.peak { opacity: 1; }
-    .bv.peak { font-weight: var(--fw-sb); color: var(--rd-600); }
+    .bv.peak { font-weight: var(--fw-sb); color: var(--pr-700); }      /* 11/18: 최다 강조는 빨강 대신 앱 남색 (빨강은 3단계 · 긴급 뜻으로만) */
     .bar { display: block; width: 100%; max-width: 72px; min-height: 4px; border-radius: 5px; background: rgba(202, 218, 248, .7); transition: background .15s; }
     .bcol:hover .bar { background: var(--pr-300); }
-    .bar.peak, .bcol:hover .bar.peak { background: var(--rd-500); }
+    .bar.peak, .bcol:hover .bar.peak { background: var(--pr-700); }
     .bar-labels { display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--bg-100); font-size: var(--fs-cap); color: var(--fg-400); }
     .bar-labels span { flex: 1; text-align: center; font-variant-numeric: tabular-nums; }
     .donut-fig { position: relative; width: 132px; height: 132px; margin: 20px auto 0; }
@@ -485,7 +475,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     .cal-nav button:hover:not(:disabled) { background: var(--bg-100); color: var(--fg-950); }
     .cal-nav button:disabled { opacity: .3; cursor: default; }
     .cal-nav .prev svg { transform: rotate(180deg); }
-    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 4px; border-radius: var(--r-block); background: var(--bg-100); text-align: center; }      /* F안 (11/17): 연한 회색 바탕 위에서 누른 날만 흰 카드가 떠오름 (탭 스위치와 같은 느낌) */
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 4px; border-radius: var(--r-block); background: var(--bg-50); text-align: center; }      /* 바탕 흰색 (11/18 사용자 요청: 기사 상세 · 졸음 경고 달력 모두). 전에는 F안(11/17) 연한 회색 바탕 위에 누른 날만 흰 카드 */
     .cal-wd { padding: 4px 0 6px; font-size: var(--fs-cap); color: var(--fg-400); }
     .cal-day { position: relative; height: 44px; border: 0; border-radius: calc(var(--r-block) - 4px); background: none; font: inherit; font-size: var(--fs-body); color: var(--fg-950); font-variant-numeric: tabular-nums; cursor: pointer; transition: background .15s, color .15s; }
     .cal-day:hover:not(.sel):not(:disabled) { background: rgba(120, 124, 135, .12); }
@@ -516,13 +506,18 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     .hz-delta.up { background: var(--rd-50); color: var(--rd-700); }
     .hz-delta.down { background: var(--ok-50); color: var(--ok-800); }
     .hz-delta.same { background: var(--bg-100); color: var(--fg-700); }
-    .hz-tile.s1 { background: var(--st1-bg); color: var(--st1-ink); }
-    .hz-tile.s2 { background: var(--st2-bg); color: var(--st2-ink); }
-    .hz-tile.s3 { background: var(--rd-50); color: var(--rd-700); }
-    .hz-tile .t { font-size: var(--fs-cap); font-weight: var(--fw-m); white-space: nowrap; }
+    /* B안 (11/18 사용자 요청): 세 칸 모두 같은 연회색 · 검정 숫자, 단계는 아이콘(눈 · 커피 · 경고)으로 구분하고 색은 아이콘에만. 전에는 칸마다 단계 색 바탕 + 단계 색 글자라 알록달록했음 */
+    .hz-tiles { gap: 10px 0; }      /* 11/18: 칸 사이 틈 없이 세로선으로만 구분 */
+    .hz-tile { width: auto; min-width: 120px; padding: 4px 24px; border-radius: 0; background: none; color: var(--fg-950); }      /* 11/18 사용자 요청: 박스(바탕 · 그림자) 없이 칸 사이를 '|' 세로선으로 구분 */
+    .hz-tile + .hz-tile { border-left: 1px solid var(--sep); }
+    .hz-tile .ic { display: flex; margin-bottom: 4px; }
+    .hz-tile.s1 .ic { color: var(--st1); }
+    .hz-tile.s2 .ic { color: var(--st2); }
+    .hz-tile.s3 .ic { color: var(--rd-500); }
+    .hz-tile .t { font-size: var(--fs-cap); font-weight: var(--fw-m); color: var(--fg-500); white-space: nowrap; }
     .hz-tile .v { display: flex; align-items: baseline; gap: 2px; margin-top: 6px; font-size: var(--fs-headline); font-weight: 700; letter-spacing: var(--ls-headline); line-height: 1.1; font-variant-numeric: tabular-nums; }
     .hz-tile .v small { font-size: var(--fs-cap); font-weight: var(--fw-m); letter-spacing: 0; }
-    .hz-tile .p { font-size: var(--fs-cap); font-weight: var(--fw-m); font-variant-numeric: tabular-nums; opacity: .75; }
+    .hz-tile .p { font-size: var(--fs-cap); font-weight: var(--fw-m); color: var(--fg-500); font-variant-numeric: tabular-nums; }
     .hz-cal .cal-head { min-height: 32px; }
     .hz-clear { margin-right: 8px; padding: 5px 12px; border: 0; border-radius: var(--r-pill); background: var(--bg-100); color: var(--fg-700); font: inherit; font-size: var(--fs-cap); font-weight: var(--fw-m); cursor: pointer; transition: background .15s; }
     .hz-clear:hover { background: rgba(120, 124, 135, .16); }
@@ -717,7 +712,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       </div>
       <nav class="menu" aria-label="주 메뉴">
         <a class="menu-item" href="#dashboard" data-view="dashboard"><span data-icon="home" data-size="18" aria-hidden="true"></span><span class="t">홈</span></a>
-        <a class="menu-item" href="#hazards" data-view="hazards"><span data-icon="warning" data-size="18" aria-hidden="true"></span><span class="t">졸음 경고</span><b class="menu-badge" id="menuBadge"></b></a>
+        <a class="menu-item" href="#hazards" data-view="hazards"><span data-icon="warning" data-size="18" aria-hidden="true"></span><span class="t">졸음 경고</span></a>
         <a class="menu-item" href="#drivers" data-view="drivers"><span data-icon="people" data-size="18" aria-hidden="true"></span><span class="t">기사 관리</span></a>
         <a class="menu-item" href="#stats" data-view="stats"><span data-icon="pie" data-size="18" aria-hidden="true"></span><span class="t">통계</span></a>
       </nav>
@@ -743,7 +738,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
             </button>
             <div class="menu-pop" id="profileMenu" hidden>
               <div class="mp-head"><b id="menuName"></b><span id="menuEmail"></span></div>
-              <a class="mp-item" id="menuProfile" href="#profile"><span data-icon="person" data-size="18" aria-hidden="true"></span>설정</a>
+              <a class="mp-item" id="menuProfile" href="#profile"><span data-icon="person" data-size="18" aria-hidden="true"></span>내 정보</a>
               <div class="mp-item row"><span id="soundLabel">긴급 알림음</span><button type="button" class="switch" id="soundSwitch" role="switch" aria-checked="true" aria-labelledby="soundLabel"></button></div>
               <button type="button" class="mp-item danger" id="logoutBtn"><span data-icon="logout" data-size="18" aria-hidden="true"></span>로그아웃</button>
             </div>
@@ -757,7 +752,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
             <span class="ub-icon" data-icon="warning" data-size="18" aria-hidden="true"></span>
             <span class="ub-text" id="ubText"></span>
             <span class="ub-actions">
-              <button type="button" id="ubClose" title="알림음과 탭 깜빡임을 끄고 이 알림을 닫아요. 처리할 긴급 경고는 홈의 '긴급 경고' 카드에 그대로 남아요.">닫기</button>
+              <button type="button" id="ubClose" title="알림음과 탭 깜빡임을 끄고 이 알림을 닫아요. 처리할 긴급 경고는 홈 맨 위 '긴급' 카드와 졸음 경고 화면에 그대로 남아요.">닫기</button>
               <button type="button" class="primary" id="ubView">바로 보기</button>
             </span>
           </div>
@@ -766,11 +761,11 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         <!-- 홈 -->
         <section class="view" id="view-dashboard" aria-labelledby="t-dashboard">
           <div class="page-head"><h1 class="page-title" id="t-dashboard" tabindex="-1">홈</h1></div>
+          <section class="card" id="urgentZone" aria-labelledby="uzTitle"></section>
           <div class="stat-unit">
             <div class="stats" id="summary"></div>
             <section id="statDetail" hidden></section>
           </div>
-          <section class="card" id="urgentZone" aria-labelledby="uzTitle"></section>
         </section>
 
         <!-- 통계: 홈에서 뺀 그래프들 (한 줄로 쭉) -->
@@ -844,7 +839,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
 
         <!-- 내 정보 (오른쪽 위 프로필 메뉴에서) -->
         <section class="view" id="view-profile" aria-labelledby="t-profile">
-          <div class="page-head"><h1 class="page-title" id="t-profile" tabindex="-1">설정</h1></div>
+          <div class="page-head"><h1 class="page-title" id="t-profile" tabindex="-1">내 정보</h1></div>
           <div id="profilePage"></div>
         </section>
       </main>
@@ -987,15 +982,6 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     const noWake = (e) => isOpenUrgent(e) && !!wakeOf(e) && wakeOf(e).pressed === false;
     const isToday = (iso) => new Date(iso).toDateString() === new Date().toDateString();
     // '3분 전' · '1시간 5분 전' · '2일 전'. 서버 시각이 이 PC 보다 한참 앞서면(시간대 차이) 틀린 값을 보여 주지 않고 빈칸 (옆의 날짜 · 시각은 그대로 나옴)
-    // 경과 시간 '42초' · '20분' · '1시간 5분' (긴급 경고 줄의 '무응답 42초' 용)
-    function elapsed(iso) {
-      const sec = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
-      if (isNaN(sec)) return '';
-      if (sec < 60) return sec + '초';
-      const min = Math.floor(sec / 60);
-      if (min < 60) return min + '분';
-      return Math.floor(min / 60) + '시간' + (min % 60 ? ' ' + (min % 60) + '분' : '');
-    }
     // 시안처럼 1분 안은 '방금 전' · '12초 전'
     function ago(iso) {
       const t = new Date(iso).getTime();
@@ -1115,18 +1101,17 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
 
     // ── 홈 (대시보드) ─────────────────────────────────────────
     const drivers = () => users.filter((u) => u.role !== 'admin');
-    const driving = () => drivers().filter((u) => u.driving).sort((a, b) => driverStage(b) - driverStage(a) || (b.drive_min || 0) - (a.drive_min || 0));      // 지금 주행 중인 기사 (위험한 순 → 오래 운전한 순)
+    const driving = () => drivers().filter((u) => u.driving).sort((a, b) => driverStage(b) - driverStage(a) || (b.drive_min || 0) - (a.drive_min || 0));      // 지금 운행 중인 기사 (위험한 순 → 오래 운전한 순)
     // 맨 위 4칸 요약: 한 장의 둥근 카드 안에 가는 선으로 나눈 칸. 숫자는 검정, '긴급 조치 필요'가 1건 이상일 때만 빨강. 칸을 누르면 그 목록으로 (진짜 링크 — 새 탭으로도 열림)
     function renderSummary() {
-      const urgent = new Set(events.filter(isOpenUrgent).map((e) => e.user_id)).size;      // 시안처럼 '명' (긴급 경고가 걸린 기사 수)
       const today = events.filter((e) => isToday(e.created_at)).length;
       const rest = events.filter((e) => e.reason === 'rest_overdue' && isToday(e.created_at)).length;
-      // [열쇠, 이름, 값, 단위, 빨갛게?]. 이름은 시안의 4칸 표현(운행 중 기사 · 1단계 경고 · 2단계 퀴즈 · 3단계 무응답)에 맞춤
+      // [열쇠, 이름, 값, 단위, 빨갛게?]. 시안의 4칸 표현(운행 중 기사 · 1단계 경고 · 2단계 퀴즈 · 3단계 무응답)에서 시작, 11/18 마지막 칸은 '긴급' 으로
       const cells = [
-        ['drivers', '주행 중 기사', driving().length, '명', false],      // 등록 기사 전체는 '기사 관리' 에서. 홈은 지금 운전 중인 기사만 (11/16)
+        ['drivers', '운행 중 기사', driving().length, '명', false],      // 등록 기사 전체는 '기사 관리' 에서. 홈은 지금 운전 중인 기사만 (11/16). 11/18: '주행 중' → '운행 중' (기사 관리 화면과 같은 말)
         ['today', '오늘 경고', today, '건', false],      // 경고 수는 모두 '건' (11/17)
         ['rest', '휴게 미준수', rest, '건', false],
-        ['urgent', '무응답', urgent, '명', urgent > 0],
+        // 11/18: 네 번째 '긴급' 칸(전 이름 '무응답')은 빼서 맨 위 '긴급' 카드로 옮김 — 바로 조치할 수 있게 칸을 누르지 않아도 늘 보이도록 (팀 의견)
       ];
       // 칸을 누르면 페이지로 가지 않고, 바로 아래에 '누가 누군지' 목록이 펼쳐진다 (다시 누르면 접힘)
       fill($('summary'), ...cells.map(([key, label, value, unit, alert]) =>
@@ -1149,7 +1134,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       const stageRow = (e) => evRow(e, h('span', { class: 'sd-time' }, ago(e.created_at) || fmtTime(e.created_at)));
       let title, rows, empty;
       if (statSel === 'drivers') {
-        title = '주행 중 기사 ' + driving().length + '명'; empty = '지금 주행 중인 기사가 없어요';
+        title = '운행 중 기사 ' + driving().length + '명'; empty = '지금 운행 중인 기사가 없어요';
         rows = driving().map((u) => h('a', { class: 'sd-row', href: '#driver/' + u.id },
           liveDot(u),                                                               // 현재 상태 = 이름 앞 동그라미 하나로만 (배지 없음, 11/17)
           h('span', { class: 'sd-main' }, h('b', null, honorName(u.name))),        // 이름만. 차량번호 · 연락처는 줄을 눌러 여는 상세 창에서
@@ -1159,14 +1144,10 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         rows = todayEv.map((e) => h('a', { class: 'sd-row', href: '#event/' + e.id },
           h('span', { class: 'sd-main' }, h('b', null, honorName(e.user_name))),
           stageBadge(e), chev()));
-      } else if (statSel === 'rest') {
+      } else {
         const list = todayEv.filter((e) => e.reason === 'rest_overdue');
         title = '휴게 미준수 ' + list.length + '건'; empty = '오늘 휴게를 지키지 않은 기사가 없어요';
         rows = list.map(stageRow);
-      } else {
-        const list = events.filter(isOpenUrgent).sort(byPriority);
-        title = '무응답 ' + new Set(list.map((e) => e.user_id)).size + '명'; empty = '무응답인 기사가 없어요';
-        rows = list.map((e) => evRow(e, h('span', { class: 'u-flag' }, '무응답 ' + elapsed(e.created_at))));
       }
       box.hidden = false;
       // 제목 · [닫기] 는 두지 않는다: 위 칸에 이미 '등록 기사 2명' 이 적혀 있으니 같은 말을 또 쓰지 않고 이름 목록만 보여 주고, 같은 칸을 다시 누르거나 Esc 로 접는다
@@ -1174,7 +1155,26 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       fill(box, rows.length ? h('div', null, rows) : h('p', { class: 'empty-note' }, empty));
     }
 
-    // 대시보드 맨 위 '지금 긴급' 영역 (11/12): 미처리 긴급(isOpenUrgent)을 건수 제한 없이 전부.
+    // 홈 맨 위 '긴급' 카드 (11/18 팀 의견: 긴급은 칸을 누르지 않아도 맨 위에 늘 보이게 따로 뺌).
+    //   미처리 긴급(isOpenUrgent)을 건수 제한 없이 전부, 급한 순(byPriority). 줄 = 이름 · 빨간 '몇 분 전' · › (아래 목록 줄과 같은 모양), 누르면 경고 상세 창에서 전화 · 조치완료.
+    //   0건이면 초록 체크 한 줄 "처리할 긴급 경고가 없어요" (카드는 남겨 둠 — 자리가 들쭉날쭉하지 않게)
+    function renderUrgentZone() {
+      const open = events.filter(isOpenUrgent).sort(byPriority);
+      fill($('urgentZone'),
+        // 머리는 아래 요약 칸(.stat)과 같은 모양 (11/18): 위에 작은 '긴급' 글자, 아래에 큰 굵은 숫자 + 작은 '건'. 1건 이상이면 숫자 빨강 + 글자 앞 빨간 점이 깜빡임.
+        //   머리 밑에는 아래 칸의 남색 막대와 같은 막대가 늘 빨강으로 있음 (CSS .uz-head::after). 숫자는 바뀔 때 세어 올라가거나 내려감
+        h('div', { class: 'uz-head' },
+          h('h2', { class: 'stat-label', id: 'uzTitle' }, open.length ? h('span', { class: 'ping', 'aria-hidden': 'true' }) : null, '긴급'),
+          h('span', { class: 'stat-value' + (open.length ? ' alert' : '') }, h('span', { 'data-num-key': 'uz-count', 'data-num': String(open.length) }, String(open.length)), h('small', null, '건'))),
+        open.length
+          ? h('div', { 'aria-label': '처리할 긴급 경고' }, open.map((e) => h('a', { class: 'sd-row', href: '#event/' + e.id },
+              h('span', { class: 'sd-main' }, h('b', null, honorName(e.user_name))),
+              h('span', { class: 'u-flag' }, ago(e.created_at) || fmtTime(e.created_at)),
+              h('span', { class: 'sd-chev', 'aria-hidden': 'true' }, icon('chevron', 17)))))
+          : h('div', { class: 'empty-state' }, icon('check', 18), h('span', null, '처리할 긴급 경고가 없어요')));
+    }
+
+    // (옛 설명 · 11/12) 대시보드 맨 위 '지금 긴급' 영역: 미처리 긴급(isOpenUrgent)을 건수 제한 없이 전부.
     // 한 줄에 기사 이름 · 차량번호 · 단계 · 몇 분 전 · 주소 · 전화번호 + [전화 걸기] [상세 보기] [조치완료]. 0건이면 초록 한 줄
     // 전화번호는 9~11자리일 때만 보여 주고 tel: 로 건다 (아니면 전화번호 칸을 비우고 [전화 걸기] 도 없음. 상세 페이지에서 이메일로 연락)
     // '전화번호 미등록' 글자는 긴급 줄에서 뺌 (11/12 결정 — 기사 가입 때 전화번호를 받으므로). 기사 관리 · 기사 상세의 '미등록' 표시는 그대로
@@ -1186,27 +1186,9 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       if (w.pressed) return h('span', { class: 'badge wake-ok' }, icon('check', 16), '깨어 있음' + (w.sec != null ? ' (' + Math.round(w.sec) + '초)' : ''));
       return h('span', { class: 'badge wake-no' }, '응답 없음');
     }
-    // 홈 긴급 경고 줄 (11/16): 이름 · 차량번호 · 위치 · › 만. 전화 · 조치완료 버튼과 '무응답 N분' 글자는 두지 않음 — 줄을 누르면 경고 상세 창에서 전화 · 조치완료
-    function urgentRow(e) {
-      const who = honor(e.user_name);
-      return h('li', { class: 'u-row', onclick: (ev) => { if (!ev.target.closest('a, button')) location.hash = 'event/' + e.id; } },     // 줄 아무 데나 눌러도 상세 (경고 표와 같게). 이름 앞 상태 점은 '주행 중 기사' · '기사 관리'에서만 (11/17 사용자 결정)
-        h('div', { class: 'u-main' },
-          h('a', { class: 'u-name', href: '#event/' + e.id, 'data-key': 'uview' + e.id, 'aria-label': who + ' 경고 #' + e.id + ' 상세 보기' }, honorName(e.user_name))),      // 이름만 (이름 아래 차량번호 · 주소 줄은 뺌, 11/17)
-        h('a', { class: 'u-chev', href: '#event/' + e.id, 'aria-label': '상세 보기' }, icon('chevron', 17)));
-    }
-    // 홈 '긴급 경고' 카드: 미처리 긴급을 건수 제한 없이 전부. 0건이면 "처리할 긴급 경고가 없어요"
-    function renderUrgentZone() {
-      const open = events.filter(isOpenUrgent).sort(byPriority);
-      fill($('urgentZone'),
-        h('div', { class: 'card-head' },
-          h('h2', { class: 'card-title', id: 'uzTitle' }, open.length ? h('span', { class: 'ping', 'aria-hidden': 'true' }) : null, '긴급 경고'),
-          open.length ? h('span', { class: 'card-meta alert' }, open.length + '건') : null),
-        open.length ? h('ul', { 'aria-label': '미처리 긴급 경고' }, open.map(urgentRow))
-          : h('div', { class: 'empty-state' }, icon('check', 18), h('span', null, '처리할 긴급 경고가 없어요')));
-    }
 
     // ── 그래프 4개 (홈 오른쪽 열). 막대 · 선 · 도넛 모두 SVG · CSS 로 직접 그림 (인터넷 없이도 시연되게).
-    //    규칙: 평소 막대는 옅은 파랑, 강조(최다)만 빨강 / 단계 색은 앱 색(정상 초록 · 1단계 노랑 · 2단계 주황 · 3단계 빨강) / 글자는 SVG 안이 아니라 HTML 로
+    //    규칙: 평소 막대는 옅은 파랑, 강조(최다)만 남색 (11/18: 빨강 → 남색. 빨강은 3단계 · 긴급 뜻으로만) / 단계 색은 앱 색(정상 초록 · 1단계 노랑 · 2단계 주황 · 3단계 빨강) / 글자는 SVG 안이 아니라 HTML 로
     function svgEl(name, attrs) {
       const node = document.createElementNS(SVG_NS, name);
       for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, v);
@@ -1215,13 +1197,14 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     function chartHead(title, sub, end) {
       return h('div', { class: 'chart-head' }, h('div', null, h('h2', { class: 'card-title' }, title), sub ? h('p', { class: 'card-sub' }, sub) : null), end);
     }
-    // ① 시간대별 경고: 3시간 단위 막대 8개, 가장 많은 시간대만 빨강 (값은 마우스를 올리면 보임, 최다만 늘 보임)
+    // ① 시간대별 경고: 3시간 단위 막대 8개, 가장 많은 시간대만 남색 (값은 마우스를 올리면 보임, 최다만 늘 보임).
+    //    오른쪽 위 'N · HH시 최다' 는 11/18 뺌: 최다 막대 위 숫자와 같아서 중복
     function renderTimeChart() {
       const buckets = Array.from({ length: 8 }, (_, i) => hourStats.filter((x) => x.hour >= i * 3 && x.hour < i * 3 + 3).reduce((a, x) => a + x.count, 0));
       const total = buckets.reduce((a, b) => a + b, 0), peak = Math.max(0, ...buckets), peakAt = buckets.indexOf(peak);
       const hh = (i) => String(i * 3).padStart(2, '0');
       fill($('timeChart'),
-        chartHead('시간대별 경고', '00:00 – 24:00 · 누적 ' + total + '건', peak > 0 ? h('div', { class: 'chart-peak' }, h('b', null, String(peak)), h('span', null, hh(peakAt) + '시 최다')) : null),
+        chartHead('시간대별 경고', '00:00 – 24:00 · 누적 ' + total + '건', null),
         h('div', { class: 'bars', role: 'img', 'aria-label': '시간대별 경고 수: ' + buckets.map((v, i) => hh(i) + '시대 ' + v + '건').join(', ') },
           buckets.map((v, i) => { const hot = peak > 0 && i === peakAt; return h('div', { class: 'bcol' },
             h('span', { class: 'bv' + (hot ? ' peak' : '') }, v > 0 ? String(v) : ''),
@@ -1251,7 +1234,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
           h('div', { class: 'donut-fig' }, svg, h('div', { class: 'donut-center' }, h('b', null, String(total)), h('span', null, '전체'))),
           h('ul', { class: 'legend' }, segs.map(([k, color]) => h('li', null, h('i', { style: 'background:' + color, 'aria-hidden': 'true' }), h('span', null, k), h('b', null, String(states[k])))))));
     }
-    // ③ 주간 경고 추이: 최근 7일을 부드러운 빨간 선으로. 날짜 · 건수는 아래 HTML 칸에 (점이 날짜 칸 가운데에 오게 7등분)
+    // ③ 주간 경고 추이: 최근 7일을 부드러운 남색 선으로 (11/18: 빨강 → 남색). 날짜 · 건수는 아래 HTML 칸에 (점이 날짜 칸 가운데에 오게 7등분)
     const DAY_NAME = ['일', '월', '화', '수', '목', '금', '토'];
     function renderWeekChart() {
       const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (6 - i)); return d; });
@@ -1261,14 +1244,14 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       const x = (i) => (i + 0.5) * (W / 7), y = (v) => PT + (1 - v / top) * (H - PT - PB);
       const svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, class: 'week-svg', role: 'img', 'aria-label': '최근 7일 경고 수: ' + counts.map((v, i) => DAY_NAME[days[i].getDay()] + ' ' + v + '건').join(', ') });
       const grad = svgEl('linearGradient', { id: 'trendFill', x1: 0, y1: 0, x2: 0, y2: 1 });
-      grad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': '#D93025', 'stop-opacity': '.16' }));
-      grad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': '#D93025', 'stop-opacity': '0' }));
+      grad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': '#1F2A5C', 'stop-opacity': '.14' }));      // --pr-700 (앱 남색)
+      grad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': '#1F2A5C', 'stop-opacity': '0' }));
       const defs = svgEl('defs'); defs.appendChild(grad); svg.appendChild(defs);
       let d = 'M' + x(0) + ' ' + y(counts[0]);
       for (let i = 1; i < 7; i++) { const mid = (x(i - 1) + x(i)) / 2; d += ' C' + mid + ' ' + y(counts[i - 1]) + ' ' + mid + ' ' + y(counts[i]) + ' ' + x(i) + ' ' + y(counts[i]); }
       svg.appendChild(svgEl('path', { d: d + ' L' + x(6) + ' ' + (H - PB) + ' L' + x(0) + ' ' + (H - PB) + ' Z', fill: 'url(#trendFill)' }));
-      svg.appendChild(svgEl('path', { d, fill: 'none', style: 'stroke:var(--rd-500);stroke-width:2;stroke-linecap:round;stroke-linejoin:round' }));
-      counts.forEach((v, i) => svg.appendChild(svgEl('circle', { cx: x(i), cy: y(v), r: i === 6 ? 3 : 2, style: 'fill:#fff;stroke:var(--rd-500);stroke-width:1.6' })));
+      svg.appendChild(svgEl('path', { d, fill: 'none', style: 'stroke:var(--pr-700);stroke-width:2;stroke-linecap:round;stroke-linejoin:round' }));
+      counts.forEach((v, i) => svg.appendChild(svgEl('circle', { cx: x(i), cy: y(v), r: i === 6 ? 3 : 2, style: 'fill:#fff;stroke:var(--pr-700);stroke-width:1.6' })));
       fill($('weekChart'),
         chartHead('주간 경고 추이', '일 평균 ' + avg + '건', h('span', { class: 'chart-flag' }, '최근 7일')),
         svg,
@@ -1308,7 +1291,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       return h('span', { class: 'st ' + cls }, icon(ic, 14), e.status);
     }
 
-    // 화면 제목 오른쪽의 작은 숫자 요약 (시안: 10 등록 기사 | 7 경고 발생 | 3 응답 대기)
+    // 화면 제목 오른쪽의 작은 숫자 요약 (시안: 10 등록 기사 | 7 경고 발생 | 3 응답 대기 → 11/18 '응답 대기' 는 '긴급' 으로)
     const headStats = (items) => items.map(([n, label]) => h('div', { class: 'head-stat' }, h('span', { class: 'n' }, String(n)), h('span', null, label)));
     // 졸음 경고 맨 위 날짜별 달력 (11/17): 경고 있는 날 아래에 단계 색 점. 날짜를 누르면 그날만 (다시 누르거나 [전체 날짜] 로 풀기). 달 이동은 가장 오래된 경고의 달 ~ 이번 달
     function renderHazardCal() {
@@ -1318,7 +1301,6 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       const byDay = new Map();
       events.forEach((e) => { const d = new Date(e.created_at); if (isNaN(d)) return; const k = dayKey(d); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(e); });
       const minIdx = events.reduce((a, e) => { const t = new Date(e.created_at); return isNaN(t) ? a : Math.min(a, t.getFullYear() * 12 + t.getMonth()); }, nowIdx);
-      const monthCount = [...byDay.entries()].filter(([k]) => k.startsWith(monthKey)).reduce((a, [, v]) => a + v.length, 0);
       const move = (delta) => { const d = new Date(y, m + delta, 1); hzCal.y = d.getFullYear(); hzCal.m = d.getMonth(); hazardDay = ''; renderAll(true); };      // 달을 옮기면 고른 날은 풀고 그 달 전체
       const cells = [];
       for (let i = 0; i < new Date(y, m, 1).getDay(); i++) cells.push(h('span'));
@@ -1332,7 +1314,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       }
       fill($('hazardCal'), h('div', { class: 'cal', style: 'padding-top:0' },
         h('div', { class: 'cal-head' },
-          h('h4', { class: 'cal-title' }, y + '년 ' + (m + 1) + '월', h('small', null, monthCount ? '경고 ' + monthCount + '건' : '경고 없음')),
+          h('h4', { class: 'cal-title' }, y + '년 ' + (m + 1) + '월'),      // 옆 '경고 N건' 은 11/18 뺌: 오른쪽 요약 도넛 가운데 숫자와 같아서 중복
           h('div', { class: 'hz-tools' },
             hazardDay ? h('button', { type: 'button', class: 'hz-clear', onclick: () => { hazardDay = ''; renderAll(true); } }, '전체 날짜') : null,
             h('div', { class: 'cal-nav' },
@@ -1346,7 +1328,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       const scope = events.filter((e) => { const d = new Date(e.created_at); if (isNaN(d)) return false; const k = dayKey(d); return hazardDay ? k === hazardDay : k.startsWith(monthKey); });
       let title, sub;
       if (hazardDay) { const [sy, sm, sd] = hazardDay.split('-').map(Number); title = sm + '월 ' + sd + '일'; sub = WEEKDAY[new Date(sy, sm - 1, sd).getDay()] + '요일'; }
-      else { title = (m + 1) + '월 전체'; sub = '날짜를 누르면 그날만 볼 수 있어요'; }
+      else { title = (m + 1) + '월 전체'; sub = ''; }      // '날짜를 누르면 그날만 볼 수 있어요' 안내 문구는 뺌 (11/18 사용자 요청)
       const counts = [1, 2, 3].map((n) => scope.filter((e) => stageNum(e.stage) === n).length), total = scope.length;
       // 단계별 도넛 (통계 화면의 도넛과 같은 모양: 둥근 끝 조각 + 가운데 전체 건수) + 오른쪽 범례 (단계 · 건수 · 비율)
       const R = 60.5, C = 2 * Math.PI * R, GAP = 4;
@@ -1376,10 +1358,11 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         }
       }
       fill($('hazardSum'),
-        h('div', { class: 'cal-head' }, h('h4', { class: 'cal-title' }, title, h('small', null, sub)), cmp ? h('span', { class: 'hz-delta ' + (cmp.diff > 0 ? 'up' : cmp.diff < 0 ? 'down' : 'same') }, cmp.text) : null),
+        h('div', { class: 'cal-head' }, h('h4', { class: 'cal-title' }, title, sub ? h('small', null, sub) : null), cmp ? h('span', { class: 'hz-delta ' + (cmp.diff > 0 ? 'up' : cmp.diff < 0 ? 'down' : 'same') }, cmp.text) : null),
         h('div', { class: 'hz-sum-body' },
           h('div', { class: 'donut-fig' }, svg, h('div', { class: 'donut-center' }, h('span', { class: 'stat-value' }, h('span', { 'data-num-key': 'hz-total', 'data-num': String(total) }, String(total)), h('small', null, '건')))),      // 큰 숫자는 홈 큰 숫자처럼 바뀔 때 세어 올라가거나 내려감 (11/17)
           h('div', { class: 'hz-tiles' }, [1, 2, 3].map((n, i) => h('div', { class: 'hz-tile s' + n },
+            h('span', { class: 'ic' }, icon(['eye', 'coffee', 'warning'][i], 20)),      // 1단계 눈(졸림 주의) · 2단계 커피(휴식 권고) · 3단계 경고 삼각형(위험)
             h('span', { class: 't' }, STAGE_NAME[n]), h('span', { class: 'v' }, String(counts[i]), h('small', null, '건')), h('span', { class: 'p' }, total ? Math.round((counts[i] / total) * 100) + '%' : '–'))))));
     }
     function renderHazards() {
@@ -1408,7 +1391,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
           h('td', { class: 'nowrap end' }, statusCell(e)));      // 맨 오른쪽 칸 — 오른쪽 끝에 맞춤
       }) : [h('tr', { class: 'empty-row' }, h('td', { colspan: 6 }, events.length ? (hq ? '검색 결과가 없어요' : hazardDay && !dayEvents.length ? '이 날은 경고가 없어요' : !monthEvents.length ? '이 달은 경고가 없어요' : filter === 'urgent' ? '처리할 긴급 경고가 없어요' : '해당하는 경고가 없어요') : '아직 들어온 경고가 없어요'))]));
       $('hazardCount').textContent = list.length + '건' + (hq ? ' (검색 결과)' : '');
-      fill($('hazardsMeta'), headStats([[monthEvents.length, '전체 경고'], [monthEvents.filter((e) => e.status === '미확인').length, '미확인'], [monthEvents.filter(isOpenUrgent).length, '긴급']]));      // 위쪽 요약도 보고 있는 달 기준 (표와 숫자가 맞게)
+      fill($('hazardsMeta'), headStats([[monthEvents.filter((e) => e.status === '미확인').length, '미확인'], [monthEvents.filter(isOpenUrgent).length, '긴급']]));      // 위쪽 요약도 보고 있는 달 기준 (표와 숫자가 맞게). '전체 경고' 는 11/18 뺌: 요약 도넛 가운데 숫자와 같아서 중복
       renderTabs($('hazardTabs'), 'hazardPanel', FILTERS.map(([key, label, fn]) => [key, label, dayEvents.filter(fn).length, key === 'urgent']), filter, (key) => { filter = key; filterAuto = false; renderAll(true); });
       if (keepKey) { const again = document.querySelector('[data-key="' + keepKey + '"]'); if (again) again.focus({ preventScroll: true }); }
     }
@@ -1445,13 +1428,15 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       ['s1', STAGE_NAME[1], (u) => !!u.driving && driverStage(u) === 1],
       ['s0', '정상', (u) => !!u.driving && driverStage(u) === 0],
     ];
-    // 기사 표 두 곳(홈의 '기사 현황' · 기사 관리 화면)이 같은 모양. 홈은 전화 버튼 칸이 없음 (전화는 위 '긴급 경고' 카드에서)
+    // 기사 표 설정 (기사 관리 화면). 홈의 '기사 현황' 표는 11/16 에 뺐음
     const DT = {
       page: { body: 'driverBody', offBody: 'driverOffBody', offCard: 'driverOffCard', tabs: 'driverTabs', panel: 'driverPanel', count: 'driverCount', get sort() { return driverSort; }, get filter() { return driverFilter; }, set filter(v) { driverFilter = v; }, get query() { return driverQuery; } },
     };
-    // 기사 표 정렬 (11/17): 위험 먼저(기본: 3단계 기사 맨 위, 나머지는 서버가 준 순서 그대로) · 이름순(가나다) · 가입순(가입 번호 id 가 작은 사람 = 먼저 가입한 사람이 위. 서버가 가입일을 주지 않아서 id 로 가름)
+    // 기사 표 정렬 (11/17): 위험 먼저(기본) · 이름순(가나다) · 가입순(가입 번호 id 가 작은 사람 = 먼저 가입한 사람이 위. 서버가 가입일을 주지 않아서 id 로 가름)
+    // 위험 먼저 (11/18): 단계 높은 순 3 → 2 → 1 → 정상, 같은 단계면 오래 운전한 순 — 홈 '운행 중 기사' 목록(driving)과 같은 규칙.
+    //   전에는 3단계만 위로 올리고 나머지는 서버 순서 그대로라 정상 기사가 2 · 1단계 기사보다 위에 오기도 했음
     const DRIVER_SORTS = {
-      danger: (a, b) => (driverStage(b) === 3) - (driverStage(a) === 3),
+      danger: (a, b) => driverStage(b) - driverStage(a) || (b.drive_min || 0) - (a.drive_min || 0),
       name: (a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ko') || (a.id - b.id),
       join: (a, b) => a.id - b.id,
     };
@@ -1493,18 +1478,14 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     function renderDrivers() {
       renderDriverTable('page');
       const stages = drivers().map(driverStage);
-      fill($('driversMeta'), headStats([[drivers().length, '등록 기사'], [stages.filter((n) => n > 0).length, '경고 발생'], [stages.filter((n) => n === 3).length, '응답 대기']]));
+      fill($('driversMeta'), headStats([[drivers().length, '등록 기사'], [stages.filter((n) => n > 0).length, '경고 발생'], [stages.filter((n) => n === 3).length, '긴급']]));      // 11/18: '응답 대기' → '긴급' (3단계 = 처리 안 된 긴급이 있는 기사. 홈 '긴급' 칸과 같은 기준)
     }
 
     // ── 사이드바 배지 · 안내 ──────────────────────────────────
     function renderChrome() {
       const openUrgent = events.filter(isOpenUrgent);
       const urgent = openUrgent.length;
-      const unread = openUrgent.filter((e) => e.status === '미확인').length;      // 아직 열어 보지 않은 긴급 (옆 메뉴 · 종 모두 읽으면 줄어듦, 11/17)
-      const badge = $('menuBadge');
-      badge.textContent = String(unread);
-      badge.style.display = unread > 0 ? 'inline-flex' : 'none';
-      badge.setAttribute('aria-label', '안 읽은 긴급 ' + unread + '건');
+      const unread = openUrgent.filter((e) => e.status === '미확인').length;      // 아직 열어 보지 않은 긴급 (읽으면 줄어듦, 11/17). 옆 메뉴 '졸음 경고' 숫자는 종 숫자와 같아서 11/18 뺌 — 종에만 표시
       if (!$('notifMenu').hidden) renderNotifs();                    // 알림 목록이 열려 있으면 같이 새로 그림
       const bell = $('bellBadge');                                   // 위쪽 종: 아직 열어 보지 않은(미확인) 긴급 건수만 — 열어 본 알림은 빠짐 (11/17). 0건이면 숨김
       bell.textContent = String(unread); bell.hidden = unread === 0;
@@ -1523,7 +1504,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     let blinkTimer = null, blinkOn = false, soundOn = true, audioCtx = null;
     try { soundOn = localStorage.getItem('adminSound') !== 'off'; } catch (e) { /* 저장소를 못 쓰면 켜 둔다 */ }
     // 브라우저 탭 제목 (11/17): '화면 이름 | 졸음 가드 관리자' 로 모두 '|' 로 통일. 앞에 붙던 긴급 건수('3 ·')는 뺌
-    const PAGE_TITLE = { dashboard: '홈', hazards: '졸음 경고', drivers: '기사 관리', stats: '통계', profile: '설정', event: '경고 상세', driver: '기사 상세' };
+    const PAGE_TITLE = { dashboard: '홈', hazards: '졸음 경고', drivers: '기사 관리', stats: '통계', profile: '내 정보', event: '경고 상세', driver: '기사 상세' };
     function updateTitle() { document.title = blinkOn ? '🚨 새 긴급 경고 | 졸음 가드 관리자' : [connLost ? '⚠️ 연결 끊김' : '', PAGE_TITLE[view] || '', '졸음 가드 관리자'].filter(Boolean).join(' | '); }
     function stopBlink() { clearInterval(blinkTimer); blinkTimer = null; blinkOn = false; updateTitle(); }
     function startBlink() { if (blinkTimer) return; blinkOn = true; updateTitle(); blinkTimer = setInterval(() => { blinkOn = !blinkOn; updateTitle(); }, 1000); }
@@ -1657,7 +1638,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       tweenNums();
       ['hazardBody', 'driverBody', 'driverOffBody'].forEach((id) => flagNewRows($(id)));
       flagNewRows($('statDetail'), '.sd-row', (r) => statSel + ':' + r.getAttribute('href'));
-      flagNewRows($('urgentZone'), '.u-row', (r) => r.querySelector('a.u-name') ? r.querySelector('a.u-name').getAttribute('href') : '');
+      flagNewRows($('urgentZone'), '.sd-row', (r) => r.getAttribute('href'));      // 새 긴급이 들어오면 그 줄만 살짝 나타남
       // 내 정보는 showView 에서만 그린다 (입력 중 칸 보존)
       if (view === 'event') renderEventDrawer();
       else if (view === 'driver') renderDriverDrawer();
@@ -1712,7 +1693,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     function closeDrawer() { go(baseView || 'dashboard'); }
     // 이름은 '이정자 기사님' (이름은 크게, '기사님'은 작고 흐리게). 이름이 없으면 '기사님'
     // 이름 앞 동그라미 = 그 기사의 '지금' 상태 (10초마다 갱신): 운전 중이면 초록 정상 운행 · 노랑 1단계 · 주황 2단계 · 빨강 3단계, 운전 중이 아니면 회색
-    const liveDot = (u) => { if (!u) return null; const st = driverState(u), text = u.driving ? '주행 중 · ' + st[2] : '지금은 운전하지 않음';
+    const liveDot = (u) => { if (!u) return null; const st = driverState(u), text = u.driving ? '운행 중 · ' + st[2] : '지금은 운전하지 않음';
       return h('i', { class: 'who-dot ' + (u.driving ? 's' + st[3] : 'off'), role: 'img', 'aria-label': text, title: text }); };
     const nameParts = (n, u) => (n && String(n).trim() ? [liveDot(u), String(n).trim(), ' ', h('span', { class: 'sheet-suffix' }, '기사님')] : ['기사님']);
     // 창 머리 (가운데 정렬): [상태 배지] → [이름 + 작은 '기사님'] → [차량번호], 오른쪽 위에 닫기. 경고 번호 · 기사 아이디 줄은 두지 않음
@@ -2229,7 +2210,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         $('setName').value = me.name || ''; $('setPhone').value = me.phone || '';
         updateProfileChecks(false);
         setMsg(msg, '저장했어요.', false);
-        toast('설정을 저장했어요.');
+        toast('내 정보를 저장했어요.');      // 11/18: 화면 이름 '설정' → '내 정보'
       } catch (err) { setMsg(msg, err.message, true); }
       finally { btn.disabled = false; }
     }

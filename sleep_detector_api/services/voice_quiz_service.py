@@ -6,6 +6,8 @@
 #
 # [이 파일이 하는 일]
 #   - 출제: 따라 말하기 · 받아올림 없는 덧셈 중 랜덤 1문제 → quiz_id · type · speak(읽을 문장) · display(화면 글자) · listen_sec
+#     → (11/19 팀장) 운전 중에는 **따라 말하기만** (config.VOICE_QUIZ_TYPES). 덧셈은 숫자를 기억해 계산하느라 폰 화면을 보게 돼서 뺌
+#       덧셈 출제(_make_add) · 채점(parse_answer_number) 코드는 남겨 둠 — 안 부를 뿐 (부품 B 화면 퀴즈 · 되돌리기용)
 #   -   정답과 event_id 는 서버에만 보관 (응답에 정답을 넣지 않음)
 #   -   따라 말하기 문장은 knowledge/voice_quiz/repeat_sentences.txt, 덧셈은 코드가 생성
 #   - 채점: 공백 · 문장부호 지우기 → 따라 말하기 글자 유사도 ≥ 0.8 / 덧셈은 아라비아 · 한글 숫자 → 정수 비교
@@ -37,6 +39,7 @@ import config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 QUIZ_MODE = getattr(config, "QUIZ_MODE", "voice")
+VOICE_QUIZ_TYPES = tuple(getattr(config, "VOICE_QUIZ_TYPES", ("repeat", "add"))) or ("repeat",)  # (11/19) 지금은 따라 말하기만
 LISTEN_SEC = getattr(config, "LISTEN_SEC", 7)
 REPEAT_MIN_SCORE = getattr(config, "REPEAT_MIN_SCORE", 0.8)
 VOICE_QUIZ_DIR = Path(getattr(config, "VOICE_QUIZ_DIR", BASE_DIR / "knowledge" / "voice_quiz"))
@@ -117,10 +120,11 @@ def make_quiz(user_id, qtype=None, event_id=None):
     qtype    : None(랜덤) / "repeat" / "add"
     event_id : 이 퀴즈가 붙을 경고 번호 (detect.py 가 경고를 저장한 뒤 넘김 — 결과를 그 보고서에 붙이기 위해)
     """
+    first = qtype is None
     if QUIZ_MODE == "screen":  # 부품 B: STT 가 없으니 덧셈 보기 고르기만
         qtype = "add"
-    first = qtype is None
-    qtype = qtype if qtype in ("repeat", "add") else random.choice(["repeat", "add"])
+    elif qtype not in VOICE_QUIZ_TYPES:  # (11/19 팀장) 운전 중에는 config.VOICE_QUIZ_TYPES 안에서만 — 지금은 따라 말하기만 (두 번째 문제도)
+        qtype = random.choice(VOICE_QUIZ_TYPES)
     intro = "깨어 있는지 확인할게요. " if first else ""  # (11/18 팀장) 퀴즈를 하는 이유를 먼저 말함
 
     if qtype == "repeat":
@@ -129,7 +133,7 @@ def make_quiz(user_id, qtype=None, event_id=None):
         sentence = random.choice([s for s in sentences if s != last] or sentences)
         _last_sentence[user_id] = sentence
         answer, display = sentence, sentence
-        speak = f"{intro}따라 말하세요. {sentence}."
+        speak = f"{intro}크게 말하세요. {sentence}."  # (11/19 팀장) "따라 말하세요" → "크게 말하세요" (소리 내어 크게 = 깨우기 · 시끄러운 차 안에서도 잘 들리게)
     else:
         a, b = _make_add()
         answer, display = a + b, f"{a} + {b} = ?"

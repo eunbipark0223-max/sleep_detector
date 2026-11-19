@@ -5,7 +5,7 @@
 // 수업 원본: road_hazard_app/lib/screens/detect_result_screen.dart (🟡 이름 변경 + 수정)
 //
 // [이 파일이 하는 일]
-//   - 단계별 색 · 내 얼굴(카메라) · 큰 글씨 한 줄 + [규정 듣기] (1단계 사진 시험 · 운행 중이 아닌 3단계만. 11/18 2단계 [규정 보기] 는 뺌 → 휴식 화면)
+//   - 단계별 색 · 내 얼굴(카메라) · 큰 글씨 한 줄 (11/18 2단계 [규정 보기] · 1 · 3단계 [규정 듣기] 모두 뺌 → 규정은 휴식 화면 · 경고 기록 상세 · 규정 도우미)
 //   - 2단계 순서 (11/18 팀장): 🔔 + 'OOO님, 쉼터에서 쉬어 가세요.' → 퀴즈 (필수, 버튼 꺼짐) → 통과하면 쉼터 한 줄 + [가까운 졸음쉼터 안내] · [정차했어요]
 //   - 소리 순서: 🔔 알람 → 서버 한 문장 driverVoice ('OOO님, 쉼터에서 쉬어 가세요.' / '… 지금 바로 정차하세요.', 없으면 stage_texts.dart 고정 문구) (11/17)
 //   - 운전 중 음성 퀴즈 (부품 A): D 의 quiz_screen 을 띄우고, 돌려받은 단계로 색 갱신 (2번 실패면 한 단계 위 + 알람)
@@ -40,7 +40,6 @@ import '../theme.dart';
 import '../widgets/stage_layout.dart';
 import 'map_screen.dart';
 import 'quiz_screen.dart';
-import 'regulation_screen.dart';
 import 'rest_screen.dart';
 import '../widgets/buddy.dart';
 
@@ -92,18 +91,6 @@ Future<bool> confirmRest(BuildContext context) async {
   return yes == true;
 }
 
-/// 경고 화면 큰 버튼 — 흰 바탕 · 남색 글자 · 남색 테두리 (투명도 없이 PPT 원래 색), 운전 중 누르기 쉽게 높이 60 · 글자 20 굵게 (11/11)
-final ButtonStyle _bigButton = OutlinedButton.styleFrom(
-  backgroundColor: Colors.white.withValues(alpha: 0.7), // (11/16 R안) 흰 반투명 · 테두리 없음 · 모서리 24
-  foregroundColor: AppColors.navy,
-  disabledBackgroundColor: Colors.white.withValues(alpha: 0.4),
-  disabledForegroundColor: AppColors.navy.withValues(alpha: 0.4),
-  side: BorderSide.none,
-  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-  minimumSize: const Size.fromHeight(60),
-  textStyle: const TextStyle(fontSize: 19, fontWeight: FontWeight.w600),
-);
-const Color _sky = Color(0xFF2FA8E0); // 스피커 아이콘 하늘색
 
 /// 단계 바탕색 — 발표 PPT 색 가이드(테마 색 = AppColors 단계 색) 그대로에 투명도 30% 를 앱 바탕(#F3F5FA) 위에 (11/11)
 ///   원색 그대로는 화면이 너무 쨍해서 눈이 아프고, 같은 색 부엉이가 바탕에 묻힘 → 같은 색 계열의 연한 바탕 + 진한 글자
@@ -417,7 +404,6 @@ class _WarningScreenState extends State<WarningScreen> {
   String _restMessage = ''; // 휴식 뒤 서버가 준 안내 (예: 주의 단계로 다시 출발합니다). 있으면 이전 단계의 요약 · 안내 · 음성 보고 대신 보여 준다
   bool _voiceDone = false; // 알람 · 음성 · 퀴즈가 다 끝났는지 (버튼은 그 뒤에 켜짐 — 2단계는 퀴즈 필수, 11/18)
   bool _flowStopped = false; // [정차했어요] 를 눌러 음성 · 퀴즈 순서를 그만둠 (휴식 화면 위로 퀴즈가 뜨지 않게)
-  bool _readingRegs = false; // 규정을 읽는 중 (30초 반복이 끊지 않게)
   bool _keepSpeaking = false; // 닫혀도 말을 끊지 않음 (운행 재개 안내를 끝까지 듣게)
   Future<String?>? _nearRest; // 2 · 3단계 — 가까운 졸음쉼터 안내 문장 (알람이 울리는 동안 미리 찾아 둠, 못 찾으면 null)
   String? _restLine; // (11/17) 찾은 쉼터 문장 — 2단계 화면에 한 줄로
@@ -495,9 +481,8 @@ class _WarningScreenState extends State<WarningScreen> {
   // 3단계 30초 반복 시작 (이미 돌고 있으면 그대로) — 알람 + 고정 문구 (기획안 8-7)
   void _startRepeat() {
     _repeat ??= Timer.periodic(const Duration(seconds: 30), (_) async {
-      if (_readingRegs) return; // 규정을 듣는 중에는 끊지 않음
       await VoiceService.alarm();
-      if (!mounted || _repeat == null || _readingRegs) return;
+      if (!mounted || _repeat == null) return;
       await VoiceService.speak('$_voiceName, 지금 바로 정차하세요.'); // (11/17 팀장) 이름 + 할 일만 ('관리자에게 알렸어요' 는 화면에)
     });
   }
@@ -709,37 +694,6 @@ class _WarningScreenState extends State<WarningScreen> {
     });
   }
 
-  // [규정 듣기] — 운전 중에는 글을 읽기 어려우니 소리로 읽어 주고, 화면에도 띄운다. 창을 닫으면 읽기도 멈춘다
-  Future<void> _showRegulations() async {
-    final regs = widget.response.regulations;
-    _readingRegs = true;
-    _speakRegulations(regs);
-    await showRegulationSheet(context, regs); // regulation_screen 의 공용 카드 창
-    _readingRegs = false;
-    VoiceService.stop(); // 창을 닫으면 읽기도 멈춘다
-  }
-
-  // 규정 소리는 지금 단계의 한 문장만 — 조문을 그대로 읽으면 운전 중에 듣기 어려워서 (화면 카드는 원문 그대로, 11/05 팀장 · B 확인)
-  Future<void> _speakRegulations(List<Regulation> regs) async {
-    if (regs.isEmpty) {
-      await VoiceService.speak('관련 규정이 없어요.');
-      return;
-    }
-    await VoiceService.speak(_regulationVoice);
-  }
-
-  String get _regulationVoice {
-    const more = '자세한 내용은 정차한 뒤 화면에서 확인하세요.';
-    switch (_stage) {
-      case 2:
-        return '화물차와 시외·전세버스 기사는 2시간 연속 운전 후 15분 이상 쉬어야 합니다. $more';
-      case 3:
-        return '안전한 곳에 바로 정차해 주세요. $more';
-      default:
-        return '과로로 정상적인 운전이 어려운 상태의 운전은 법으로 금지되어 있습니다. $more';
-    }
-  }
-
   // (11/15 팀장) 단계별 제목 — 기사님이 느끼는 상태로 (11/19 화면 위 제목은 뺌 · 되돌릴 때 참고)
   // ignore: unused_element
   String get _title => switch (_stage) {
@@ -861,14 +815,7 @@ class _WarningScreenState extends State<WarningScreen> {
                   child: const _IconLabel(icon: Icons.local_parking_rounded, text: '정차했어요'), // (11/19) 애플 'P' 주차 표시
                 ),
               ],
-              // 1단계 (사진 1장 테스트에서만 이 화면이 뜸) · 운행 중이 아닌 3단계
-              if (_stage <= 1 || (_stage >= 3 && !driving))
-                OutlinedButton.icon(
-                  onPressed: _voiceDone ? _showRegulations : null,
-                  style: _bigButton,
-                  icon: const Icon(Icons.volume_up_rounded, color: _sky, size: 30),
-                  label: const Text('규정 듣기'),
-                ),
+              // (11/18 팀 결정) 1 · 3단계 [규정 듣기] 뺌 — 경고 화면은 깨우기 · 멈추기만. 규정은 휴식 화면 · 경고 기록 상세 · 규정 도우미에서
             ],
           ),
         ),

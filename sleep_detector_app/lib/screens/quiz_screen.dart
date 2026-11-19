@@ -124,7 +124,7 @@ class _QuizScreenState extends State<QuizScreen> {
   String get _typeLabel => switch (_quiz.type) {
         'add' => '간단 계산',
         'reverse' => '거꾸로 말하기',
-        _ => '따라 말하기',
+        _ => '크게 말하기', // (11/19 팀장) 질문 '크게 말하세요' 와 맞춤 (전: 따라 말하기)
       };
 
   @override
