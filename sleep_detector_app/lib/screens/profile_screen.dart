@@ -29,6 +29,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../design_tokens.dart';
 import '../theme.dart';
 import '../utils/phone_format.dart';
 import '../widgets/contact_dialog.dart';
@@ -80,7 +81,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.card,
+      backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('내 정보'), centerTitle: true),
       body: FutureBuilder<Map<String, dynamic>?>(
         future: _future,
@@ -125,6 +126,7 @@ class _BodyState extends State<_Body> {
   late Map<String, dynamic> _user = Map<String, dynamic>.of(widget.user); // 저장하면 이 복사본의 전화번호 · 차량번호를 바꾼다
 
   int? _eventCount; // 내 경고 건수 (못 받으면 null → '—')
+  List<int> _byStage = const [0, 0, 0]; // (11/18) 1 · 2 · 3단계 각각 몇 건
 
   Map<String, dynamic> get user => _user;
 
@@ -141,7 +143,10 @@ class _BodyState extends State<_Body> {
     try {
       final events = await ApiService.fetchMyEvents();
       if (!mounted) return;
-      setState(() => _eventCount = events.length);
+      setState(() {
+        _eventCount = events.length;
+        _byStage = [for (var s = 1; s <= 3; s++) events.where((e) => e.stage == s).length];
+      });
     } catch (_) {/* '—' 그대로 */}
   }
 
@@ -267,7 +272,7 @@ class _BodyState extends State<_Body> {
     final saveContact = widget.saveContact ?? AuthService.updateProfile;
     final Widget page = switch (key) {
       'name' => EditFieldScreen(
-          title: '이름 변경',
+          title: '이름',
           label: '이름',
           initial: _text('name'),
           hint: '이름을 입력하세요',
@@ -276,7 +281,7 @@ class _BodyState extends State<_Body> {
           save: (v) => AuthService.updateProfile(name: v),
         ),
       'phone' => EditFieldScreen(
-          title: '전화번호 변경',
+          title: '전화번호',
           label: '전화번호',
           initial: _text('phone'),
           hint: '010-1234-5678',
@@ -287,7 +292,7 @@ class _BodyState extends State<_Body> {
           save: (v) => saveContact(phone: v),
         ),
       _ => EditFieldScreen(
-          title: '차량번호 변경',
+          title: '차량번호',
           label: '차량번호',
           initial: _text('vehicle_no'),
           hint: '12가 3456',
@@ -329,9 +334,9 @@ class _BodyState extends State<_Body> {
         // 프로필 — 사진(누르면 바꾸기) + 이름만 ('기사' 표시 · 이메일은 아래 '내 정보' 묶음으로)
         Center(child: _Avatar(initial: initial, photo: _photo, busy: _busy, onTap: _choose)),
         const SizedBox(height: 12),
-        Text(name.isEmpty ? '이름 없음' : name,
+        Text(name.isEmpty ? '기사님' : '$name 기사님', // (11/18 피드백) 이름 + 기사님
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.navy)), // (11/18) 남색
         const SizedBox(height: 24),
         // (11/18 사용자 요청) 애플 설정처럼 줄을 누르면 바로 그 칸 바꾸기 화면 · 안내 글 없음 · 가입일 없음
         //   구글 계정은 이메일을 구글에서 관리해서 이메일 줄만 누를 수 없음
@@ -350,8 +355,12 @@ class _BodyState extends State<_Body> {
           _Section(title: '로그인 및 보안', rows: [_Row(label: '비밀번호 변경', value: '', onTap: _changePassword)]),
         ],
         const SizedBox(height: 24),
+        // (11/18 피드백) '경고 건수' = 지금까지 받은 졸음 경고 전부 (1 · 2 · 3단계 합) — 단계별로 나눠서 보여 줌
         _Section(title: '운전 기록', rows: [
-          _Row(label: '경고 건수', value: _eventCount == null ? '—' : '$_eventCount건'),
+          _Row(label: '전체 경고', value: _eventCount == null ? '—' : '$_eventCount건'),
+          _Row(label: '1단계 주의', value: _eventCount == null ? '—' : '${_byStage[0]}건'),
+          _Row(label: '2단계 휴식 권고', value: _eventCount == null ? '—' : '${_byStage[1]}건'),
+          _Row(label: '3단계 위험', value: _eventCount == null ? '—' : '${_byStage[2]}건'),
         ]),
       ],
     );
@@ -367,7 +376,7 @@ class _Avatar extends StatelessWidget {
   final VoidCallback onTap;
   const _Avatar({required this.initial, required this.photo, required this.busy, required this.onTap});
 
-  Widget get _letter => Text(initial, style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w700, color: AppColors.navy));
+  Widget get _letter => Text(initial, style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w700, color: Colors.white)); // (11/18 피드백) 남색 동그라미 위 흰 글자
 
   @override
   Widget build(BuildContext context) {
@@ -384,7 +393,7 @@ class _Avatar extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: _size / 2,
-                backgroundColor: AppColors.navy.withValues(alpha: 0.08),
+                backgroundColor: AppColors.navy,
                 child: photo == null
                     ? _letter
                     : ClipOval(
@@ -429,18 +438,18 @@ class _Section extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 6, bottom: 8),
-          child: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textMuted)),
+          child: Text(title, style: AppType.footnote.copyWith(fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
         ),
         Container(
           decoration: BoxDecoration(
             color: AppColors.card,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.card), // (11/18 디자인 토큰) 세 묶음 모두 같은 둥글기
             border: Border.all(color: AppColors.cardBorder),
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(children: [
             for (var i = 0; i < rows.length; i++) ...[
-              if (i > 0) const Divider(height: 1, thickness: 1, indent: 16, color: AppColors.line),
+              if (i > 0) const Divider(height: 1, thickness: 1, indent: 16, endIndent: 16, color: AppColors.line), // 좌우 대칭
               rows[i],
             ],
           ]),
@@ -462,22 +471,22 @@ class _Row extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
-        constraints: const BoxConstraints(minHeight: 52),
+        constraints: const BoxConstraints(minHeight: AppSize.rowMin),
         padding: EdgeInsets.fromLTRB(16, 12, onTap == null ? 16 : 10, 12),
         child: Row(
           children: [
-            Text(label, style: const TextStyle(fontSize: 15.5, color: AppColors.textPrimary)),
+            Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, letterSpacing: -0.2, color: AppColors.textPrimary)),
             const SizedBox(width: 16),
             Expanded(
               child: Text(value,
                   textAlign: TextAlign.right,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 15.5, color: AppColors.textSecondary)),
+                  style: const TextStyle(fontSize: 16, letterSpacing: -0.2, color: AppColors.textSecondary)),
             ),
             if (onTap != null) ...[
               const SizedBox(width: 4),
-              const Icon(Icons.chevron_right_rounded, size: 22, color: AppColors.textMuted),
+              const Icon(Icons.chevron_right_rounded, size: 22, color: AppleGray.chevron),
             ],
           ],
         ),

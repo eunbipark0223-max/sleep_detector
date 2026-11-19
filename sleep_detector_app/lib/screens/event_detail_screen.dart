@@ -246,6 +246,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
+  // (11/18 피드백) 어려운 말 → 쉬운 말 (서버 · AI 문장에 섞여 오는 전문 용어)
+  static String _plain(String t) => t
+      .replaceAllMapped(RegExp(r'PERCLOS\s*\(?([0-9.]+)\s*%\)?', caseSensitive: false), (m) => '눈을 감고 있던 시간 ${m[1]}%')
+      .replaceAll(RegExp(r'PERCLOS', caseSensitive: false), '눈을 감고 있던 시간 비율')
+      .replaceAll(RegExp(r'\bEAR\b'), '눈 뜬 정도')
+      .replaceAll(RegExp(r'microsleep', caseSensitive: false), '아주 짧은 졸음')
+      .replaceAll('미세수면', '아주 짧은 졸음(미세수면)');
+
   // 남색 AI 카드 안 한 줄 — 위 작은 연한 글씨(질문) · 아래 흰 글씨(답)
   Widget _aiRow(String label, String value) {
     if (value.trim().isEmpty) return const SizedBox.shrink();
@@ -256,7 +264,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         children: [
           Text(label, style: TextStyle(fontSize: 12.5, color: Colors.white.withValues(alpha: 0.65))),
           const SizedBox(height: 4),
-          Text(keepWords(noDot(value)),
+          Text(keepWords(noDot(_plain(value))),
               style: const TextStyle(fontSize: 15, height: 1.45, fontWeight: FontWeight.w600, color: Colors.white)),
         ],
       ),

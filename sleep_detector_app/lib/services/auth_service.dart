@@ -95,6 +95,11 @@ class AuthService {
 
   // (11/18 C) 알림 = 관리자가 조치를 완료한 경고만. 조치 시각은 서버가 안 알려 줘서 '이미 본 경고 id' 로 읽음을 가린다
   static const String _noticeIdsKey = 'notice_seen_ids';
+
+  // (11/18 피드백) 자동 로그인 — 로그인 화면 체크 (기본 켬). 끄면 앱을 다시 열 때 로그인 화면부터
+  static const String _autoLoginKey = 'auto_login';
+  static Future<void> setAutoLogin(bool on) => _storage.write(key: _autoLoginKey, value: on ? '1' : '0');
+  static Future<bool> getAutoLogin() async => (await _storage.read(key: _autoLoginKey)) != '0';
   static Future<Set<int>> getNoticeSeenIds() async =>
       (await _storage.read(key: _noticeIdsKey) ?? '').split(',').map(int.tryParse).whereType<int>().toSet();
   static Future<void> saveNoticeSeenIds(Set<int> ids) => _storage.write(key: _noticeIdsKey, value: ids.join(','));

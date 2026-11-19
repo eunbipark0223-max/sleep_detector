@@ -28,6 +28,7 @@ import 'dart:math';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/cupertino.dart' show CupertinoAlertDialog, CupertinoDialogAction;
 import 'package:flutter/material.dart';
 
 import '../models/sleep_response.dart';
@@ -36,12 +37,12 @@ import '../services/api_service.dart';
 import '../services/voice_service.dart';
 import '../stage_texts.dart';
 import '../theme.dart';
-import '../widgets/web_ui.dart';
 import '../widgets/stage_layout.dart';
 import 'map_screen.dart';
 import 'quiz_screen.dart';
 import 'regulation_screen.dart';
 import 'rest_screen.dart';
+import '../widgets/buddy.dart';
 
 /// "정차하셨나요?" 창을 아무것도 안 누르고 띄워 둘 수 있는 시간 — 지나면 [취소]처럼 닫힌다 (11/10 팀장 · C: 1분)
 const int confirmRestSec = 60;
@@ -61,41 +62,26 @@ Future<bool> confirmRest(BuildContext context) async {
       autoClose ??= Timer(const Duration(seconds: confirmRestSec), () {
         if (open && ctx.mounted) Navigator.pop(ctx, false);
       });
-      // (11/11) 글자 크게 + [취소] · [네, 정차했어요] 를 큰 버튼으로, 서로 떨어뜨려서 잘못 누르지 않게
-      return AlertDialog(
-        title: const Text('정차하셨나요?', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
+      // (11/18 피드백 · 애플 스타일) 아이폰 기본 알림창 — 가운데 제목 · 설명, 아래 [취소 | 네, 정차했어요] 를 가는 선으로 나눔
+      //   운전 중 손가락으로 누르기 쉽게 글자는 아이폰보다 조금 크게
+      return CupertinoAlertDialog(
+        title: const Padding(
+          padding: EdgeInsets.only(bottom: 4),
+          child: Text('정차하셨나요?', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        ),
         content: const Text('휴식을 시작하면 쉬는 시간이 끝나야\n운행을 다시 시작할 수 있어요',
-            style: TextStyle(fontSize: 18, height: 1.45, color: AppColors.textPrimary)),
-        actionsPadding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+            style: TextStyle(fontSize: 15, height: 1.45, color: AppColors.textSecondary)),
         actions: [
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.textPrimary,
-                    side: const BorderSide(color: AppColors.cardBorder, width: 2),
-                    minimumSize: const Size.fromHeight(58),
-                    textStyle: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
-                  ),
-                  child: const Text('취소'),
-                ),
-              ),
-              const SizedBox(width: 28), // 두 버튼 사이를 넉넉히 띄움
-              Expanded(
-                child: FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.navy,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size.fromHeight(58),
-                    textStyle: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
-                  ),
-                  child: const Text('네, 정차했어요'),
-                ),
-              ),
-            ],
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(ctx, false),
+            textStyle: const TextStyle(fontSize: 18, color: AppColors.textSecondary),
+            child: const Text('취소'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.pop(ctx, true),
+            textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.navy),
+            child: const Text('네, 정차했어요'),
           ),
         ],
       );
@@ -668,7 +654,7 @@ class _WarningScreenState extends State<WarningScreen> {
 
   // 맨 위 그림 — 운행 중이면 카메라 화면(내 얼굴) + 오른쪽 아래 부엉이 배지, 카메라가 없으면 큰 부엉이
   Widget _topVisual(Color bg, Color fg) {
-    const bigIcon = Center(child: ImageSlot(label: '메인 캐릭터 이미지', width: 180, height: 180, radius: 24)); // (11/17) 그림 자리만
+    final bigIcon = Center(child: Buddy(stage: _stage, size: 180)); // (11/19) 단계 캐릭터
     final cam = widget.camera;
     if (cam == null) return bigIcon;
     return ValueListenableBuilder<CameraController?>(
@@ -679,16 +665,10 @@ class _WarningScreenState extends State<WarningScreen> {
         return Stack(
           fit: StackFit.expand,
           children: [
-            Container(
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                color: AppColors.stage(_stage), // (11/16 R안) 단계 색 얇은 테두리 · 모서리 26 (운행 화면과 같음)
-                borderRadius: BorderRadius.circular(26),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(23),
-                child: FollowFacePreview(controller: c, face: widget.faceBox),
-              ),
+            // (11/18 피드백) 진한 단계 색 테두리는 뺌 — 운행 화면과 같은 둥근 네모만
+            ClipRRect(
+              borderRadius: BorderRadius.circular(26),
+              child: FollowFacePreview(controller: c, face: widget.faceBox),
             ),
             // (11/11 초안) 카메라 위 부엉이 배지는 뺌 — 아래 말풍선 부엉이와 두 마리가 겹치지 않게
           ],
@@ -760,7 +740,8 @@ class _WarningScreenState extends State<WarningScreen> {
     }
   }
 
-  // (11/15 팀장) 단계별 제목 — 기사님이 느끼는 상태로
+  // (11/15 팀장) 단계별 제목 — 기사님이 느끼는 상태로 (11/19 화면 위 제목은 뺌 · 되돌릴 때 참고)
+  // ignore: unused_element
   String get _title => switch (_stage) {
         2 => '쉬어 가세요',
         3 => '지금 멈추세요',
@@ -789,13 +770,17 @@ class _WarningScreenState extends State<WarningScreen> {
           elevation: 0,
           toolbarHeight: 48,
           automaticallyImplyLeading: !_locked,
+          // (11/19 사용자 요청) '운행 중' 은 맨 위 '<' 와 같은 줄 가운데
+          centerTitle: true,
+          title: const Text('운행 중', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         ),
         body: SafeArea(
           top: false,
           // (11/15 팀장) 운행 화면과 같은 틀 — 카메라 크기 · 위치 고정, 아래 버튼 자리 고정
           // (11/16 R안) 위에 '● 단계' + 큰 제목, 부엉이 말풍선 대신 큰 글
           child: StageLayout(
-            header: StageHeader(stage: _stage, title: _title),
+            // (11/19 사용자 요청) 위 제목('쉬어 가세요')은 빼고 작은 '● 운행 중' 만 — 단계 · 운전 시간은 아래 카드에
+            camRatio: 0.42,
             cameraOverlay: (widget.faceLost == null && widget.checking == null)
                 ? null
                 : Column(mainAxisSize: MainAxisSize.min, children: [
@@ -805,7 +790,7 @@ class _WarningScreenState extends State<WarningScreen> {
             camera: _topVisual(bg, fg),
             // 글은 부엉이 말풍선 하나만 — 요약 · 음성 보고 글 · '지켜보고 있어요' 는 뺌 (음성으로 들려줌)
             message: [
-              StageMessage(_headline),
+              StageMessage(_headline, stage: _stage, info: true),
               // (11/17 팀장) 2단계: 가까운 쉼터 한 줄 (음성으로 자동으로 읽지 않는 대신)
               if (_stage == 2 && _restLine != null) ...[
                 const SizedBox(height: 8),
@@ -859,11 +844,11 @@ class _WarningScreenState extends State<WarningScreen> {
               // 2단계: 쉼터 안내 + 정차했어요 — 둘 다 퀴즈가 끝난 뒤 켜짐 (11/18 팀장: 퀴즈는 필수, 규정 보기는 뺌 → 휴식 화면)
               if (_stage == 2) ...[
                 // (11/16 R안) [가까운 졸음쉼터 안내] 흰 버튼 + [정차했어요] 남색 꽉 찬 버튼
-                FilledButton.icon(
+                // (11/19 사용자 요청) 두 버튼 아이콘 시작선을 맞춤 — 같은 폭 칸 안에 [아이콘 · 글] 을 왼쪽부터
+                FilledButton(
                   onPressed: _voiceDone ? _listenRest : null,
                   style: stageButton('white', height: 60),
-                  icon: const Icon(Icons.location_on_rounded, size: 24), // (11/16) 쉼터 = 위치 마커
-                  label: const Text('가까운 졸음쉼터 안내'),
+                  child: const _IconLabel(icon: Icons.location_on_rounded, text: '가까운 졸음쉼터 안내'), // 쉼터 = 위치 마커
                 ),
                 const SizedBox(height: 10),
                 FilledButton(
@@ -873,7 +858,7 @@ class _WarningScreenState extends State<WarningScreen> {
                         }
                       : null,
                   style: stageButton('navy'), // 이 단계에서 가장 중요한 행동
-                  child: const Text('정차했어요'),
+                  child: const _IconLabel(icon: Icons.local_parking_rounded, text: '정차했어요'), // (11/19) 애플 'P' 주차 표시
                 ),
               ],
               // 1단계 (사진 1장 테스트에서만 이 화면이 뜸) · 운행 중이 아닌 3단계
@@ -890,4 +875,20 @@ class _WarningScreenState extends State<WarningScreen> {
       ),
     );
   }
+}
+
+/// (11/19) 버튼 안 [아이콘 · 글] — 폭 210 칸 안에서 왼쪽부터 → 위아래 버튼의 아이콘 시작선이 같음
+class _IconLabel extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _IconLabel({required this.icon, required this.text});
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 210,
+        child: Row(children: [
+          Icon(icon, size: 24),
+          const SizedBox(width: 12),
+          Flexible(child: Text(text, maxLines: 1, overflow: TextOverflow.fade, softWrap: false)),
+        ]),
+      );
 }

@@ -24,6 +24,7 @@ import '../models/drive_status.dart';
 import '../models/sleep_event.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../design_tokens.dart';
 import '../theme.dart';
 import '../widgets/auth_ui.dart';
 import '../widgets/web_ui.dart';
@@ -31,6 +32,8 @@ import '../widgets/home_ui.dart';
 import 'calibration_screen.dart';
 import 'drive_screen.dart';
 import 'event_detail_screen.dart';
+import '../widgets/buddy.dart';
+import '../services/drive_log.dart';
 
 // (사진 1장 테스트 · 개발용 숨김은 main_screen 의 ≡ 메뉴로 옮김 — SHOW_DEV_TOOLS, 11/11)
 
@@ -68,8 +71,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static const int _tabCount = 5; // 숫자 칸 아래 목록에 보이는 최대 줄 수
   int _tab = 0; // 0 오늘 경고 · 1 이번 주 · 2 긴급
+  static const int _driveCount = 3; // (11/19) 처음에 보이는 운행 카드 수
+  bool _expanded = false; // (11/18 피드백) [n건 전체 보기] 를 누르면 그 자리에서 아래로 펼침 (운행 기록 탭으로 가지 않음)
 
   // (11/16 팀장) 홈의 '출발 준비 (카메라 · 음성 안내)' 줄은 뺐다 — 권한은 [운행 시작] 때 안내창 → 휴대폰 권한 창으로 받음
 
@@ -106,6 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   late Future<List<SleepEvent>?> _recent = _fetch();
   late Future<DriveState?> _driveState = _fetchDriveState();
+  late Future<List<DriveSpan>> _spans = DriveLog.load(); // (11/19) 폰에 적어 둔 운행 시작 · 종료
 
   // 앱을 껐다 켰을 때 서버가 기억하는 운행 상태. 못 받으면 (서버 연결 오류 등) null — 배너만 안 뜨고 홈은 그대로
   Future<DriveState?> _fetchDriveState() {
@@ -132,6 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _recent = _fetch();
       _driveState = _fetchDriveState();
+      _spans = DriveLog.load();
     });
   }
 
@@ -193,6 +199,8 @@ class _HomeScreenState extends State<HomeScreen> {
       } catch (_) {}
       if (!mounted) return;
     }
+    await DriveLog.start(); // (11/19) 운행 한 번의 시작 — 홈 리포트 '운행 1 · 운행 2' 를 나누는 기준
+    if (!mounted) return;
     AuthService.saveEyeThreshold(
       t,
     ).ignore(); // 앱을 껐다 켜고 [이어서 운행]으로 들어올 때 같은 기준을 쓰도록 폰에 저장
@@ -225,7 +233,17 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return RefreshIndicator(
       onRefresh: () async => _reload(),
-      child: ListView(
+      // (11/19 사용자 요청) 아래로 스크롤하면 '김기사 기사님' 머리줄 아래에서 카드가 네모나게 뚝 잘리던 것 →
+      //   위쪽 28 만큼 부드럽게 사라지게 (선 · 모서리 없이)
+      child: ShaderMask(
+        blendMode: BlendMode.dstIn,
+        shaderCallback: (r) => LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: const [Color(0x00000000), Color(0x00000000), Color(0xFF000000)],
+          stops: [0, (6 / r.height).clamp(0.0, 1.0), (40 / r.height).clamp(0.0, 1.0)],
+        ).createShader(r),
+        child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
         children: [
@@ -282,63 +300,255 @@ class _HomeScreenState extends State<HomeScreen> {
               if (events == null)
                 return const HomeEmptyCard(title: '최근 경고 불러오기는 준비 중이에요');
               // (11/17 사용자 요청) 경고가 하나도 없어도 숫자 칸(오늘 · 이번 주 · 긴급 0건)은 그대로 보여 준다
-              final latest = [...events]
-                ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
               final now = DateTime.now();
               final dayStart = DateTime(now.year, now.month, now.day);
               final weekStart = dayStart.subtract(Duration(days: now.weekday % 7)); // 일요일부터
-              final today = latest.where((e) => !e.createdAt.toLocal().isBefore(dayStart)).toList();
-              final week = latest.where((e) => !e.createdAt.toLocal().isBefore(weekStart)).toList();
-              final urgent = latest.where((e) => e.stage >= 3).toList();
-              final lists = [today, week, urgent];
-              final shown = lists[_tab].take(_tabCount).toList();
-              const empties = ['오늘은 경고가 없어요', '이번 주는 경고가 없어요', '긴급 경고가 없어요'];
-              return WebCard(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  children: [
-                    StatTabs(
-                      selected: _tab,
-                      onSelect: (i) => setState(() => _tab = i),
-                      items: [
-                        StatItem('오늘', '${today.length}', '건'),
-                        StatItem('이번 주', '${week.length}', '건'),
-                        StatItem('긴급', '${urgent.length}', '건', alert: urgent.isNotEmpty),
+              bool fromDay(SleepEvent e) => !e.createdAt.toLocal().isBefore(dayStart);
+              bool fromWeek(SleepEvent e) => !e.createdAt.toLocal().isBefore(weekStart);
+              final todayN = events.where(fromDay).length;
+              final weekN = events.where(fromWeek).length;
+              final urgentN = events.where((e) => e.stage >= 3).length;
+              return FutureBuilder<List<DriveSpan>>(
+                future: _spans,
+                builder: (context, spanSnap) {
+                  // (11/19 사용자 요청) 경고를 '운행 한 번'(운행 시작 ~ 운행 종료) 씩 묶어서 보여 줌
+                  final all = groupDrives(events, spanSnap.data ?? const []);
+                  bool inToday(DriveGroup g) => !g.last.isBefore(dayStart);
+                  bool inWeek(DriveGroup g) => !g.last.isBefore(weekStart);
+                  final lists = [
+                    all.where(inToday).toList().reversed.toList(), // 오늘 — (11/19 사용자 요청) 최신 운행이 맨 위
+                    all.where(inWeek).toList().reversed.toList(), // 이번 주 — 최근 운행이 위
+                    all.where((g) => g.hasUrgent).toList().reversed.toList(), // 긴급 — 3단계가 있었던 운행
+                  ];
+                  final shown = lists[_tab];
+                  const empties = ['오늘은 운행 기록이 없어요', '이번 주는 운행 기록이 없어요', '긴급 경고가 있었던 운행이 없어요'];
+                  final visible = _expanded ? shown.length : shown.length.clamp(0, _driveCount);
+                  return WebCard(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      children: [
+                        StatTabs(
+                          selected: _tab,
+                          onSelect: (i) => setState(() {
+                            _tab = i;
+                            _expanded = false;
+                          }),
+                          items: [
+                            StatItem('${now.month}/${now.day}', '$todayN', '건'), // (11/19 사용자 요청) '오늘' 대신 날짜만
+                            StatItem('이번 주', '$weekN', '건'),
+                            StatItem('긴급', '$urgentN', '건', alert: urgentN > 0),
+                          ],
+                        ),
+                        // (11/18 사용자 요청) 칸을 바꾸면 목록이 옆으로 부드럽게 미끄러짐 · 목록을 옆으로 밀어도 바뀜
+                        SlideSwitcher(
+                          index: _tab,
+                          onSwipe: (d) => setState(() => _tab = (_tab + d).clamp(0, 2)),
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 4), // (11/19) 애플 목록 — 줄마다 넉넉한 여백
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                              if (shown.isEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 24),
+                                  child: Center(
+                                      child: Text(empties[_tab], style: const TextStyle(fontSize: 14, color: AppColors.textMuted))),
+                                ),
+                              for (var i = 0; i < visible; i++) ...[
+                                if (i > 0) const _CenterLine(),
+                                _DriveCard(group: shown[i]),
+                              ],
+                              // [n개 운행 전체 보기] ↔ [접기] — 그 자리에서 펼치고 접음
+                              if (shown.length > _driveCount) ...[
+                                const _CenterLine(),
+                                TextButton(
+                                  onPressed: () => setState(() => _expanded = !_expanded),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: AppColors.navy,
+                                    minimumSize: const Size.fromHeight(44),
+                                  ),
+                                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                    Text(_expanded ? '접기' : '운행 ${shown.length}번 전체 보기',
+                                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                                    const SizedBox(width: 2),
+                                    Icon(_expanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded, size: 20),
+                                  ]),
+                                ),
+                              ],
+                            ]),
+                          ),
+                        ),
                       ],
                     ),
-                    // (11/18 사용자 요청) 칸을 바꾸면 목록이 옆으로 부드럽게 미끄러짐 · 목록을 옆으로 밀어도 바뀜
-                    SlideSwitcher(
-                      index: _tab,
-                      onSwipe: (d) => setState(() => _tab = (_tab + d).clamp(0, 2)),
-                      child: Column(children: [
-                        if (shown.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 28),
-                            child: Center(
-                                child: Text(empties[_tab], style: const TextStyle(fontSize: 14, color: AppColors.textMuted))),
-                          ),
-                        for (var i = 0; i < shown.length; i++) ...[
-                          if (i > 0) const Divider(height: 1, thickness: 1, color: AppColors.line),
-                          _EventTile(event: shown[i]),
-                        ],
-                        if (lists[_tab].length > _tabCount && widget.onOpenRecords != null) ...[
-                          const Divider(height: 1, thickness: 1, color: AppColors.line),
-                          TextButton(
-                            onPressed: widget.onOpenRecords,
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppColors.navy,
-                              minimumSize: const Size.fromHeight(48),
-                            ),
-                            child: Text('${lists[_tab].length}건 전체 보기',
-                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                          ),
-                        ],
-                      ]),
-                    ),
-                  ],
-                ),
+                  );
+                },
               );
             },
+          ),
+        ],
+      ),
+      ),
+    );
+  }
+}
+
+/// (11/19 사용자 손그림 시안 · 애플 목록) 운행 한 번 = 흰 카드 안 한 줄 (테두리 없음 · 넉넉한 여백)
+///   왼쪽(가운데 정렬): '운행_1' · 아래 시간  |  세로선  |  오른쪽: '1단계 | 주의' 둥근 알약 3개 + 아래 큰 숫자  |  ›
+class _DriveCard extends StatelessWidget {
+  final DriveGroup group;
+  const _DriveCard({required this.group});
+
+  static String _hm(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  static String timeRange(DriveGroup g) {
+    if (g.end == null) return '${_hm(g.start)} ~ 운행 중';
+    // 기록 없이 짐작한 운행에 경고가 하나뿐이면 시각 하나만 ('15:24 ~ 15:24' 대신)
+    if (_hm(g.start) == _hm(g.end!)) return _hm(g.start);
+    return '${_hm(g.start)} ~ ${_hm(g.end!)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final g = group;
+    return InkWell(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => _DriveDetailScreen(group: g))),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 18, 4, 18),
+        // (11/19 사용자 요청) 운행 줄 높이 모두 같게 — 시간이 길든 짧든 72 로 고정
+        child: SizedBox(
+          height: 72,
+          child: Row(children: [
+            // 왼쪽 — '운행_1' · 아래 시간 (가운데 정렬)
+            SizedBox(
+              width: 66,
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Text('운행',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: AppColors.textPrimary)),
+                  const SizedBox(width: 5),
+                  _CircleNum(g.number),
+                ]),
+                const SizedBox(height: 5),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(timeRange(g),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted, fontFeatures: [FontFeature.tabularFigures()])),
+                ),
+              ]),
+            ),
+            const VerticalDivider(width: 17, thickness: 1, indent: 2, endIndent: 2, color: AppColors.line),
+            // 오른쪽 — (11/19 사용자 요청) 운행 기록 타임라인과 같은 단계 링 점 + 아래 큰 숫자
+            for (final st in const [1, 2, 3]) Expanded(child: _StageCount(stage: st, count: g.count(st))),
+            const Icon(Icons.chevron_right_rounded, size: 16, color: AppleGray.chevron),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// (11/19) 운행 번호 — 애플 '1.circle.fill' 처럼 작고 동그란 칩 (연한 남색 바탕 · 남색 숫자)
+class _CircleNum extends StatelessWidget {
+  final int n;
+  final double size;
+  const _CircleNum(this.n, {this.size = 16});
+  @override
+  Widget build(BuildContext context) => Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.navy.withValues(alpha: 0.1)),
+        child: Text('$n',
+            textAlign: TextAlign.center,
+            strutStyle: StrutStyle(fontSize: size * 0.62, height: 1, forceStrutHeight: true),
+            style: TextStyle(fontSize: size * 0.62, height: 1, fontWeight: FontWeight.w700, color: AppColors.navy)),
+      );
+}
+
+/// 단계 하나 — 위 단계 링 점 (운행 기록 '미세수면' 옆 점과 같은 모양) · 아래 큰 숫자 'n건' (0건은 흐리게)
+class _StageCount extends StatelessWidget {
+  final int stage;
+  final int count;
+  const _StageCount({required this.stage, required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    final zero = count == 0;
+    final c = AppColors.stage(stage);
+    const names = ['', '주의', '휴식 권고', '위험'];
+    return Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      // (11/19 사용자 요청) 링 점 옆에 단계 이름
+      FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+        width: 11,
+        height: 11,
+        decoration: BoxDecoration(
+          color: zero ? c.withValues(alpha: 0.45) : c,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.card, width: 2),
+          boxShadow: [BoxShadow(color: c.withValues(alpha: zero ? 0.18 : 0.35), blurRadius: 0, spreadRadius: 1.5)],
+        ),
+      ),
+          const SizedBox(width: 5),
+          Text(names[stage],
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: zero ? AppleGray.chevron : AppColors.textSecondary)),
+        ]),
+      ),
+      const SizedBox(height: 9),
+      Text.rich(
+        TextSpan(children: [
+          TextSpan(
+              text: '$count',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: zero ? AppleGray.chevron : AppColors.textPrimary)),
+          TextSpan(
+              text: '건',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: zero ? AppleGray.chevron : AppColors.textSecondary)),
+        ]),
+      ),
+    ]);
+  }
+}
+
+/// 운행 한 번의 경고 목록 (카드를 누르면)
+class _DriveDetailScreen extends StatelessWidget {
+  final DriveGroup group;
+  const _DriveDetailScreen({required this.group});
+
+  @override
+  Widget build(BuildContext context) {
+    final g = group;
+    final events = [...g.events]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(mainAxisSize: MainAxisSize.min, children: [const Text('운행'), const SizedBox(width: 6), _CircleNum(g.number, size: 20)]),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 12),
+            child: Text('${g.start.month}월 ${g.start.day}일 · ${_DriveCard.timeRange(g)}',
+                style: AppType.subheadline.copyWith(color: AppColors.textSecondary)),
+          ),
+          WebCard(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Row(children: [for (final st in const [1, 2, 3]) Expanded(child: _StageCount(stage: st, count: g.count(st)))]),
+          ),
+          const SizedBox(height: 14),
+          WebCard(
+            padding: EdgeInsets.zero,
+            child: events.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 28),
+                    child: Center(child: Text('경고 없이 운행했어요', style: TextStyle(fontSize: 14, color: AppColors.textMuted))),
+                  )
+                : Column(children: [
+                    for (var i = 0; i < events.length; i++) ...[
+                      if (i > 0) const _CenterLine(),
+                      _EventTile(event: events[i]),
+                    ],
+                  ]),
           ),
         ],
       ),
@@ -358,6 +568,16 @@ List<(String, String)> _stats(DriveState st, List<SleepEvent>? events) {
 }
 
 /// [이어서 운행] (남색) + [새로운 운행 시작] (회색) — 상태 카드 맨 아래 (11/16 R안, 사용자 요청 3: 버튼 작게)
+/// 카드 폭의 88% 가운데 얇은 선 (좌우 6%씩 비움)
+class _CenterLine extends StatelessWidget {
+  const _CenterLine();
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, c) => Divider(
+            height: 1, thickness: 1, indent: c.maxWidth * 0.06, endIndent: c.maxWidth * 0.06, color: AppColors.line),
+      );
+}
+
 class _ResumeInCard extends StatelessWidget {
   final DriveState state;
   final VoidCallback onResume;
@@ -371,14 +591,23 @@ class _ResumeInCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // (11/18 사용자 요청) 운행 전과 같은 자리 — 위 [운행 시작] · 아래 [이어서 운행]. 지금 할 일(이어서 운행)이 남색
+        // (11/18 피드백) 순서 바꿈 — 지금 할 일 [이어서 운행] 이 위, [새로운 운행 시작] 이 맨 아래
+        AuthButton(
+          text: '이어서 운행',
+          onPressed: onResume,
+          height: 48,
+          contentWidth: 160,
+          leading: const Icon(Icons.redo_rounded, size: 22, color: Colors.white),
+        ),
+        const SizedBox(height: 10),
         AuthButton(
           text: '새로운 운행 시작',
           primary: false,
           onPressed: onNew,
-          leading: const Icon(Icons.photo_camera_outlined, size: 20, color: AppColors.textPrimary),
+          height: 48,
+          contentWidth: 160,
+          leading: const Icon(Icons.play_arrow_rounded, size: 22, color: AppColors.textPrimary),
         ),
-        const SizedBox(height: 10),
-        AuthButton(text: '이어서 운행', onPressed: onResume),
       ],
     );
   }
@@ -478,6 +707,16 @@ class _EventTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
         child: Row(
           children: [
+            // (11/18 피드백) 왼쪽 단계 색 세로선 — 아이폰 캘린더 일정처럼 둥근 막대 (글 시작선은 모두 이 막대 뒤 같은 자리)
+            // (11/19 Headspace 목록) 왼쪽 네모 그림 칸 — 반투명 단계 색 바탕 + 작은 동그란 캐릭터
+            Container(
+              width: 46,
+              height: 46,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: AppIllust.thumb(event.stage.clamp(1, 3)), borderRadius: BorderRadius.circular(14)),
+              child: Buddy(stage: event.stage.clamp(1, 3), size: 32, breathe: false),
+            ),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -492,9 +731,11 @@ class _EventTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
+            // (11/18 피드백) 단계 배지 시작점을 줄마다 맞춤 — 같은 폭 칸 안에서 왼쪽부터
+            // (11/18 피드백) 단계 배지는 오른쪽 끝 정렬 (꺾쇠 바로 앞 · 줄마다 끝점이 같게)
             StageBadge(stage: event.stage),
             const SizedBox(width: 4),
-            const Icon(Icons.chevron_right_rounded, size: 20, color: AppColors.textMuted),
+            const Icon(Icons.chevron_right_rounded, size: 20, color: AppleGray.chevron),
           ],
         ),
       ),
@@ -520,7 +761,7 @@ class _EventTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const ImageSlot(label: '캐릭터', width: 42, height: 42, radius: 10),
+            const Buddy(stage: 0, size: 42, breathe: false),
             const SizedBox(width: 11),
             Expanded(
               child: Column(

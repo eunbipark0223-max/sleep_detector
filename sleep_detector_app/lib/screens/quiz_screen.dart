@@ -28,6 +28,7 @@ import 'package:flutter/material.dart';
 import '../models/sleep_response.dart';
 import '../services/api_service.dart';
 import '../services/voice_service.dart';
+import '../design_tokens.dart';
 import '../theme.dart';
 
 class QuizScreen extends StatefulWidget {
@@ -116,8 +117,9 @@ class _QuizScreenState extends State<QuizScreen> {
 
   // ── 화면 (11/16 Figma 시안 '졸음운전 감지 앱5' 음성 퀴즈 — 디자인만. 읽기 · 듣기 · 채점 흐름은 위 그대로) ──
   // (11/16 팀장) 운전 중에 뜨는 화면이라 운행 · 경고 화면과 같은 남색 (밤에 흰 화면이 눈부시지 않게)
-  static const Color _bg = AppColors.navyDeep; // (11/17 R안 · readdy 퀴즈) 진한 남색
-  static const Color _sub = Color(0xFFBEC8E9);
+  // (11/18 피드백 · 애플 토큰) 흰 바탕 · 검정 제목 · 회색 설명 · 남색은 마이크에만
+  static const Color _bg = AppColors.background;
+  static const Color _sub = AppleGray.secondaryLabel;
 
   String get _typeLabel => switch (_quiz.type) {
         'add' => '간단 계산',
@@ -129,7 +131,7 @@ class _QuizScreenState extends State<QuizScreen> {
   Widget build(BuildContext context) {
     final again = _guide.contains('다시');
     final listening = _guide.isNotEmpty;
-    final stateColor = again ? AppColors.rest : const Color(0xFF5FD38D); // 다시 듣는 중이면 주황, 처음이면 초록
+    final stateColor = again ? AppColors.rest : AppColors.normal; // 다시 듣는 중이면 주황, 처음이면 초록
     final question = _quiz.type == 'add' ? _quiz.display : '“${_quiz.display}”';
 
     return PopScope(
@@ -142,41 +144,55 @@ class _QuizScreenState extends State<QuizScreen> {
         appBar: AppBar(
           backgroundColor: _bg,
           surfaceTintColor: _bg,
-          foregroundColor: Colors.white,
+          foregroundColor: AppColors.textPrimary,
           elevation: 0,
           centerTitle: true,
           leading: IconButton(
-            icon: const Icon(Icons.chevron_left, size: 30),
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 22),
             tooltip: '닫기',
             onPressed: () => Navigator.of(context).pop(_stage),
           ),
-          title: const Text('음성 퀴즈', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+          title: const Text('음성 퀴즈'),
         ),
         body: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(22, 4, 22, 20),
+            padding: const EdgeInsets.fromLTRB(AppSpace.l, 4, AppSpace.l, AppSpace.l),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // (11/18 피드백) 운행 화면과 같은 단계 표시 — 단계 색 점(흰 테두리 + 고리) + '2단계 휴식 권고'
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: AppColors.stage(_stage),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                      boxShadow: [BoxShadow(color: AppColors.stage(_stage).withValues(alpha: 0.35), spreadRadius: 1.5)],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text('$_stage단계 ${const ['정상', '주의', '휴식 권고', '긴급'][_stage.clamp(0, 3)]}',
+                      style: AppType.subheadline.copyWith(fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                ]),
+                const SizedBox(height: 12),
                 // 문제 종류 (알약)
                 Center(
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(999)),
-                    child: Text(_typeLabel,
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
+                    decoration: BoxDecoration(color: AppleGray.fill, borderRadius: BorderRadius.circular(AppRadius.pill)),
+                    child: Text(_typeLabel, style: AppType.footnote.copyWith(fontWeight: FontWeight.w600, color: _sub)),
                   ),
                 ),
                 const SizedBox(height: 22),
-                const Text('큰 소리로 말해 주세요',
-                    textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: _sub)),
+                Text('큰 소리로 말해 주세요', textAlign: TextAlign.center, style: AppType.subheadline.copyWith(color: _sub)),
                 const SizedBox(height: 10),
                 // 문제 — 크게
                 Text(question,
                     textAlign: TextAlign.center,
                     maxLines: 4,
-                    style: const TextStyle(
-                        fontSize: 32, height: 1.3, fontWeight: FontWeight.w900, letterSpacing: -0.8, color: Colors.white)),
+                    style: AppType.largeTitle.copyWith(color: AppColors.textPrimary)),
                 const Spacer(),
                 // 마이크 (듣는 중이면 물결)
                 Center(child: _MicOrbit(active: listening, color: stateColor)),
@@ -190,7 +206,7 @@ class _QuizScreenState extends State<QuizScreen> {
                             Container(width: 9, height: 9, decoration: BoxDecoration(color: stateColor, shape: BoxShape.circle)),
                             const SizedBox(width: 7),
                             Text(again ? '다시 한번 말씀해 주세요' : '듣는 중',
-                                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: stateColor)),
+                                style: AppType.headline.copyWith(color: AppColors.textPrimary)), // (11/18 팀장) 글자는 진회색
                           ],
                         )
                       : null,
@@ -199,20 +215,16 @@ class _QuizScreenState extends State<QuizScreen> {
                 // 들은 글자 · 결과
                 Container(
                   padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-                  ),
+                  decoration: BoxDecoration(color: AppleGray.fill, borderRadius: BorderRadius.circular(AppRadius.card)),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(_message.isNotEmpty ? '결과' : '들은 글자',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _sub)),
+                          style: AppType.footnote.copyWith(fontWeight: FontWeight.w600, color: _sub)),
                       const SizedBox(height: 6),
                       Text(
                         _message.isNotEmpty ? _message : (_heard.isEmpty ? '…' : _heard),
-                        style: const TextStyle(fontSize: 21, height: 1.35, fontWeight: FontWeight.w800, color: Colors.white),
+                        style: AppType.title3.copyWith(color: AppColors.textPrimary),
                       ),
                     ],
                   ),
@@ -264,7 +276,7 @@ class _MicOrbitState extends State<_MicOrbit> with SingleTickerProviderStateMixi
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                        color: Colors.white.withValues(alpha: widget.active ? (1 - t) * 0.45 : 0.10), width: 2),
+                        color: AppColors.navy.withValues(alpha: widget.active ? (1 - t) * 0.35 : 0.06), width: 2),
                   ),
                 );
               }),
@@ -272,11 +284,11 @@ class _MicOrbitState extends State<_MicOrbit> with SingleTickerProviderStateMixi
               width: 96,
               height: 96,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.navy,
                 shape: BoxShape.circle,
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 18, offset: const Offset(0, 8))],
+                boxShadow: [BoxShadow(color: AppColors.navy.withValues(alpha: 0.25), blurRadius: 16, offset: const Offset(0, 6))],
               ),
-              child: const Icon(Icons.mic, size: 44, color: AppColors.navy),
+              child: const Icon(Icons.mic_rounded, size: 42, color: Colors.white),
             ),
           ],
         ),

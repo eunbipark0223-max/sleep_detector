@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import 'owl_says.dart' show keepWords;
 
+import '../design_tokens.dart';
 import '../theme.dart';
 
 /// 그림 자리 — 캐릭터 이미지 · 로고가 정해지면 이 자리에 넣는다 (사용자 규칙 11/17)
@@ -38,9 +39,9 @@ class ImageSlot extends StatelessWidget {
       alignment: Alignment.center,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7F8FB),
+        color: AppleGray.fill, // (11/19) 따뜻한 톤
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: const Color(0xFFB9BFCD), width: 1.2),
+        border: Border.all(color: AppleGray.chevron, width: 1.2),
       ),
       child: Text(
         keepWords(label), // 단어 중간에서 줄이 안 나뉘게 ('이미 / 지' 방지)
@@ -119,7 +120,8 @@ class WebCard extends StatelessWidget {
         // (11/18 사용자 요청) 흰 바탕 위에서 그림자 대신 얇은 회색 테두리로 구분 (애플 · 관리자 웹 표 느낌)
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(20),
+          boxShadow: AppShadow.card, // (11/19) Headspace 납작 그림자 (아주 옅게)
+          borderRadius: BorderRadius.circular(AppRadius.card), // (11/18 디자인 토큰) 앱 전체 카드 둥글기 하나
           border: Border.all(color: AppColors.cardBorder),
         ),
         child: child,
@@ -151,11 +153,13 @@ class StatTabs extends StatelessWidget {
         Positioned(left: 0, right: 0, bottom: 0, child: Container(height: 1, color: AppColors.line)),
         AnimatedPositioned(
           duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOutCubic,
-          left: w * selected,
-          width: w,
+          curve: AppMotion.curve,
+          // (11/18 피드백) 밑줄은 칸 폭의 88% · 칸 가운데 · 끝이 둥글게
+          left: w * selected + w * 0.06,
+          width: w * 0.88,
           bottom: 0,
-          child: Container(height: 2.5, color: AppColors.navy),
+          child: Container(
+              height: 2.5, decoration: BoxDecoration(color: AppColors.navy, borderRadius: BorderRadius.circular(2))),
         ),
         _row(),
       ]);
@@ -169,14 +173,15 @@ class StatTabs extends StatelessWidget {
           child: InkWell(
             onTap: onSelect == null ? null : () => onSelect!(i),
             child: Container(
-              padding: const EdgeInsets.fromLTRB(16, 16, 8, 14),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              padding: const EdgeInsets.fromLTRB(8, 16, 8, 14),
+              // (11/18 피드백) 오늘 · 이번 주 · 긴급 — 칸 가운데 정렬
+              child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
                 Text(items[i].label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                    style: AppType.footnote.copyWith(color: AppColors.textSecondary)),
                 const SizedBox(height: 6),
-                Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+                Row(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
                   Text(items[i].value,
                       style: TextStyle(
                           fontSize: 28,
@@ -184,7 +189,7 @@ class StatTabs extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                           color: items[i].alert ? AppColors.urgent : AppColors.textPrimary)),
                   const SizedBox(width: 3),
-                  Text(items[i].unit, style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                  Text(items[i].unit, style: AppType.footnote.copyWith(color: AppColors.textMuted)),
                 ]),
               ]),
             ),
@@ -230,11 +235,11 @@ class _SlideSwitcherState extends State<SlideSwitcher> {
       child: ClipRect(
         child: AnimatedSize(
           duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOutCubic,
+          curve: AppMotion.curve,
           alignment: Alignment.topCenter,
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 280),
-            switchInCurve: Curves.easeOutCubic,
+            switchInCurve: AppMotion.curve,
             switchOutCurve: Curves.easeOutCubic,
             layoutBuilder: (cur, prev) => Stack(alignment: Alignment.topCenter, children: [...prev, ?cur]),
             transitionBuilder: (child, anim) {

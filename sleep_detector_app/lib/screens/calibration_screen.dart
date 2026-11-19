@@ -42,7 +42,10 @@ import '../config.dart';
 import '../services/api_service.dart';
 import '../services/eye_monitor.dart';
 import '../services/voice_service.dart';
+import '../design_tokens.dart';
 import '../theme.dart';
+import '../widgets/auth_ui.dart';
+import '../widgets/stage_layout.dart';
 
 class CalibrationScreen extends StatefulWidget {
   /// 사진 1장 찍고 파일 경로를 돌려준다. 비우면 전면 카메라로 찍는다 (이때만 카메라를 열고 미리보기를 보여 준다).
@@ -258,19 +261,77 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     return PopScope(
       canPop: canLeave, // 측정 중에는 뒤로 가기로 나갈 수 없다
       child: Scaffold(
-        appBar: AppBar(title: const Text('얼굴 등록'), // (11/18 사용자 요청) 휴대폰 Face ID 설정과 같은 표준 말
-        centerTitle: true, automaticallyImplyLeading: canLeave),
+        // (11/18 피드백) 카메라가 보이는 단계는 운행 화면과 똑같은 틀(StageLayout) — 제목 · 카메라 칸 · 글 · 버튼 자리가 같음
+        appBar: AppBar(toolbarHeight: 48, automaticallyImplyLeading: canLeave),
         body: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: _content()),
-            ),
-          ),
+          top: false,
+          child: _cameraPhase
+              ? StageLayout(
+                  header: const _CalHeader(),
+                  camera: _Preview(controller: _controller, fill: true),
+                  // (11/18 팀장) 거치대 안내가 안 보였음 → 카메라 위쪽에 겹쳐서 늘 보이게 (측정 전)
+                  cameraOverlay: (_phase == _Phase.ready || _phase == _Phase.measuring) ? const Center(child: _MountTip()) : null,
+                  message: _message(),
+                  actions: _actions(),
+                )
+              : Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: _content()),
+                  ),
+                ),
         ),
       ),
     );
   }
+
+  bool get _cameraPhase => _phase == _Phase.ready || _phase == _Phase.measuring || _phase == _Phase.finishing;
+
+  // 카메라 아래 글 (운행 화면의 큰 글 자리)
+  // (11/18 피드백) 글 시작점 = 카메라 안쪽(둥근 모서리만큼 들어간 곳) = 거치대 알약 글자 시작점 → 왼쪽 12 띄움
+  static const double _inset = 0; // 틀(StageLayout)이 이미 12 들여씀
+
+  List<Widget> _message() {
+    // (11/18 피드백) 너무 굵고 검정이라 혼자 튐 → 한 단계 가볍게 · 진회색
+    const big = TextStyle(fontSize: 20, height: 1.3, fontWeight: FontWeight.w600, letterSpacing: -0.4, color: AppleGray.softLabel);
+    switch (_phase) {
+      case _Phase.ready:
+        return [
+          Padding(
+            padding: const EdgeInsets.only(left: _inset),
+            child: _retryMessage.isNotEmpty
+                ? Text(_retryMessage, style: big.copyWith(color: AppColors.rest))
+                : const Text('화면을 정면으로 바라봐 주세요', style: big),
+          ),
+
+        ];
+      case _Phase.measuring:
+        return [
+          const Padding(padding: EdgeInsets.only(left: _inset), child: Text('그대로 정면을 바라봐 주세요', style: big)),
+          const SizedBox(height: 14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+                value: widget.photoCount == 0 ? 0 : _shot / widget.photoCount,
+                minHeight: 8,
+                color: AppColors.navy,
+                backgroundColor: AppColors.cardBorder),
+          ),
+          const SizedBox(height: 6),
+          Text('$_shot / ${widget.photoCount}', style: const TextStyle(fontSize: 13, color: AppColors.textMuted)),
+        ];
+      default:
+        return [
+          // (11/18 피드백) 카메라 왼쪽 끝에 맞춘 한 줄만 ('준비됐어요 · 안전 운전하세요' 같은 문장은 뺌)
+          const Padding(padding: EdgeInsets.only(left: _inset), child: Text('눈 기준 측정이 끝났어요', style: big)),
+        ];
+    }
+  }
+
+  // 아래 버튼 자리 (운행 화면과 같은 곳)
+  List<Widget> _actions() => _phase == _Phase.ready
+      ? [AuthButton(text: _failures > 0 ? '다시 측정' : '측정 시작', onPressed: _measure)]
+      : const [];
 
   List<Widget> _content() {
     switch (_phase) {
@@ -292,6 +353,9 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
         ];
       case _Phase.ready:
         return [
+          // (11/18 피드백) '거치대에 고정' 이 중요 — 카메라 위에 눈에 띄는 연한 남색 알약으로
+          const _MountTip(),
+          const SizedBox(height: 14),
           _Preview(controller: _controller),
           const SizedBox(height: 20),
           if (_retryMessage.isNotEmpty) ...[
@@ -302,12 +366,10 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
           ] else ...[
             // 처음 측정 때만 안내 — 다시 측정할 때는 위 '얼굴이 잘 보이지 않았어요' 문구만 (11/12 팀장)
             const Text('화면을 정면으로 바라봐 주세요', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-            const SizedBox(height: 6),
-            const Text('휴대폰을 거치대에 고정한 뒤 시작해 주세요',
-                textAlign: TextAlign.center, style: TextStyle(fontSize: 14, height: 1.4, color: AppColors.textSecondary)),
+
           ],
           const SizedBox(height: 24),
-          FilledButton(onPressed: _measure, child: Text(_failures > 0 ? '다시 시도' : '시작')),
+          AuthButton(text: _failures > 0 ? '다시 측정' : '측정 시작', onPressed: _measure), // (11/18) 다른 화면과 같은 알약 버튼
           // [기본 기준으로 시작] 은 두지 않는다 — 출발 전 측정은 필수 (반쯤 감은 눈 확인의 기준이 됨, 11/11 팀장)
         ];
       case _Phase.measuring:
@@ -327,7 +389,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
         return [
           const Icon(Icons.check_circle_outline, size: 56, color: AppColors.normal),
           const SizedBox(height: 12),
-          const Text('얼굴 등록이 완료됐어요', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          const Text('눈 기준 측정이 끝났어요', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
           const SizedBox(height: 6),
           Text(_result, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, color: AppColors.textSecondary)),
           if (_note.isNotEmpty) ...[
@@ -343,7 +405,8 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
 class _Preview extends StatelessWidget {
   static const double _size = 240;
   final CameraController? controller;
-  const _Preview({required this.controller});
+  final bool fill; // true = 운행 화면처럼 주어진 칸을 꽉 채움 (StageLayout 의 카메라 자리)
+  const _Preview({required this.controller, this.fill = false});
 
   @override
   Widget build(BuildContext context) {
@@ -358,13 +421,58 @@ class _Preview extends StatelessWidget {
     } else {
       inner = const ColoredBox(color: AppColors.cardBorder, child: Icon(Icons.face_retouching_natural, size: 96, color: AppColors.textMuted));
     }
+    // (11/18 피드백) 운행 화면처럼 둥근 네모 카메라 칸 (동그라미 대신) · 얇은 남색 테두리
+    if (fill) {
+      // (11/18 피드백 · 애플 스타일) 굵은 테두리 없이 둥근 네모만 (운행 화면 정상 상태와 같음)
+      return ClipRRect(borderRadius: BorderRadius.circular(26), child: SizedBox.expand(child: inner));
+    }
     return Center(
       child: Container(
         width: _size,
-        height: _size,
-        decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AppColors.primary, width: 4)),
-        child: ClipOval(child: inner),
+        height: _size * 1.15,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(color: AppColors.navy, borderRadius: BorderRadius.circular(26)),
+        child: ClipRRect(borderRadius: BorderRadius.circular(23), child: inner),
       ),
     );
   }
+}
+
+/// 맨 위 — 운행 화면의 StageHeader 와 같은 자리 · 같은 크기 ('● 운행 전 준비' + 큰 제목)
+class _CalHeader extends StatelessWidget {
+  const _CalHeader();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+      padding: EdgeInsets.zero, // 틀(StageLayout)이 카메라 안쪽으로 들여씀
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(width: 10, height: 10, decoration: const BoxDecoration(color: AppColors.normal, shape: BoxShape.circle)),
+          const SizedBox(width: 8),
+          const Text('운행 전 준비', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+        ]),
+        const SizedBox(height: 8),
+        const Text('눈 기준 측정',
+            style: TextStyle(fontSize: 28, height: 1.2, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: AppleGray.softLabel)),
+      ]));
+}
+
+/// '휴대폰을 거치대에 고정한 뒤 시작해 주세요' — 연한 남색 알약 + 작은 휴대폰 아이콘 (눈에 띄지만 화면을 해치지 않게)
+class _MountTip extends StatelessWidget {
+  const _MountTip();
+
+  @override
+  Widget build(BuildContext context) => Align(
+        alignment: Alignment.centerLeft, // (11/18) 카메라 왼쪽 끝과 같은 시작점
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 9, 16, 9),
+          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.92), borderRadius: BorderRadius.circular(999)), // 카메라 위에서도 잘 읽히게
+          child: const Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.phone_iphone_rounded, size: 18, color: AppColors.navy),
+            SizedBox(width: 6),
+            Text('휴대폰을 거치대에 고정한 뒤 시작해 주세요',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: AppColors.navy)),
+          ]),
+        ),
+      );
 }

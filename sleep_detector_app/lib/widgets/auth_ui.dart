@@ -8,6 +8,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
+import '../design_tokens.dart';
 import 'press.dart';
 import 'package:flutter/services.dart';
 
@@ -17,8 +18,8 @@ import 'web_ui.dart';
 // (11/17 저녁 · 관리자 웹 로그인과 같게) 화면 전체 흰색 + 연회색 입력칸(아이콘 없음) + 남색 알약 버튼
 class AuthUi {
   AuthUi._();
-  static const Color page = AppColors.card; // 화면 바탕 — 전체 흰색 (사용자 요청 11/17)
-  static const Color fieldFill = AppColors.field;
+  static const Color page = AppColors.background; // 화면 바탕 — 전체 흰색 (사용자 요청 11/17)
+  static const Color fieldFill = AppColors.card; // (11/19) 크림 바탕 위 흰 입력칸
   static const Color placeholder = AppColors.textMuted;
   static const Color disabledBg = AppColors.fill;
   static const Color label = AppColors.textPrimary;
@@ -27,7 +28,7 @@ class AuthUi {
   static const double controlHeight = 53; // 입력칸 · 큰 버튼 공통 높이
   static const double noteIndent = 6; // 칸 아래 설명 글이 칸보다 안쪽으로 들어가는 정도 (아주 살짝)
   static const Color appleBlue = Color(0xFF007AFF); // 애플 시스템 파랑 (iOS 기본 버튼 색)
-  static const Color readOnlyFill = Color(0xFFE9EBF0); // 바꿀 수 없는 칸 바탕 (입력칸보다 살짝 진한 회색)
+  static const Color readOnlyFill = AppleGray.fill; // 바꿀 수 없는 칸 바탕 (입력칸보다 살짝 진한 회색)
 }
 
 /// 칸 안 작은 버튼 — 남색 알약 + 흰 글자 (큰 버튼과 같은 남색으로 통일, 그림자는 아주 옅게)
@@ -275,7 +276,7 @@ class _AuthFieldState extends State<AuthField> {
             // 기본 오류 글은 숨기고(빨간 테두리만) 아래 AuthNote 로 보여 줌
             errorStyle: const TextStyle(fontSize: 0, height: 0),
             border: _border(Colors.transparent),
-            enabledBorder: _border(Colors.transparent),
+            enabledBorder: _border(AppColors.cardBorder), // (11/19) 크림 위 흰 칸 — 옅은 테두리
             disabledBorder: _border(Colors.transparent),
             focusedBorder: _border(widget.readOnly ? Colors.transparent : AppColors.navy, 1.2),
             errorBorder: _border(AuthUi.error),
@@ -294,8 +295,11 @@ class AuthButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool primary;
   final Widget? leading;
+  final double? contentWidth; // (11/18) 주면 아이콘 + 글자를 이 폭 안에서 왼쪽부터 — 위아래 버튼 글자 시작점 맞춤
+  final double height; // (11/18) 홈 운행 버튼은 조금 낮게 (48)
 
-  const AuthButton({super.key, required this.text, this.onPressed, this.primary = true, this.leading});
+  const AuthButton(
+      {super.key, required this.text, this.onPressed, this.primary = true, this.leading, this.contentWidth, this.height = AuthUi.controlHeight});
 
   @override
   Widget build(BuildContext context) {
@@ -303,17 +307,24 @@ class AuthButton extends StatelessWidget {
     final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(999));
     // (11/17 사용자 요청) [Google로 계속하기] 글씨 굵기를 [로그인] 과 같게 보이게 — 흰 바탕 검은 글씨는 같은 굵기여도 더 굵어 보여서 한 단계 가볍게
     final textStyle = TextStyle(fontSize: 16, fontWeight: primary ? FontWeight.w600 : FontWeight.w500);
-    final child = Row(
+    final Widget row = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         if (leading != null) ...[leading!, const SizedBox(width: 9)],
         Text(text, style: textStyle),
       ],
     );
-    return Press(enabled: onPressed != null, child: ElevatedButton(
+    final Widget child = contentWidth == null ? row : SizedBox(width: contentWidth, child: Align(alignment: Alignment.centerLeft, child: row));
+    // (11/19 디자인 시스템) 남색 큰 버튼은 Headspace 처럼 아래로만 2px 납작한 그림자 — 살짝 떠 있는 느낌
+    return Press(enabled: onPressed != null, child: DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: primary && onPressed != null ? AppShadow.button : null,
+      ),
+      child: ElevatedButton(
       onPressed: onPressed,
       style: ElevatedButton.styleFrom(
-        minimumSize: const Size.fromHeight(AuthUi.controlHeight), // 입력칸과 같은 높이 — 로그인 · 가입하기 · 사번 확인 · 구글 모두 같게
+        minimumSize: Size.fromHeight(height), // 기본은 입력칸과 같은 높이 — 로그인 · 가입하기 · 사번 확인 · 구글 모두 같게
         backgroundColor: primary ? AppColors.navy : AppColors.card,
         foregroundColor: primary ? Colors.white : AppColors.textPrimary,
         side: primary ? null : const BorderSide(color: AppColors.fill),
@@ -323,6 +334,6 @@ class AuthButton extends StatelessWidget {
         shape: shape,
       ),
       child: child,
-    ));
+    )));
   }
 }

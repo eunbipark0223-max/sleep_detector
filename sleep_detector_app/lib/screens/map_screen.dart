@@ -39,6 +39,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../services/rest_area_service.dart';
+import '../design_tokens.dart';
 import '../theme.dart';
 import '../widgets/press.dart';
 
@@ -192,7 +193,7 @@ class _MapScreenState extends State<MapScreen> {
   //   제목 '가까운 쉼터' · 아래 시트: [거리순 | 시간순] 탭 → 한 줄 설명 → 쉼터 목록 (모두 같은 좌우 여백 20)
   //   쉼터 한 줄: 순번 · 이름 · '거리 9.3km · 12분' · 오른쪽 [길찾기] (연한 남색 알약)
   //   시간 = B 의 도로 거리 로직 (서버 /rest-areas/road-distance → 카카오모빌리티). 못 구하면 거리만
-  static const Color _bg = AppColors.card;
+  static const Color _bg = AppColors.background;
   static const double _side = 20; // 탭 · 설명 · 목록 공통 좌우 여백
   int _sort = 0; // 0 거리순 · 1 시간순
   // (11/18 사용자 요청) 위 손잡이(선)를 누르거나 아래로 끌면 목록 시트가 내려감 · 다시 누르거나 위로 끌면 올라옴
@@ -229,8 +230,7 @@ class _MapScreenState extends State<MapScreen> {
         toolbarHeight: 68,
         titleSpacing: _side,
         centerTitle: false,
-        title: const Text('가까운 쉼터',
-            style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -0.8, color: AppColors.textPrimary)),
+        title: Text('가까운 쉼터', style: AppType.title1.copyWith(color: AppColors.textPrimary)), // 다른 탭 제목과 같은 단계
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -241,16 +241,23 @@ class _MapScreenState extends State<MapScreen> {
                     // 지도 — 위쪽 전체 (아래 목록 시트가 겹쳐 올라옴)
                     AnimatedPositioned(
                       duration: const Duration(milliseconds: 320),
-                      curve: Curves.easeOutCubic,
+                      curve: AppMotion.curve,
                       left: 0,
                       right: 0,
                       top: 0,
                       bottom: (_sheetOpen ? _openH : _closedH) - 30,
-                      child: _web == null ? const _NoKeyView() : WebViewWidget(controller: _web!),
+                      // (11/18 팀장) 지도도 둥근 모서리 · 화면 양옆 여백 (카드와 같은 둥글기)
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(AppRadius.sheet),
+                          child: _web == null ? const _NoKeyView() : WebViewWidget(controller: _web!),
+                        ),
+                      ),
                     ),
                     AnimatedPositioned(
                       duration: const Duration(milliseconds: 320),
-                      curve: Curves.easeOutCubic,
+                      curve: AppMotion.curve,
                       left: 0,
                       right: 0,
                       bottom: 0,
@@ -304,8 +311,8 @@ class _MapScreenState extends State<MapScreen> {
               _roadLoading
                   ? '걸리는 시간을 확인하고 있어요'
                   : _sort == 0
-                      ? '가장 가까운 쉼터 순서대로 보여드려요'
-                      : '가장 빨리 도착하는 쉼터 순서대로 보여드려요',
+                      ? '가까운 쉼터부터 보여 드려요'
+                      : '빨리 도착하는 쉼터부터 보여 드려요',
               style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
             ),
           ),
@@ -331,11 +338,11 @@ class _MapScreenState extends State<MapScreen> {
     return Press(child: Material(
       color: AppColors.card,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         side: BorderSide(color: selected ? AppColors.navy : AppColors.cardBorder, width: selected ? 1.5 : 1),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         onTap: () => _focus(i),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
@@ -348,12 +355,12 @@ class _MapScreenState extends State<MapScreen> {
                 duration: const Duration(milliseconds: 200),
                 // (11/18 사용자 요청) 누른 쉼터는 숫자 동그라미가 남색으로 채워짐 · 안 누르면 원래 모양 그대로
                 decoration: BoxDecoration(
-                    color: rank == 1 || selected ? AppColors.navy : AppColors.field, shape: BoxShape.circle),
+                    color: selected ? AppColors.navy : AppColors.field, shape: BoxShape.circle),
                 child: Text('$rank',
                     style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: rank == 1 || selected ? Colors.white : AppColors.textSecondary)),
+                        color: selected ? Colors.white : AppColors.textSecondary)),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -379,20 +386,37 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              // 애플 지도 [경로] 버튼처럼 — 연한 남색 알약 + 남색 글자
-              TextButton.icon(
-                onPressed: () => _openRoute(a),
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.navy,
-                  backgroundColor: AppColors.navy.withValues(alpha: 0.08),
-                  minimumSize: const Size(0, 34),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              // (11/18 피드백) 원래 연한 남색 알약 · 화살표만 남색 · 글자는 검정 · 아이콘과 글자를 붙여서 (누르면 살짝 작아짐)
+              Press(
+                scale: 0.94,
+                child: AnimatedContainer(
+                  duration: AppMotion.normal, // (11/18 피드백) 세그먼트처럼 부드럽게 색이 바뀜
+                  curve: AppMotion.curve,
+                  decoration: ShapeDecoration(
+                    color: selected ? AppColors.navy : AppColors.navy.withValues(alpha: 0.08), // 누르면 숫자 동그라미처럼 남색
+                    shape: const StadiumBorder(),
+                  ),
+                  child: Material(
+                  color: Colors.transparent,
                   shape: const StadiumBorder(),
-                  textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                  child: InkWell(
+                    customBorder: const StadiumBorder(),
+                    onTap: () => _openRoute(a),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(11, 8, 14, 8),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Transform.rotate(
+                            angle: 0.6,
+                            child: Icon(Icons.navigation_rounded, size: 15, color: selected ? Colors.white : AppColors.navy)),
+                        const SizedBox(width: 4),
+                        Text('길찾기',
+                            style: TextStyle(
+                                fontSize: 13.5, fontWeight: FontWeight.w600, color: selected ? Colors.white : AppColors.textPrimary)),
+                      ]),
+                    ),
+                  ),
                 ),
-                icon: const Icon(Icons.directions_car_rounded, size: 16),
-                label: const Text('길찾기'),
+                ),
               ),
             ],
           ),
@@ -420,7 +444,7 @@ class _Segment extends StatelessWidget {
         return Stack(children: [
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
+            curve: AppMotion.curve,
             left: w * selected,
             top: 0,
             bottom: 0,

@@ -14,7 +14,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
-import 'web_ui.dart';
+import 'buddy.dart';
 
 /// 한국어 줄바꿈을 단어 단위로 — Flutter 는 글자 중간에서도 줄을 바꿔서 "자 / 주", "고정 / 하고" 처럼 끊김.
 ///   단어 안의 글자 사이에 '줄 바꾸지 마' 표시(U+2060 WORD JOINER)를 넣어 띄어쓰기에서만 줄이 바뀌게 한다 (11/11)
@@ -22,6 +22,9 @@ String keepWords(String text) => text
     .split('\n')
     .map((line) => line.split(' ').map((w) => w.split('').join('⁠')).join(' '))
     .join('\n');
+
+/// (11/19) 부엉이 그림 경로 끝 숫자(owl_face2.png → 2) = 단계
+int _stageOf(String owl) => int.tryParse(RegExp(r'(\d)\.png$').firstMatch(owl)?.group(1) ?? '') ?? 0;
 
 class OwlSays extends StatelessWidget {
   final String owl; // 부엉이 그림 경로
@@ -51,7 +54,7 @@ class OwlSays extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         // (11/17) 캐릭터 그림은 아직 안 넣음 — 자리만 표시
-        ImageSlot(label: '캐릭터 이미지', width: owlSize, height: owlSize),
+        Buddy(stage: _stageOf(owl), size: owlSize),
         const SizedBox(width: 4),
         // 말풍선 꼬리 (부엉이 쪽을 가리킴)
         CustomPaint(size: const Size(14, 24), painter: _TailPainter()),
@@ -94,7 +97,7 @@ class OwlAbove extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Center(child: ImageSlot(label: '메인 캐릭터 이미지', width: owlSize, height: owlSize, radius: 20)),
+        Center(child: Buddy(stage: _stageOf(owl), size: owlSize)),
         const SizedBox(height: 6),
         Center(child: CustomPaint(size: const Size(32, 18), painter: _TailUpPainter())),
         Container(
@@ -107,7 +110,7 @@ class OwlAbove extends StatelessWidget {
           child: Text(
             keepWords(text),
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w900, color: Colors.black, height: 1.3),
+            style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w900, color: AppColors.textPrimary, height: 1.3),
           ),
         ),
       ],

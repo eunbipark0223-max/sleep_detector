@@ -58,6 +58,19 @@ class _EditFieldScreenState extends State<EditFieldScreen> {
   bool get _ok => widget.isValid(_c.text.trim());
   bool get _changed => _c.text.trim() != widget.initial.trim();
 
+  void _onChangePressed() {
+    if (_saving) return;
+    if (!_changed) {
+      setState(() => _error = '바뀐 내용이 없어요\n새로 입력해 주세요');
+      return;
+    }
+    if (!_ok) {
+      setState(() => _error = widget.invalidNote);
+      return;
+    }
+    _save();
+  }
+
   Future<void> _save() async {
     if (!_ok || !_changed || _saving) return;
     FocusScope.of(context).unfocus();
@@ -83,32 +96,11 @@ class _EditFieldScreenState extends State<EditFieldScreen> {
   @override
   Widget build(BuildContext context) {
     final text = _c.text.trim();
-    final canSave = _ok && _changed && !_saving;
     final bad = text.isNotEmpty && !_ok;
     return Scaffold(
-      backgroundColor: AppColors.card,
-      appBar: AppBar(
-        title: Text(widget.title),
-        centerTitle: true,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: _saving
-                ? const Padding(
-                    padding: EdgeInsets.all(14),
-                    child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.navy)))
-                : TextButton(
-                    onPressed: canSave ? _save : null,
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppColors.navy,
-                      disabledForegroundColor: AppColors.textMuted,
-                      textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                    ),
-                    child: const Text('완료'),
-                  ),
-          ),
-        ],
-      ),
+      backgroundColor: AppColors.background,
+      // (11/18 피드백) 위 제목은 그냥 '이름' · 바꾸기는 칸 아래 '이름 변경' 글자 (로그인 화면 '이메일 찾기 · 비밀번호 찾기' 와 같은 모양)
+      appBar: AppBar(title: Text(widget.title), centerTitle: true),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
@@ -164,6 +156,25 @@ class _EditFieldScreenState extends State<EditFieldScreen> {
               AuthNote(_error!, error: true)
             else if (widget.note != null)
               AuthNote(widget.note!, color: AppColors.textMuted),
+            const SizedBox(height: 14),
+            // 늘 눌림 — 안 바뀌었거나 틀리면 칸 아래에 알려 줌
+            Center(
+              child: _saving
+                  ? const Padding(
+                      padding: EdgeInsets.all(10),
+                      child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.navy)))
+                  : TextButton(
+                      onPressed: _onChangePressed,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.textSecondary,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                      ),
+                      child: Text('${widget.label} 변경'),
+                    ),
+            ),
           ],
         ),
       ),
@@ -228,7 +239,7 @@ class _PasswordScreenState extends State<PasswordScreen> {
   Widget build(BuildContext context) {
     void refresh(String _) => setState(() {});
     return Scaffold(
-      backgroundColor: AppColors.card,
+      backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('비밀번호 변경'), centerTitle: true),
       body: SafeArea(
         child: ListView(
@@ -308,8 +319,8 @@ class _EmailChangeScreenState extends State<EmailChangeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.card,
-      appBar: AppBar(title: const Text('이메일 변경'), centerTitle: true),
+      backgroundColor: AppColors.background,
+      appBar: AppBar(title: const Text('이메일'), centerTitle: true),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),

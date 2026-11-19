@@ -47,6 +47,7 @@ import '../widgets/stage_layout.dart';
 import 'drive_report_screen.dart';
 import 'rest_screen.dart';
 import 'warning_screen.dart';
+import '../services/drive_log.dart';
 
 class DriveScreen extends StatefulWidget {
   /// 측정 화면(D)이 돌려준 "내 눈 기준값". 측정을 건너뛰었으면 null → 기본 기준을 쓴다.
@@ -94,7 +95,8 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   // 배너 "카메라를 확인하세요" · 글자 "서버 확인: 취소" — 경고 화면도 같이 보여 준다
   final ValueNotifier<bool> _faceLostNote = ValueNotifier<bool>(false);
   // (11/15 팀장) 단계가 바뀌면 카메라 테두리가 3초 깜빡임 · 1단계 음성에 기사님 이름
-  bool _flashOn = true;
+  // ignore: unused_field
+  bool _flashOn = true; // (11/18) 카메라 테두리를 빼서 지금은 화면에 안 쓰임 (깜빡임 타이머만 남음)
   Timer? _flashTimer;
   String _driverName = '';
   final ValueNotifier<bool> _cancelNote = ValueNotifier<bool>(false);
@@ -175,6 +177,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     if (state != null) {
       _setStage(state.stage);
+      DriveClock.minutes.value = state.driveMin; // (11/18) 맨 위 '○분 운전 중'
       // 2 · 3단계이거나 쉬던 중이면 경고 화면을 이어 연다 (3단계는 30초 반복 음성도 다시, 쉬던 중이면 남은 시간으로 휴식 화면)
       if (state.resting || state.stage >= 2) _showWarning(_restoredResponse(state), resumeRest: state.resting);
     }
@@ -291,6 +294,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     _updateLocation(); // 위치도 30초마다 새로 받아 둠 (기다리지 않음)
     try {
       final status = await ApiService.sendPing(_eye.currentPerclos);
+      DriveClock.minutes.value = status.driveMin; // (11/18) 맨 위 '○분 운전 중' 을 30초마다 새로
       if (!mounted) return;
       _markOnline();
       if (status.restDue) _restMessage = status.restMessage; // 연속 운전 2시간 → 휴게 배너
@@ -467,6 +471,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    DriveClock.minutes.value = null; // 운행이 끝나면 운전 시간 알약을 숨김
     WidgetsBinding.instance.removeObserver(this);
     VoiceService.stop(); // 말하기 멈춤
     WakelockPlus.disable(); // 운행이 끝나면 화면 꺼짐을 원래대로
@@ -831,6 +836,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       ),
     );
     if (yes != true || !mounted) return;
+    DriveLog.end().ignore(); // (11/19) 운행 한 번의 끝 — 홈 리포트 '운행 1 · 운행 2' 를 나누는 기준
     // 서버에 운행이 끝났다고 알림 (홈 배너가 안 뜨게, 2 · 3단계는 그대로)
     // (11/16 팀장) + 서버가 오늘 운행 AI 리포트를 돌려줌 → 리포트 화면. 못 받으면(연결 끊김 · 8초) 그냥 홈으로
     Map<String, dynamic>? report;
@@ -852,7 +858,6 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     //   틀은 경고 화면과 같음 (StageLayout: 머리 → 카메라 → 글 → 버튼, 카메라 크기 · 위치 고정)
     final bg = AppColors.stagePastel(_stage);
     const fg = AppColors.textPrimary;
-    final ring = AppColors.stage(_stage);
 
     return PopScope(
       canPop: false, // 뒤로 가기도 [운행 종료]처럼 한 번 묻는다 (11/12)
@@ -867,11 +872,16 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
           foregroundColor: fg,
           elevation: 0,
           toolbarHeight: 48,
+          // (11/19 사용자 요청) '운행 중' 은 맨 위 '<' 와 같은 줄 가운데
+          centerTitle: true,
+          title: const Text('운행 중', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         ),
         body: SafeArea(
           top: false,
           child: StageLayout(
-            header: StageHeader(stage: _stage, title: '운행 중'),
+            // (11/19 사용자 요청) '운행 중' 은 맨 위 줄로 옮기고 그 자리만큼 카메라를 크게 — 단계 · 운전 시간은 아래 카드에
+            camRatio: 0.58,
+            actionsHeight: 76,
             // 카메라 확인 · 확인 중 띠 — 카메라 위에 겹침
             cameraOverlay: Column(mainAxisSize: MainAxisSize.min, children: [
               CameraBanner(faceLost: _faceLostNote),
@@ -880,16 +890,15 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
             // 카메라 테두리 = 지금 단계 색 (정상은 얇게, 1 · 2 · 3단계는 두껍게 + 바뀔 때 깜빡임)
             camera: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              padding: EdgeInsets.all(_stage == 0 ? 0 : 3),
-              decoration: BoxDecoration(
-                color: _flashOn ? ring : ring.withValues(alpha: 0.6),
+              // (11/18 피드백) 진한 단계 색 테두리는 뺌 — 둥근 네모만 (단계는 위 '● 주의' 와 바탕색으로 알림)
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(26)),
+              // (11/18 팀장) 카메라 둘레에 얇은 남색 선
+              foregroundDecoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(26),
-                boxShadow: _stage == 0 || !_flashOn
-                    ? null
-                    : [BoxShadow(color: ring.withValues(alpha: 0.55), blurRadius: 24, spreadRadius: 2)],
+                border: Border.all(color: AppColors.navy, width: 2),
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(_stage == 0 ? 26 : 23),
+                borderRadius: BorderRadius.circular(26),
                 child: (_controller != null && _controller!.value.isInitialized)
                     ? FollowFacePreview(controller: _controller!, face: _faceBoxNote)
                     : Container(
@@ -899,7 +908,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
               ),
             ),
             message: [
-              StageMessage(_stageTitle(_stage)), // (11/16 R안) 부엉이 말풍선 대신 큰 글 · 마침표 없음
+              StageMessage(_stageTitle(_stage), stage: _stage, info: true), // (11/19) Headspace 카드 — 큰 글 · 단계 · 운전 시간
               // 휴게 배너 (연속 운전 2시간) — [닫기]로 숨김, [가까운 졸음쉼터 듣기]로 지도, [정차했어요]로 휴식 시작
               if (_restMessage.isNotEmpty) ...[
                 const SizedBox(height: 10),
@@ -956,7 +965,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
             actions: [
               FilledButton(
                 onPressed: _confirmEnd, // 한 번 묻고 끝냄 (11/12)
-                style: stageButton('white'), // (11/16 R안) 흰 반투명 + 남색 글
+                style: stageButton('white', height: 60), // 흰 반투명 + 남색 글 · 카메라와 같은 폭 · 둥글기 26
                 child: const Text('운행 종료'),
               ),
             ],

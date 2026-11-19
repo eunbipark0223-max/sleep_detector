@@ -45,8 +45,8 @@ import '../rest_regulations.dart';
 import '../services/api_service.dart';
 import '../services/voice_service.dart';
 import '../theme.dart';
-import '../widgets/web_ui.dart';
 import 'regulation_screen.dart';
+import '../widgets/buddy.dart';
 
 class RestScreen extends StatefulWidget {
   /// 휴식 시작 (POST /drive/rest). 서버 JSON 을 돌려준다.
@@ -207,7 +207,7 @@ class _RestScreenState extends State<RestScreen> {
         final progress = _totalSec == 0 ? 0.0 : 1 - _left.inSeconds / _totalSec;
         return _Centered(children: [
           // (11/11 C 초안) 컵 아이콘 대신 부엉이 — 쉬는 중 = 눈 감고 자는 초록 부엉이, 다 쉬었으면 = 엄지 척 초록 부엉이
-          const ImageSlot(label: '메인 캐릭터 이미지', width: 190, height: 190, radius: 24), // 쉬는 중 = 편하게 자는 초록 부엉이 (11/11 초안 그림)
+          const Buddy(stage: 2, size: 190), // (11/19) 쉬는 중 = 눈 감고 꾸벅 (주황) // 쉬는 중 = 편하게 자는 초록 부엉이 (11/11 초안 그림)
           const SizedBox(height: 12),
           Text(done ? '충분히 쉬었어요' : '쉬는 중이에요', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
           if (_message.isNotEmpty) ...[

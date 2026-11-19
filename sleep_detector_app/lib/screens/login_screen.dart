@@ -38,6 +38,7 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _autoLogin = true; // (11/18 피드백) 자동 로그인 체크 (기본 켬)
   // (11/17 사용자 요청) 구글 계정 고르기 창이 떠 있는 동안 뒤 화면은 그냥 흰색 (입력칸 · 버튼 숨김)
   bool _googleOpen = false;
   String? _error;
@@ -51,6 +52,7 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
   }
 
   void _goHome() {
+    AuthService.setAutoLogin(_autoLogin); // 다음에 앱을 열 때 바로 들어갈지
     ApiService.resetUnauthorized(); // 다시 로그인했으니 다음 만료 때 또 로그인 화면으로 보낼 수 있게
     Navigator.pushReplacement(
       context,
@@ -183,7 +185,9 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
           onFieldSubmitted: (_) => _loginWithEmail(),
           enabled: !_isLoading,
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 6),
+        _autoLoginRow(),
+        const SizedBox(height: 10),
         if (_error != null) ...[ // 오류 메시지(있을 때만)
           AuthNote(_error!, error: true),
           const SizedBox(height: 12),
@@ -207,6 +211,33 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
       ],
     );
   }
+
+  // (11/18 피드백) 자동 로그인 — 둥근 체크 + 글자 (누르면 켜고 끔)
+  Widget _autoLoginRow() => Align(
+        alignment: Alignment.centerLeft,
+        child: InkWell(
+          onTap: _isLoading ? null : () => setState(() => _autoLogin = !_autoLogin),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: _autoLogin ? AppColors.navy : Colors.transparent,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _autoLogin ? AppColors.navy : AppColors.textMuted, width: 1.5),
+                ),
+                child: _autoLogin ? const Icon(Icons.check_rounded, size: 15, color: Colors.white) : null,
+              ),
+              const SizedBox(width: 8),
+              const Text('자동 로그인', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
+            ]),
+          ),
+        ),
+      );
 
   // 로그인 버튼 아래 작은 회색 글자 두 개 · 가운데 얇은 세로줄 (애플 로그인 화면처럼)
   Widget _findRow() {

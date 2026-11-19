@@ -12,13 +12,15 @@ import 'package:flutter/material.dart';
 import '../models/sleep_event.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../design_tokens.dart';
 import '../theme.dart';
 import '../widgets/web_ui.dart';
 import 'event_detail_screen.dart';
 
-/// 알림으로 보여 줄 경고 = 관리자가 조치완료한 것 (홈 종 숫자도 같은 기준)
+/// (11/18 피드백) 알림은 두 가지만 — 3단계 경고(관리자에게 알림 · 빨간 점) · 그 경고를 관리자가 조치완료(초록 점)
+///   1 · 2단계 경고는 알림으로 안 보냄 (너무 많으면 정신없음). 홈 종 숫자도 같은 기준
 List<SleepEvent> noticeEvents(List<SleepEvent> events) =>
-    events.where((e) => e.status == '조치완료').toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    events.where((e) => e.stage >= 3).toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
 class NoticeScreen extends StatefulWidget {
   const NoticeScreen({super.key});
@@ -40,7 +42,7 @@ class _NoticeScreenState extends State<NoticeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.card,
+      backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('알림'), centerTitle: true),
       body: FutureBuilder<(List<SleepEvent>, Set<int>)>(
         future: _data,
@@ -57,7 +59,7 @@ class _NoticeScreenState extends State<NoticeScreen> {
               WebCard(
                 padding: EdgeInsets.zero,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   child: Column(children: [
                     for (var i = 0; i < events.length; i++) ...[
                       if (i > 0) const Divider(height: 1, thickness: 1, color: AppColors.line),
@@ -81,8 +83,11 @@ class _NoticeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = event.stage.clamp(0, 3);
-    final what = s == 0 ? event.reasonLabel : '$s단계 경고 · ${event.reasonLabel}';
+    final done = event.status == '조치완료';
+    // 조치완료 = 초록 점 '조치완료되었습니다' · 아직 = 빨간 점 '3단계 경고 · 관리자에게 알렸어요'
+    final dot = done ? AppColors.normal : AppColors.urgent;
+    final title = done ? '조치완료되었습니다' : '3단계 경고 · 관리자에게 알렸어요';
+    final what = done ? '관리자가 3단계 경고를 확인하고 해제했어요' : event.reasonLabel;
     return Material(
       color: isNew ? AppColors.navy.withValues(alpha: 0.05) : Colors.transparent,
       child: InkWell(
@@ -90,23 +95,17 @@ class _NoticeRow extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(10, 15, 16, 15),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // 안 본 알림 점
-            SizedBox(
-              width: 14,
-              child: isNew
-                  ? Padding(
-                      padding: const EdgeInsets.only(top: 7),
-                      child: Container(
-                          width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.navy, shape: BoxShape.circle)),
-                    )
-                  : null,
+            // 아이콘 없이 색 점 하나 (빨강 = 3단계 · 초록 = 조치완료)
+            Padding(
+              padding: const EdgeInsets.only(left: 6, top: 6),
+              child: Container(width: 10, height: 10, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
                   Expanded(
-                    child: Text('관리자가 조치를 완료했어요',
+                    child: Text(title,
                         style: TextStyle(
                             fontSize: 15.5,
                             fontWeight: isNew ? FontWeight.w700 : FontWeight.w600,
