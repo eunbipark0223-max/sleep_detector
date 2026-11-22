@@ -64,6 +64,8 @@ _DAY = 24 * 3600
 _lock = threading.Lock()
 _by_email: dict[str, list[float]] = {}   # 이메일(소문자) → 보낸 시각들 (최근 1시간)
 _all_sent: list[float] = []              # 서버 전체 보낸 시각들 (최근 24시간)
+_last_cap_log = 0.0                      # 하루 한도 경고를 마지막으로 찍은 시각
+CAP_LOG_EVERY_SEC = 600                  # 한도에 걸린 요청마다 찍으면 공격 때 서버 로그가 끝없이 불어남 (11/19 동시성 시험에서 발견) → 10분에 한 번만
 
 
 def reserve(email: str) -> tuple[str, float]:
@@ -83,7 +85,10 @@ def reserve(email: str) -> tuple[str, float]:
 
         if len(_all_sent) >= config.MAIL_DAILY_LIMIT:
             wait = int(_all_sent[0] + _DAY - now) + 1 if _all_sent else _DAY
-            print(f"⚠️ [mail] 하루 발송 한도({config.MAIL_DAILY_LIMIT}통) 도달 — 새 메일을 막는 중")
+            global _last_cap_log
+            if now - _last_cap_log >= CAP_LOG_EVERY_SEC:
+                _last_cap_log = now
+                print(f"⚠️ [mail] 하루 발송 한도({config.MAIL_DAILY_LIMIT}통) 도달 — 새 메일을 막는 중 (이 안내는 10분에 한 번만)")
             raise MailRateLimited("오늘 보낼 수 있는 인증 메일이 모두 쓰였어요. 내일 다시 시도해 주세요", wait)
         if recent and now - recent[-1] < config.MAIL_COOLDOWN_SEC:
             wait = int(recent[-1] + config.MAIL_COOLDOWN_SEC - now) + 1
@@ -135,6 +140,12 @@ def send_mail(to: str, subject: str, text: str, html_body: str | None = None) ->
         with smtp:
             if config.SMTP_PORT != 465:
                 smtp.starttls(context=ctx)   # 암호화가 안 되면 여기서 예외 → 로그인(비밀번호 전송)까지 가지 않음
+            # 로그인 방법은 PLAIN 하나만 시도 (11/19 실제 구글 시험에서 발견): smtplib 는 PLAIN → LOGIN 순서로 차례로 시도하는데,
+            #   구글은 앱 비밀번호가 틀리면 첫 실패(535) 뒤에 연결을 끊어서 두 번째 시도가 SMTPServerDisconnected 로 바뀌어 버림
+            #   → '앱 비밀번호를 확인하라'는 안내 로그가 안 찍힘. 한 번만 시도하면 깔끔한 535 가 나온다.
+            smtp.ehlo()                                   # starttls 뒤 서버가 알려 주는 로그인 방법을 먼저 받음 (login 이 다시 묻지 않도록)
+            if "PLAIN" in smtp.esmtp_features.get("auth", "").split():
+                smtp.esmtp_features["auth"] = "PLAIN"
             smtp.login(config.SMTP_USER, config.SMTP_PASSWORD)
             smtp.send_message(msg)
     except smtplib.SMTPAuthenticationError as e:

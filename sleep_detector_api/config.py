@@ -127,6 +127,10 @@ MAIL_DAILY_LIMIT = int(os.getenv("MAIL_DAILY_LIMIT") or 100)   # 서버 전체 �
 ADMIN_EMPLOYEE_NOS = frozenset(s.strip() for s in os.getenv("ADMIN_EMPLOYEE_NOS", "").split(",") if s.strip())
 ADMIN_SIGNUP_MAX_FAILS = 5        # 같은 접속 주소에서 사번을 이만큼 틀리면
 ADMIN_SIGNUP_LOCK_MIN = 10        # 이 시간 동안 막음 (사번 알아맞히기 방지)
+# 접속 주소를 X-Real-IP 헤더로 볼지 (11/19 팀장 지적). Railway 는 모든 요청이 중간 서버를 거쳐 같은 주소로 보이고,
+#   진짜 접속 주소는 Railway 가 X-Real-IP 에 넣어 준다 (공식 문서). Railway 가 자동으로 넣는 RAILWAY_ENVIRONMENT_ID 가 있으면 켜짐.
+#   PC 서버는 꺼 둠 — 헤더는 누구나 꾸며 보낼 수 있어서, 중간 서버가 없는 곳에서 믿으면 잠금을 피해 갈 수 있음. .env TRUST_X_REAL_IP 로 직접 정할 수도 있음
+TRUST_X_REAL_IP = _env_bool("TRUST_X_REAL_IP", bool(os.getenv("RAILWAY_ENVIRONMENT_ID")))
 
 # ── 경로 ──────────────────────────────────────────────
 FACE_LANDMARKER_PATH = os.path.join(BASE_DIR, "ml_models", "face_landmarker.task")
