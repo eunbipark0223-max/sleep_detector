@@ -2,11 +2,10 @@
 # models/models.py — DB 테이블 2개 (users · sleep_events)
 # ═══════════════════════════════════════════════════════════════
 # 담당: 팀장   |   우선: P0
-# 수업 원본: road_hazard_api/models/models.py (🟡 수정)
 #
 # [이 파일이 하는 일]
-#   - User — 수업 그대로 (role 값 user / admin 도 그대로)
-#   - Hazard → SleepEvent (테이블 sleep_events) — 졸음 경고 1건
+#   - User — role 값 user / admin
+#   - SleepEvent (테이블 sleep_events) — 졸음 경고 1건
 #   -   칸: id · user_id · stage · ear · eye_closed_prob · method(ear/cnn/mlkit) · reason(microsleep/perclos/rest_overdue/no_response)
 #   -       perclos · summary · guidance · report(JSON 문자열: eye · driving_quiz · rest 포함) · photo_path
 #   -       latitude · longitude · status(미확인/확인/조치완료/휴식완료) · created_at
@@ -44,12 +43,12 @@ class SleepEvent(Base):
         nullable=True,
         index=True,
     )
-    stage: Mapped[int] = mapped_column(          # 1~3 단계 (수업 severity 자리)
+    stage: Mapped[int] = mapped_column(          # 1~3 단계
         Integer,
         nullable=False,
         index=True,
     )
-    ear: Mapped[float | None] = mapped_column(   # 서버가 계산한 EAR (수업 confidence 자리, 얼굴 없으면 null)
+    ear: Mapped[float | None] = mapped_column(   # 서버가 계산한 EAR (얼굴 없으면 null)
         Float,
         nullable=True,
     )
@@ -70,7 +69,7 @@ class SleepEvent(Base):
         Float,
         nullable=True,
     )
-    summary: Mapped[str | None] = mapped_column(  # LLM 상황 요약 (수업 memo 자리)
+    summary: Mapped[str | None] = mapped_column(  # LLM 상황 요약
         String(255),
         nullable=True,
     )

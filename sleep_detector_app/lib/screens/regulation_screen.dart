@@ -2,7 +2,6 @@
 // screens/regulation_screen.dart — 규정 보기 (RAG 근거 규정 카드)
 // ═══════════════════════════════════════════════════════════════
 // 담당: C   |   우선: P0
-// 수업 원본: road_hazard_app/lib/screens/regulation_screen.dart (🟡 수정 — 따로 된 화면 대신 공용 카드 · 아래 창)
 //
 // [이 파일이 하는 일]
 //   - RegulationCard : 근거 규정 1건 카드 (제목 · 출처 배지 · 내용)

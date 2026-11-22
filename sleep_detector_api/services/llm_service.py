@@ -2,12 +2,11 @@
 # services/llm_service.py — LLM 졸음 상황 요약
 # ═══════════════════════════════════════════════════════════════
 # 담당: B   |   우선: P0
-# 수업 원본: road_hazard_api/services/llm_service.py (🟡 수정, 딥러닝 20차시)
 #
 # [이 파일이 하는 일]
 #   - 입력: 사진 + 눈 뜸 확률 · 감김 시간 · PERCLOS · EAR · 졸음 종류
 #   - 출력: 관리자가 읽을 한두 문장 (사진과 숫자만 근거, 추측 금지)
-#   - Gemini — 수업의 OpenAI 호환 방식 그대로, 주소와 모델 이름만 .env 값으로
+#   - Gemini — OpenAI 호환 방식, 주소와 모델 이름만 .env 값으로
 #
 # [만들 것 (이름 약속 — 다른 파일이 이 이름으로 부름)]
 #   - interpret_situation(image_path, eye) → {"summary": str, "model": str, "is_real": bool}

@@ -2,7 +2,6 @@
 # routers/event.py — 내 경고 목록 · 처리 상태 변경
 # ═══════════════════════════════════════════════════════════════
 # 담당: D   |   우선: P0
-# 수업 원본: road_hazard_api/routers/hazard.py (🟡 이름 변경 + 수정)
 #
 # [이 파일이 하는 일]
 #   - GET /events/my — 내 경고 목록 (앱 운행 기록 화면)
@@ -13,7 +12,6 @@
 #     uploads/events/ 폴더를 주소로 공개하지 않고 이 API 로만 내준다. 관리자 웹은 토큰을 붙여 받아서 그린다
 #
 # [주의]
-#   - 수업의 POST /hazards (직접 신고) · POST /reports 는 만들지 않는다
 #
 # [연결 약속 — 다른 사람 파일의 이름. 다르면 아래 import 한 줄만 고친다]
 #   - services.sleep_state.reset(user_id) — 그 기사의 졸음 기록 · 단계를 0 으로 (A)

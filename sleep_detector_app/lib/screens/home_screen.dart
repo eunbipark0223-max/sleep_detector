@@ -2,7 +2,6 @@
 // screens/home_screen.dart — 홈
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P0
-// 수업 원본: road_hazard_app/lib/screens/home_screen.dart (🟡 버튼 변경)
 //
 // [이 파일이 하는 일]
 //   - [운행 시작] → calibration_screen (내 눈 기준 측정) → drive_screen

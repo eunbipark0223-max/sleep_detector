@@ -2,11 +2,9 @@
 # schema/response.py — 서버가 돌려주는 JSON 모양 (Pydantic)
 # ═══════════════════════════════════════════════════════════════
 # 담당: D   |   우선: P0
-# 수업 원본: road_hazard_api/schema/response.py (🟡 수정)
 #
 # [이 파일이 하는 일]
-#   - HazardResponse → SleepEventResponse (경고 1건, 운행 기록 · 관리자 목록에서 씀)
-#   - 로그인 · 내 정보 응답은 수업 그대로
+#   - SleepEventResponse (경고 1건, 운행 기록 · 관리자 목록에서 씀)
 #
 # [주의]
 #   - 경고 1건의 칸은 models.py 의 SleepEvent 칸 그대로 (칸을 새로 만들지 않음 — 새 정보는 report JSON 안에)
@@ -25,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 STAGE_LABELS = {0: "정상", 1: "주의", 2: "휴식 권고", 3: "긴급"}
 
 
-# ── 로그인 · 내 정보 (수업 그대로) ────────────────────────────
+# ── 로그인 · 내 정보 ────────────────────────────
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

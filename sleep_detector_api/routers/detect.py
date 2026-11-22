@@ -35,7 +35,7 @@
 # [주의]
 #   - 응답 모양은 기획안 9-3 (졸음) · 9-5 (ping) 그대로 — 앱 sleep_response.dart · drive_status.dart 와 맞춰야 함
 #     (D 의 mock_server.py 와도 같은 모양 → 앱은 주소만 바꾸면 진짜 서버로 넘어감)
-#   - 숫자는 _normalize 로 int / float 확정해서 보냄 (수업에서 배운 '5' 문자열 사고 방지)
+#   - 숫자는 _normalize 로 int / float 확정해서 보냄 ('5' 같은 문자열 사고 방지)
 #
 # [연결 약속 — 다른 사람 파일의 이름]
 #   - sleep_state (A): start_drive · reset · get_stage · add_sleep · set_stage · facts · start_rest · rest_elapsed_min · finish_rest
@@ -104,7 +104,7 @@ def _label(stage):
 
 
 async def _save_upload(file: UploadFile, folder: str, prefix: str) -> str:
-    """사진 확인 (확장자 · 크기) → folder 에 저장 → 경로. 수업 detect.py 의 검사 그대로."""
+    """사진 확인 (확장자 · 크기) → folder 에 저장 → 경로."""
     ext = os.path.splitext(file.filename or "photo.jpg")[1].lower() or ".jpg"
     if ext not in ALLOWED_EXTS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"이미지 파일만 올릴 수 있습니다 ({', '.join(sorted(ALLOWED_EXTS))})")

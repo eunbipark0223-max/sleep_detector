@@ -2,10 +2,9 @@
 // services/auth_service.dart — 회원가입 · 로그인 · 구글 로그인 · 토큰 저장
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P0
-// 수업 원본: road_hazard_app/lib/services/auth_service.dart (🟢 그대로 복사)
 //
 // [이 파일이 하는 일]
-//   - 수업 파일을 그대로 복사해서 쓴다 (토큰은 flutter_secure_storage)
+//   - 토큰은 flutter_secure_storage
 //
 // [서버 약속 — sleep_detector_api/routers/user.py]
 //   - POST /users/signup  {email, password, name, phone, vehicle_no, privacy_agreed} → 201 사용자 · 이미 있으면 409 · 비밀번호 · 전화 · 차량번호 · 동의 규칙 어기면 422(메시지 목록)

@@ -2,7 +2,6 @@
 // screens/upload_screen.dart — 사진 1장 테스트 (비상 시연 · KPI ① 측정)
 // ═══════════════════════════════════════════════════════════════
 // 담당: C   |   우선: P0
-// 수업 원본: road_hazard_app/lib/screens/upload_screen.dart (🟡 수정)
 //
 // [이 파일이 하는 일]
 //   - 갤러리 / 촬영으로 사진 1장 → eye_monitor.analyzeFile 로 ML Kit 눈 뜸 확률 재기 (화면에는 안 보여 줌)

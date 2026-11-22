@@ -2,7 +2,6 @@
 # services/face_service.py — 서버 확인 판정 (MediaPipe EAR · CNN)  ⭐ 핵심
 # ═══════════════════════════════════════════════════════════════
 # 담당: A   |   우선: P0
-# 수업 원본: road_hazard_api/services/yolo_service.py (🟡 이름 변경 + 수정, _mock / _real / _normalize 뼈대 그대로)
 #
 # [이 파일이 하는 일]
 #   - 앱이 보낸 의심 사진에서 MediaPipe Face Landmarker 로 눈 점 12개 → EAR 계산 (항상)

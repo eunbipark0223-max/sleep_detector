@@ -2,13 +2,12 @@
 // theme.dart — 앱 색 · 글꼴
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P0
-// 수업 원본: road_hazard_app/lib/theme.dart (🟢 그대로 + 색 추가)
 //
 // [이 파일이 하는 일]
 //   - 단계 색: 0 정상 초록 · 1 주의 노랑 · 2 휴식 권고 주황(추가) · 3 긴급 빨강
 //   - 브랜드 남색 · AI 카드 보라 (앱 화면 구상 PPT 기준)
 //
-//   - 별명: primary = navy · danger = urgent (수업 코드 이름)
+//   - 별명: primary = navy · danger = urgent
 //   - 글자 · 테두리: textPrimary · textSecondary · textMuted · cardBorder
 //
 // [쓰는 법] AppColors.stage(stage) — 서버 응답의 stage(0~3)를 그대로 넣으면 화면 색이 나온다
@@ -47,7 +46,7 @@ class AppColors {
   static const List<Color> _stagePastel = [Color(0xFFB8DBCA), Color(0xFFF3D9A2), Color(0xFFF2BB86), Color(0xFFE9A6A5)];
   static Color stagePastel(int stage) => _stagePastel[stage.clamp(0, 3)];
 
-  // 수업 코드가 쓰는 이름 (수업 화면을 그대로 가져와도 컴파일되게 우리 색에 연결한 별명)
+  // 다른 화면이 쓰는 이름 (우리 색에 연결한 별명)
   static const Color primary = navy;
   static const Color danger = urgent;
 

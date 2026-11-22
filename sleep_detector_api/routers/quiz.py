@@ -2,7 +2,6 @@
 # routers/quiz.py — 운전 중 음성 퀴즈 채점 API
 # ═══════════════════════════════════════════════════════════════
 # 담당: 팀장   |   우선: P1
-# 수업 원본: road_hazard_api/routers/chat.py (모양만 참고, 🔴 신규)
 #
 # [이 파일이 하는 일]
 #   - POST /quiz/answer — VoiceQuizAnswer 를 받아 voice_quiz_service 로 채점

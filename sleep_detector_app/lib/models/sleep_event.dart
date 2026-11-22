@@ -2,7 +2,6 @@
 // models/sleep_event.dart — 경고 1건 (운행 기록 목록)
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P0
-// 수업 원본: road_hazard_app/lib/models/hazard.dart (🟡 이름 변경 + 수정)
 //
 // [이 파일이 하는 일]
 //   - GET /events/my 의 한 줄
@@ -114,7 +113,7 @@ class SleepEvent {
     );
   }
 
-  // 수업에서 배운 '5' 문자열 사고 방지 — 숫자 칸이 글자로 와도 숫자로 바꿔 읽는다
+  // '5' 같은 문자열 사고 방지 — 숫자 칸이 글자로 와도 숫자로 바꿔 읽는다
   static int _toInt(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
   static double? _toDouble(dynamic v) => v is num ? v.toDouble() : double.tryParse('${v ?? ''}');
 

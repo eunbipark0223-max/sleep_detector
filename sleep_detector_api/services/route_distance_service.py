@@ -2,7 +2,7 @@
 # services/route_distance_service.py — 졸음쉼터까지 실제 도로 거리 · 시간 (카카오모빌리티 자동차 길찾기)
 # ═══════════════════════════════════════════════════════════════
 # 담당: B   |   우선: P2
-# 수업 원본: (없음, 🔴 신규 — routers/admin.py 의 카카오 주소 변환과 같은 방식: requests + KakaoAK 키 + 짧은 timeout)
+# 참고: routers/admin.py 의 카카오 주소 변환과 같은 방식 — requests + KakaoAK 키 + 짧은 timeout
 #
 # [이 파일이 하는 일]
 #   - 앱이 직선 거리로 고른 가까운 쉼터 몇 곳(최대 MAX_DESTINATIONS)만 받아서, 각각 자동차 길찾기로 도로 거리 · 시간을 묻는다

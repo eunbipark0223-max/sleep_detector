@@ -2,13 +2,12 @@
 # routers/user.py — 회원가입 · 로그인 · 구글 로그인 · 내 정보
 # ═══════════════════════════════════════════════════════════════
 # 담당: -   |   우선: P0
-# 수업 원본: road_hazard_api/routers/user.py (🟢 그대로 복사 + 이름만 맞춤)
 #
 # [이 파일이 하는 일]
 #   - POST /users/signup {email, password, name, phone?, vehicle_no?, privacy_agreed?} · /users/login · /users/google  ·  GET /users/me
 #     · /users/google {email, name, firebase_uid, id_token?} — 관리자 계정은 id_token 검증 필수 (services/firebase_verify.py) · GET /users/google/config = 관리자 웹용 Firebase 웹 설정
 #     (회원가입 화면이 전화번호 · 차량번호를 같이 보냄. privacy_agreed=false 면 422. 동의 여부는 DB 칸을 늘리지 않아 저장하지 않음)
-#   - 프로필 사진 POST · GET · DELETE /users/me/photo (수업 그대로, profile_screen)
+#   - 프로필 사진 POST · GET · DELETE /users/me/photo (profile_screen)
 #   - PATCH /users/me  {name?, phone?, vehicle_no?} — 기사 연락용 전화번호 · 차량번호 (profile_screen 에서 입력, 관리자 웹 연락처에 보임) · 이름은 관리자 설정 화면
 #   - PUT /users/me/password {current_password, new_password} — 비밀번호 변경 (관리자 설정 화면, 가입과 같은 규칙. 구글 계정은 400)
 #   - (11/19) POST /users/me/email/request {new_email, current_password} · /users/me/email/confirm {new_email, code}
@@ -20,7 +19,7 @@
 #       POST /users/email/send · /users/email/verify — 이메일도 같은 방식 (email_token)
 #         (11/19) .env 에 구글 SMTP(SMTP_USER · SMTP_PASSWORD)가 있으면 /users/email/send 가 진짜 메일로 보냄 (services/mail_service.py) — 없으면 demo_code 시연용
 #
-# [수업에서 바꾼 것]
+# [정한 것]
 #   - 요청 · 응답 이름: schema 의 SignupRequest · LoginRequest · GoogleLoginRequest · UserResponse · LoginResponse (D)
 #   - 로그인 응답: {access_token} → {success, access_token, token_type, user} (mock_server 와 같은 모양, 앱은 access_token 만 읽어도 됨)
 #   - 토큰 검사는 auth.jwt.get_current_user 한 줄로

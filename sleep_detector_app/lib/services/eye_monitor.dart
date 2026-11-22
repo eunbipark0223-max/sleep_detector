@@ -2,7 +2,7 @@
 // services/eye_monitor.dart — ML Kit 눈 판정 (앱의 실시간 1차 판정)  ⭐ 핵심
 // ═══════════════════════════════════════════════════════════════
 // 담당: A   |   우선: P0 (개인 기준은 P1)
-// 수업 원본: (없음, 🔴 신규) google_mlkit_face_detection 예제
+// 참고: google_mlkit_face_detection 예제
 //
 // [이 파일이 하는 일]
 //   - FaceDetector 옵션: enableClassification 켬 · performanceMode fast · minFaceSize 0.15 (윤곽 · 랜드마크 · 추적은 끔)

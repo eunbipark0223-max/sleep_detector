@@ -2,7 +2,6 @@
 // screens/chat_screen.dart — 규정 도우미 채팅
 // ═══════════════════════════════════════════════════════════════
 // 담당: B   |   우선: P2
-// 수업 원본: road_hazard_app/lib/screens/chat_screen.dart (🟡 인사말 · 예시 질문 + 아래 '수업과 다른 점')
 //
 // [이 파일이 하는 일]
 //   - 졸음운전 · 휴게 규정 Q&A — 첫 인사, 추천 질문, 질문 → 답 + 근거 규정
@@ -12,15 +11,15 @@
 //   - POST /chat (로그인 필요) {message, history: [{role: 'user'|'bot', text}]}
 //       → {"success", "answer", "sources": [{title, source, content, is_real}], "is_real"}
 //
-// [수업과 다른 점]
-//   - 응답 키: 수업 reply · suggestions → 우리 서버 message / answer · sources · is_real
+// [정한 것]
+//   - 응답 키: message / answer · sources · is_real
 //     추천 질문은 서버가 주지 않아서 _greetingSuggestions — 답이 올 때마다 아직 안 물어본 것만 다시 보여 줌
 //   - 답 아래에 근거 규정(sources) — regulation_screen.dart 의 RegulationCard (collapsible), 누르면 원문
 //   - is_real == false → "AI 답변 아님 — 규정 원문" 표시
 //   - MainScreen(D) 의 '규정 도우미' 탭 안에 들어가므로 AppBar 없음 (제목은 MainScreen 이 보여 줌)
-//   - 서버 호출: 수업은 ApiService.chatHello · sendChat 인데 api_service.dart(C) 에 아직 없어서 이 파일 아래 _chatHello · _sendChat.
+//   - 서버 호출: api_service.dart(C) 에 chatHello · sendChat 이 아직 없어서 이 파일 아래 _chatHello · _sendChat.
 //     C 가 api_service.dart 에 만들면 그쪽으로 바꾼다. 토큰은 AuthService.authHeaders() (D)
-//   - 색: 수업 primaryLight · primaryDark 가 팀 theme.dart 에 없어서 _chipBg · _chipText
+//   - 색: _chipBg · _chipText (팀 theme.dart 색)
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
@@ -36,7 +35,7 @@ import '../widgets/web_ui.dart';
 
 const String _baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://10.0.2.2:8000');
 const Duration _timeout = Duration(seconds: 40); // RAG + Gemini 라 조금 길게
-const Color _chipText = AppColors.navy; // 수업 primaryDark 자리
+const Color _chipText = AppColors.navy;
 const List<String> _greetingSuggestions = [
   '연속 운전 기준은?',
   '얼마나 쉬어야 하나요?',
@@ -488,7 +487,7 @@ class _SourceLineState extends State<_SourceLine> {
   }
 }
 
-// ── 서버 호출 (수업 api_service.dart 모양 — C 가 api_service 에 chatHello · sendChat 을 만들면 그쪽으로) ──
+// ── 서버 호출 (C 가 api_service 에 chatHello · sendChat 을 만들면 그쪽으로) ──
 class _LoginRequired implements Exception {}
 
 // 첫 인사 (GET /chat/hello)

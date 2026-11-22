@@ -2,7 +2,6 @@
 // screens/profile_screen.dart — 내 정보
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P0
-// 수업 원본: road_hazard_app/lib/screens/profile_screen.dart (🟢 그대로)
 //
 // [이 파일이 하는 일]
 //   - 신고 건수 → 경고 건수 (fetchMyEvents 로 센다, 못 받으면 '—'), 내 기준 표시만 추가

@@ -2,7 +2,6 @@
 // models/drive_status.dart — POST /drive/ping 응답 모양 (+ DriveState: GET /drive/state)
 // ═══════════════════════════════════════════════════════════════
 // 담당: C   |   우선: P0
-// 수업 원본: (신규) sleep_response.dart 모양
 //
 // [이 파일이 하는 일]
 //   - stage · status · driveMin · restDue · restMessage

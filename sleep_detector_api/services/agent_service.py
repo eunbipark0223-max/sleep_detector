@@ -2,7 +2,6 @@
 # services/agent_service.py — Agent 단계 · 안내문 · 보고서 · 기사 음성 보고  ⭐ 핵심
 # ═══════════════════════════════════════════════════════════════
 # 담당: 팀장   |   우선: P0 (음성 보고는 P1)
-# 수업 원본: road_hazard_api/services/agent_service.py (🟡 수정, 딥러닝 22차시)
 #
 # [이 파일이 하는 일]
 #   - 도구: 최근 졸음 기록 조회 · 규정 검색 (Function Calling)
@@ -44,7 +43,7 @@ FALLBACK_ON_ERROR = config.FALLBACK_ON_ERROR
 # (11/18 팀장) 시간 제한을 '뒤에서 쓰는 보고서' 기준으로 — 경고는 이미 규칙으로 나갔으니 기사가 기다리지 않음
 #   예전: 한 번 6초 · 전체 7초 (실시간 경고 경로였을 때, 11/12 · 11/16) → 보고서가 AI 로 채워지기 전에 끊기는 일이 잦았음
 AGENT_TIMEOUT_SEC = 15     # Gemini 한 번 호출 제한
-MAX_TOOL_TURNS = 3         # 도구를 부르는 횟수 제한 (수업 안전장치 ①)
+MAX_TOOL_TURNS = 3         # 도구를 부르는 횟수 제한 (안전장치 ①)
 AGENT_DEADLINE_SEC = 30    # Agent 전체 마감 (도구를 여러 번 불러도 합쳐서). 넘으면 템플릿 보고서 그대로
 # (11/18 팀장) [운행 종료] 리포트도 템플릿을 먼저 보여 주고 AI 문장은 뒤에서 (drive_report_template → drive_report) — 같은 15초
 
@@ -189,7 +188,7 @@ def _mock_generate(eye, analysis, regulations, facts, rule_stage, location):
 
 
 # ───────────────────────────────────────────────
-# 진짜 (Gemini Function Calling, 딥러닝 22차시 실습 4 방식)
+# 진짜 (Gemini Function Calling)
 # ───────────────────────────────────────────────
 TOOLS = [
     {"type": "function", "function": {

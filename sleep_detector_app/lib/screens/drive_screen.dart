@@ -2,7 +2,6 @@
 // screens/drive_screen.dart — 운행 화면 (카메라 · 눈 판정 · 의심 전송 · ping)  ⭐ 핵심
 // ═══════════════════════════════════════════════════════════════
 // 담당: C   |   우선: P0
-// 수업 원본: road_hazard_app/lib/screens/upload_screen.dart (전송) · report_screen.dart (위치), Flutter 9·10일차 (🔴 신규)
 //
 // [이 파일이 하는 일]
 //   - 전면 카메라 미리보기 + startImageStream → eye_monitor.processFrame

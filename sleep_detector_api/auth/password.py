@@ -2,7 +2,6 @@
 # auth/password.py — 비밀번호 암호화 · 확인 (argon2)
 # ═══════════════════════════════════════════════════════════════
 # 담당: -   |   우선: P0
-# 수업 원본: road_hazard_api/auth/password.py (🟢 그대로 복사)
 #
 # [이 파일이 하는 일]
 #   - hash_password(평문) → 암호문 / verify_password(평문, 암호문) → 맞는지
