@@ -54,6 +54,7 @@ dependencies:
   url_launcher: ^6.3.3      # 졸음쉼터 [길찾기] → 카카오맵 앱 · 폰 브라우저 (map_screen)
   audioplayers: ^6.8.1
   permission_handler: 11.4.0
+  geocoding: ^5.0.1
 
 dev_dependencies:
   flutter_test:

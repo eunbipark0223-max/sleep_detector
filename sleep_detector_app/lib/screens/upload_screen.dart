@@ -74,7 +74,7 @@ class _UploadScreenState extends State<UploadScreen> {
       if (!mounted) return;
       setState(() {
         _analyzing = false;
-        _error ??= '사진을 불러오지 못했어요. 사진 · 카메라 권한을 확인해 주세요';
+        _error ??= '사진을 불러오지 못했어요\n사진 · 카메라 권한을 확인해 주세요';
       });
     }
   }
@@ -198,7 +198,7 @@ class _UploadScreenState extends State<UploadScreen> {
   Widget _resultCard(SleepResponse r) {
     final bg = AppColors.stage(r.stage); // 단계(0~3) → 화면 색
     final fg = AppColors.onStage(r.stage); // 그 색 위에 올리는 글자색
-    final summary = r.summary.isNotEmpty ? r.summary : '졸음이 감지되지 않았어요.';
+    final summary = r.summary.isNotEmpty ? r.summary : '졸음이 감지되지 않았어요';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

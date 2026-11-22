@@ -92,6 +92,20 @@ class AuthService {
       DateTime.tryParse(await _storage.read(key: _noticeSeenKey) ?? '');
   static Future<void> saveNoticeSeenAt(DateTime t) => _storage.write(key: _noticeSeenKey, value: t.toIso8601String());
 
+  // (11/18 C) 알림 = 관리자가 조치를 완료한 경고만. 조치 시각은 서버가 안 알려 줘서 '이미 본 경고 id' 로 읽음을 가린다
+  static const String _noticeIdsKey = 'notice_seen_ids';
+
+  // (11/18 피드백) 자동 로그인 — 로그인 화면 체크 (기본 켬). 끄면 앱을 다시 열 때 로그인 화면부터
+  static const String _autoLoginKey = 'auto_login';
+  // (11/19) 카메라 · 마이크 · 위치 안내창을 이미 한 번 보여 줬는지
+  static Future<bool> getPermAsked() async => (await _storage.read(key: 'perm_asked_v1')) == '1';
+  static Future<void> setPermAsked() => _storage.write(key: 'perm_asked_v1', value: '1');
+  static Future<void> setAutoLogin(bool on) => _storage.write(key: _autoLoginKey, value: on ? '1' : '0');
+  static Future<bool> getAutoLogin() async => (await _storage.read(key: _autoLoginKey)) != '0';
+  static Future<Set<int>> getNoticeSeenIds() async =>
+      (await _storage.read(key: _noticeIdsKey) ?? '').split(',').map(int.tryParse).whereType<int>().toSet();
+  static Future<void> saveNoticeSeenIds(Set<int> ids) => _storage.write(key: _noticeIdsKey, value: ids.join(','));
+
   /// 로그인이 필요한 요청에 붙일 헤더 (토큰이 없으면 Authorization 없이)
   static Future<Map<String, String>> authHeaders() async {
     final token = await getToken();
@@ -230,14 +244,54 @@ class AuthService {
   /// 내 전화번호 · 차량번호 저장 (관리자가 경고를 보고 바로 연락할 때 쓴다).
   /// 넘기지 않은(null) 칸은 그대로 두고, 빈 글자('')를 넘기면 서버가 지운다. 돌려받는 것은 바뀐 내 정보.
   /// 형식이 틀리면(422) 서버 문구가 AuthException 으로 온다 (예: '전화번호 형식이 올바르지 않아요 (예: 010-1234-5678)').
-  static Future<Map<String, dynamic>> updateProfile({String? phone, String? vehicleNo}) async {
+  static Future<Map<String, dynamic>> updateProfile({String? phone, String? vehicleNo, String? name}) async {
     final body = <String, dynamic>{
+      'name': ?name, // (11/18) 내 정보에서 이름 바꾸기
       'phone': ?phone,
       'vehicle_no': ?vehicleNo,
     };
     final res = await _send(() async => http.patch(_uri('/users/me'), headers: await authHeaders(), body: jsonEncode(body)));
     if (res.statusCode != 200) throw _error(res);
     return _decode(res);
+  }
+
+  /// (11/18 C) 비밀번호 변경 — PUT /users/me/password. 지금 비밀번호가 틀리거나 새 비밀번호 규칙이 틀리면 서버 문구로 AuthException
+  static Future<void> changePassword({required String current, required String next}) async {
+    final res = await _send(() async => http.put(_uri('/users/me/password'),
+        headers: await authHeaders(), body: jsonEncode({'current_password': current, 'new_password': next})));
+    if (res.statusCode != 200) throw _error(res);
+  }
+
+  /// (11/18 C) 이메일 변경 1단계 — 새 이메일 + 지금 비밀번호 → 새 이메일로 인증번호. 시연용 서버는 번호(dev_code)를 돌려준다
+  static Future<String?> requestEmailChange({required String newEmail, required String currentPassword}) async {
+    final res = await _send(() async => http.post(_uri('/users/me/email/request'),
+        headers: await authHeaders(), body: jsonEncode({'new_email': newEmail, 'current_password': currentPassword})));
+    if (res.statusCode != 200) throw _error(res);
+    return _decode(res)['dev_code']?.toString();
+  }
+
+  /// (11/18 C) 이메일 변경 2단계 — 인증번호가 맞으면 바뀐 내 정보
+  static Future<Map<String, dynamic>> confirmEmailChange({required String newEmail, required String code}) async {
+    final res = await _send(() async => http.post(_uri('/users/me/email/confirm'),
+        headers: await authHeaders(), body: jsonEncode({'new_email': newEmail, 'code': code})));
+    if (res.statusCode != 200) throw _error(res);
+    return _decode(res);
+  }
+
+  /// (11/18 C) 이메일 찾기 — 전화번호 인증 표(phone_token)로 그 번호로 가입한 이메일(가려진 것) 목록
+  static Future<List<Map<String, dynamic>>> findEmail({required String phone, required String phoneToken}) async {
+    final res = await _send(() => http.post(_uri('/users/find-email'),
+        headers: _json, body: jsonEncode({'phone': phone, 'phone_token': phoneToken})));
+    if (res.statusCode != 200) throw _error(res);
+    final list = _decode(res)['emails'];
+    return list is List ? list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : const [];
+  }
+
+  /// (11/18 C) 비밀번호 찾기 — 가입한 이메일 인증 표(email_token)로 새 비밀번호 저장
+  static Future<void> resetPassword({required String email, required String emailToken, required String newPassword}) async {
+    final res = await _send(() => http.post(_uri('/users/password/reset'),
+        headers: _json, body: jsonEncode({'email': email, 'email_token': emailToken, 'new_password': newPassword})));
+    if (res.statusCode != 200) throw _error(res);
   }
 
   // ── 프로필 사진 (서버: POST · GET · DELETE /users/me/photo) ──────────────
@@ -285,6 +339,7 @@ class AuthService {
     } catch (_) {}
     try {
       await _storage.delete(key: _noticeSeenKey); // (11/17) 다른 계정으로 들어오면 알림을 처음부터 '안 읽음' 으로
+      await _storage.delete(key: _noticeIdsKey);
     } catch (_) {}
     try {
       await FirebaseAuth.instance.signOut();

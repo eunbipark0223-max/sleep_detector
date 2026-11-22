@@ -14,6 +14,7 @@
 import 'package:flutter/material.dart'; // 안드로이드,ios 스타일의 기본 디자인 UI 요소가 들어있는 Flutter 공식 핵심 라이브러리
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import 'find_account_screens.dart';
 import 'main_screen.dart';
 import 'signup_screen.dart';
 import '../widgets/auth_ui.dart';
@@ -36,6 +37,7 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _autoLogin = true; // (11/18 피드백) 자동 로그인 체크 (기본 켬)
   // (11/17 사용자 요청) 구글 계정 고르기 창이 떠 있는 동안 뒤 화면은 그냥 흰색 (입력칸 · 버튼 숨김)
   bool _googleOpen = false;
   String? _error;
@@ -49,6 +51,7 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
   }
 
   void _goHome() {
+    AuthService.setAutoLogin(_autoLogin); // 다음에 앱을 열 때 바로 들어갈지
     ApiService.resetUnauthorized(); // 다시 로그인했으니 다음 만료 때 또 로그인 화면으로 보낼 수 있게
     Navigator.pushReplacement(
       context,
@@ -90,6 +93,23 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
     ScaffoldMessenger.of(context).showSnackBar( // 가장 가까운 Scaffold를 찾아 거기에 띄운다
       const SnackBar(content: Text('회원가입 완료! 로그인해주세요')),
     );
+  }
+
+  // (11/18 사용자 요청) 이메일 찾기 · 비밀번호 찾기
+  Future<void> _openFindEmail() async {
+    final r = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const FindEmailScreen()));
+    if (r == FindEmailScreen.goReset && mounted) await _openResetPassword();
+  }
+
+  Future<void> _openResetPassword() async {
+    final email = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const ResetPasswordScreen()));
+    if (email == null || !mounted) return;
+    setState(() {
+      _emailController.text = email; // 바꾼 계정 이메일을 채워 두고 새 비밀번호만 치면 되게
+      _passwordController.clear();
+      _error = null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('비밀번호를 바꿨어요\n새 비밀번호로 로그인해 주세요')));
   }
 
   // 구글 로그인 (Firebase → 서버 JWT)
@@ -164,7 +184,9 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
           onFieldSubmitted: (_) => _loginWithEmail(),
           enabled: !_isLoading,
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 6),
+        _autoLoginRow(),
+        const SizedBox(height: 10),
         if (_error != null) ...[ // 오류 메시지(있을 때만)
           AuthNote(_error!, error: true),
           const SizedBox(height: 12),
@@ -173,7 +195,9 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
           const SizedBox(height: AuthUi.controlHeight, child: Center(child: CircularProgressIndicator(color: AppColors.navy)))
         else ...[
           AuthButton(text: '로그인', onPressed: _loginWithEmail),
-          const SizedBox(height: 14),
+          const SizedBox(height: 6),
+          _findRow(), // 이메일 찾기 | 비밀번호 찾기
+          const SizedBox(height: 6),
           _divider(), // 또는
           const SizedBox(height: 14),
           AuthButton(
@@ -185,6 +209,53 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
         ],
       ],
     );
+  }
+
+  // (11/18 피드백) 자동 로그인 — 둥근 체크 + 글자 (누르면 켜고 끔)
+  Widget _autoLoginRow() => Align(
+        alignment: Alignment.centerLeft,
+        child: InkWell(
+          onTap: _isLoading ? null : () => setState(() => _autoLogin = !_autoLogin),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: _autoLogin ? AppColors.navy : Colors.transparent,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _autoLogin ? AppColors.navy : AppColors.textMuted, width: 1.5),
+                ),
+                child: _autoLogin ? const Icon(Icons.check_rounded, size: 15, color: Colors.white) : null,
+              ),
+              const SizedBox(width: 8),
+              const Text('자동 로그인', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
+            ]),
+          ),
+        ),
+      );
+
+  // 로그인 버튼 아래 작은 회색 글자 두 개 · 가운데 얇은 세로줄 (애플 로그인 화면처럼)
+  Widget _findRow() {
+    Widget link(String text, VoidCallback onTap) => TextButton(
+          onPressed: onTap,
+          style: TextButton.styleFrom(
+            foregroundColor: AppColors.textSecondary,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+          ),
+          child: Text(text),
+        );
+    return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+      link('이메일 찾기', _openFindEmail),
+      Container(width: 1, height: 11, color: AppColors.fill),
+      link('비밀번호 찾기', _openResetPassword),
+    ]);
   }
 
   Widget _divider() => Row(

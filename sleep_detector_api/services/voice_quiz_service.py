@@ -132,7 +132,7 @@ def make_quiz(user_id, qtype=None, event_id=None):
         sentence = random.choice([s for s in sentences if s != last] or sentences)
         _last_sentence[user_id] = sentence
         answer, display = sentence, sentence
-        speak = f"{intro}크게 말하세요. {sentence}."  # (11/19 팀장) "따라 말하세요" → "크게 말하세요" (소리 내어 크게 = 깨우기 · 시끄러운 차 안에서도 잘 들리게)
+        speak = f"크게 말하세요. {sentence}."  # (11/19 C) 안내는 한 문장 ('깨어 있는지 확인할게요' 뺌)  # (11/19 팀장) "따라 말하세요" → "크게 말하세요" (소리 내어 크게 = 깨우기 · 시끄러운 차 안에서도 잘 들리게)
     else:
         a, b = _make_add()
         answer, display = a + b, f"{a} + {b} = ?"

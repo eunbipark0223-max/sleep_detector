@@ -231,9 +231,9 @@ def make_ai_text(stage: int, reason: str, count: int, closed_sec: float, perclos
     if stage == 1:
         voice = f"{closed}초 동안 눈을 감았어요. 정신 차려 주세요." if closed >= 1 else "눈을 자주 감고 있어요. 정신 차려 주세요."
     elif stage == 2:
-        voice = f"10분 새 {count}번 졸았어요. 가까운 쉼터에서 쉬어 가세요."
+        voice = "쉼터에서 쉬어 가세요."   # (11/18 C) 진짜 서버 agent_service._template_voice 와 같게 — 이름 + 할 일만
     else:
-        voice = f"10분 새 {count}번 졸았어요. 지금 바로 정차하세요."
+        voice = "지금 바로 정차하세요."
     return {
         "summary": summary, "guidance": GUIDANCE[stage], "driver_voice": voice,
         "report": {
@@ -312,7 +312,7 @@ def make_quiz(user_id: int, qtype: Optional[str] = None, event_id: Optional[int]
     qtype = qtype if qtype in MOCK_QUIZ_TYPES else random.choice(MOCK_QUIZ_TYPES)  # (11/19 팀장) 진짜 서버 config.VOICE_QUIZ_TYPES 와 같게 — 따라 말하기만
     if qtype == "repeat":
         sentence = random.choice(_repeat_sentences())
-        speak, display, asked, answer = f"깨어 있는지 확인할게요. 크게 말하세요. {sentence}.", sentence, sentence, sentence  # (11/19 팀장) 진짜 서버와 같은 질문
+        speak, display, asked, answer = f"크게 말하세요. {sentence}.", sentence, sentence, sentence  # (11/19 C) 안내는 한 문장  # (11/19 팀장) 진짜 서버와 같은 질문
     else:
         while True:  # 받아올림 없는 2자리 + 2자리
             a, b = random.randint(10, 89), random.randint(10, 89)
@@ -679,13 +679,55 @@ async def phone_verify(request: Request):
     return {"verified": True, "phone": phone, "phone_token": token}
 
 
+# (11/18 C) 이메일 찾기 · 비밀번호 찾기 — 진짜 서버(routers/user.py)와 같은 주소 · 같은 응답 모양
+def _mask_email(email: str) -> str:
+    local, _, domain = email.partition("@")
+    keep = local[:2] if len(local) > 2 else local[:1]
+    return f"{keep}{'*' * max(len(local) - len(keep), 2)}@{domain}"
+
+
+@app.post("/users/find-email")
+async def find_email(request: Request):
+    body = await read_body(request)
+    phone = _phone_or_422(body.get("phone"))
+    if not employee_service.use_phone_token(phone, body.get("phone_token")):
+        raise HTTPException(status_code=400, detail="전화번호 인증을 먼저 해 주세요")
+    found = [u for u in USERS.values() if u.get("phone") == phone and u.get("role") != "admin"]
+    if not found:
+        raise HTTPException(status_code=404, detail="이 전화번호로 가입한 계정이 없어요")
+    return {"emails": [{"email": _mask_email(str(u["email"])), "provider": u.get("provider") or "email"} for u in found]}
+
+
+@app.post("/users/password/reset")
+async def reset_password(request: Request):
+    body = await read_body(request)
+    email = _email_or_422(body.get("email"))
+    user = next((u for u in USERS.values() if str(u["email"]).lower() == email.lower()), None)
+    if user is None:
+        raise HTTPException(status_code=404, detail="가입되지 않은 이메일이에요")
+    if user.get("provider") == "google":
+        raise HTTPException(status_code=400, detail="구글 계정은 구글로 계속하기로 로그인해 주세요")
+    try:
+        new_password = check_password_rules(str(body.get("new_password") or ""))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    if not employee_service.use_email_token(email, body.get("email_token")):
+        raise HTTPException(status_code=400, detail="이메일 인증을 먼저 해 주세요")
+    _PASSWORDS[user["id"]] = new_password
+    return {"success": True}
+
+
 @app.post("/users/login")
 async def login(request: Request):
     body = await read_body(request)
     email = str(body.get("email") or body.get("username") or "").strip()  # OAuth2 폼이면 username
     if not email:
         raise HTTPException(status_code=422, detail="email 이 필요합니다")
-    return login_response(add_user(email, email.split("@")[0], "admin" if email.startswith("admin") else "user"))
+    user = add_user(email, email.split("@")[0], "admin" if email.startswith("admin") else "user")
+    # (11/18 C) 화면 확인용 — 경고 기록이 하나도 없는 기사는 로그인할 때 운행 기록(최근 3주)을 자동으로 채움
+    if user["role"] != "admin" and not any(e["user_id"] == user["id"] for e in EVENTS):
+        demo_history(user["id"])
+    return login_response(user)
 
 
 @app.get("/users/google/config")
@@ -942,7 +984,11 @@ def _driver_name(name) -> str:
 @app.post("/drive/start")
 def drive_start(user: dict = Depends(current_user)):
     st = state_of(user["id"])
+    # (11/19 C) 진짜 서버처럼 2 · 3단계는 새 운행을 시작해도 유지 (관리자 [조치완료] 로만 풀림) — 0 · 1단계만 처음부터
+    keep = {k: st[k] for k in ("stage", "sleeps", "rest_started", "rest_event_id")} if st.get("stage", 0) >= 2 else None
     reset_state(st)
+    if keep:
+        st.update(keep)
     st["session"] = (datetime.now(), _next["event"] - 1)   # (11/16) 운행 종료 리포트: 이 뒤의 경고만
     st.update({"drive_start": time.time(), "drive_offset_min": 0, "rest_due_sent": False, "last_quiz_at": 0.0, "last_ping": time.time(),
                "pre_warned": False})  # (11/12 팀장) 운행마다 첫 졸음은 예비 경고 한 번
@@ -1243,6 +1289,10 @@ def event_status(event_id: int, body: StatusUpdate, admin: dict = Depends(requir
     event["status"] = body.status
     reset = body.status == "조치완료"
     if reset:  # 3단계 해제 — 앱은 다음 ping 에서 0단계
+        # (11/18 C) 진짜 서버와 같게: 그 기사의 처리 안 된 경고(미확인 · 확인)도 모두 조치완료
+        for other in EVENTS:
+            if other["user_id"] == event["user_id"] and other["status"] in ("미확인", "확인"):
+                other["status"] = "조치완료"
         reset_state(state_of(event["user_id"]))
     return {"success": True, "id": event_id, "status": event["status"], "stage_reset": reset}
 
@@ -1360,6 +1410,42 @@ def chat_hello():
         except Exception:
             pass
     return {"message": "안녕하세요, 졸음 가드 규정 도우미예요. 졸음운전 · 연속 운전 휴게시간 규정을 물어보세요. (규정 원문 검색)"}
+
+
+# (11/18 C) 졸음쉼터 도로 거리 · 걸리는 시간 — 진짜 서버 routers/rest_area.py (B) 와 같은 주소 · 같은 응답 모양
+#   서버 .env 에 KAKAO_API_KEY 가 있으면 B 의 route_distance_service(카카오 자동차 길찾기)를 그대로 부르고,
+#   없으면 연습용 어림값: 도로 거리 = 직선 × 1.3, 평균 시속 60km (화면 확인용 — 진짜 서버는 키가 없으면 시간 없이 거리만)
+@app.post("/rest-areas/road-distance")
+async def rest_area_road_distance(request: Request, user: dict = Depends(current_user)):
+    import math
+    body = await read_body(request)
+    lat, lng = to_float(body.get("lat")), to_float(body.get("lng"))
+    dests = [d for d in (body.get("destinations") or []) if isinstance(d, dict)][:20]
+    if lat is None or lng is None:
+        raise HTTPException(status_code=422, detail="lat · lng 가 필요해요")
+    try:
+        from services import route_distance_service
+        if route_distance_service.available():
+            results = route_distance_service.road_distances(lat, lng, dests)
+            return {"available": True, "results": results}
+    except Exception as e:  # 카카오 오류면 아래 어림값으로
+        print(f"[mock] 카카오 길찾기 실패 → 어림값: {type(e).__name__}: {e}")
+
+    def straight_m(a_lat, a_lng, b_lat, b_lng):
+        r = 6371000.0
+        p1, p2 = math.radians(a_lat), math.radians(b_lat)
+        dp, dl = p2 - p1, math.radians(b_lng - a_lng)
+        h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+        return 2 * r * math.asin(math.sqrt(h))
+
+    results = {}
+    for d in dests:
+        d_lat, d_lng = to_float(d.get("lat")), to_float(d.get("lng"))
+        if d_lat is None or d_lng is None or not d.get("key"):
+            continue
+        road_m = straight_m(lat, lng, d_lat, d_lng) * 1.3
+        results[str(d["key"])] = {"distance_m": int(road_m), "duration_s": int(road_m / (60_000 / 3600))}
+    return {"available": True, "results": results}
 
 
 @app.post("/chat")

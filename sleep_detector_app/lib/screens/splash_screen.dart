@@ -13,11 +13,11 @@
 
 import 'package:flutter/material.dart';
 import '../theme.dart';
-import '../widgets/web_ui.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
 import 'main_screen.dart';
+import '../widgets/buddy.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -47,6 +47,11 @@ class _SplashScreenState extends State<SplashScreen> {
 
     await Future.delayed(const Duration(seconds: 2));
     var loggedIn = await AuthService.isLoggedIn();
+    // (11/18 피드백) 자동 로그인을 끄고 로그인했으면 → 저장된 토큰을 지우고 로그인 화면으로
+    if (loggedIn && !await AuthService.getAutoLogin()) {
+      await AuthService.clearToken();
+      loggedIn = false;
+    }
     // 토큰이 있어도 만료됐을 수 있다 → 서버에 확인 (만료면 me() 가 토큰을 지우고 null)
     // 서버 연결 오류는 로그아웃시키지 않고 그대로 들어간다 (운행 중 401 이 오면 그때 로그인 화면으로)
     if (loggedIn) {
@@ -67,7 +72,7 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.card, // (11/17) 로그인 · 회원가입과 같은 흰 바탕
+      backgroundColor: AppColors.background, // (11/17) 로그인 · 회원가입과 같은 흰 바탕
       body: Stack(
         children: [
           // 트럭 부엉이 시작 화면 그림 ("졸음 가드" 글씨 포함, 노션 '메인 로고 아이디어' 스플래시, 11/10) — 화면 폭에 꽉 차게
@@ -75,7 +80,7 @@ class _SplashScreenState extends State<SplashScreen> {
             child: const Center(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 // (11/17) 그림은 아직 안 넣음 — 자리만 표시
-                ImageSlot(label: '메인 캐릭터 이미지', width: 200, height: 200, radius: 28),
+                Buddy(stage: 0, size: 200),
                 SizedBox(height: 20),
                 Text('졸음가드', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
               ]),

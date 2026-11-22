@@ -51,7 +51,7 @@ import config
 from schema.request  import (
     SignupRequest, LoginRequest, GoogleLoginRequest, ProfileUpdate, PasswordChange,
     EmployeeCheckRequest, PhoneSendRequest, PhoneVerifyRequest, EmailSendRequest, EmailVerifyRequest,
-    EmailChangeRequest, EmailChangeConfirm,
+    FindEmailRequest, PasswordResetRequest, EmailChangeRequest, EmailChangeConfirm,
 )
 from services import employee_service, mail_service
 from schema.response import UserResponse, LoginResponse
@@ -193,6 +193,39 @@ def verify_email_code_handler(body: EmailVerifyRequest):
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return {"verified": True, "email": str(body.email), "email_token": token}
+
+
+def _mask_email(email: str) -> str:
+    """abcdef@test.com → ab****@test.com (앞 2글자만 보여 줌)"""
+    local, _, domain = email.partition("@")
+    keep = local[:2] if len(local) > 2 else local[:1]
+    return f"{keep}{'*' * max(len(local) - len(keep), 2)}@{domain}"
+
+
+@router.post("/users/find-email", status_code=status.HTTP_200_OK)
+def find_email_handler(body: FindEmailRequest, session: Session = Depends(get_session)):
+    """(11/18 C) 이메일 찾기 — 전화번호 인증(phone_token)을 마치면 그 번호로 가입한 이메일을 가려서 알려 줌"""
+    if not employee_service.use_phone_token(body.phone, body.phone_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="전화번호 인증을 먼저 해 주세요")
+    users = session.scalars(select(User).where(User.phone == body.phone, User.role == "user")).all()
+    if not users:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="이 전화번호로 가입한 계정이 없어요")
+    return {"emails": [{"email": _mask_email(u.email), "provider": u.provider or "email"} for u in users]}
+
+
+@router.post("/users/password/reset", status_code=status.HTTP_200_OK)
+def reset_password_handler(body: PasswordResetRequest, session: Session = Depends(get_session)):
+    """(11/18 C) 비밀번호 찾기 — 가입한 이메일로 인증(email_token)을 마치면 새 비밀번호로 바꿈. 구글 계정은 거절"""
+    user = session.scalar(select(User).where(User.email == str(body.email)))
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="가입되지 않은 이메일이에요")
+    if not user.hashed_password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="구글 계정은 구글로 계속하기로 로그인해 주세요")
+    if not employee_service.use_email_token(str(body.email), body.email_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이메일 인증을 먼저 해 주세요")
+    user.hashed_password = hash_password(body.new_password)
+    session.commit()
+    return {"success": True}
 
 
 @router.post(

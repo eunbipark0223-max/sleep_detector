@@ -12,8 +12,12 @@ import 'package:flutter/material.dart';
 
 import '../models/sleep_event.dart';
 import '../stage_texts.dart';
+import '../design_tokens.dart';
 import '../theme.dart';
+import 'auth_ui.dart';
+import 'owl_says.dart' show keepWords;
 import 'web_ui.dart';
+import 'buddy.dart';
 
 /// 남색 '지금 상태' 카드 (시안 .current-state-card)
 class HomeStateCard extends StatelessWidget {
@@ -43,10 +47,94 @@ class HomeStateCard extends StatelessWidget {
     final s = stage.clamp(0, 3);
     // 0단계는 시안 문구, 1 ~ 3단계는 경고 화면 · 음성과 같은 문구 (stage_texts)
     final big = s == 0 ? '안전 운전 중이에요' : StageTexts.headline(s);
-    return _readdy(s, big);
+    return _today(s, big); // (11/19 사용자 요청) Headspace '오늘' 카드 — 예전 흰 카드는 _readdy (되돌릴 때 참고)
   }
 
+
+  // ignore: unused_element
+  static Color _titleColor(int s) => switch (s) {
+        0 => AppColors.navy,
+        1 => AppColors.stageInk(1),
+        2 => AppColors.rest,
+        _ => AppColors.urgent.withValues(alpha: 0.85),
+      };
+
+  // (11/19 사용자 요청 · Headspace 오늘 탭) 위 = 반투명 단계 색 하늘 + 흰 언덕 뒤로 떠오르는 동그란 캐릭터
+  //   아래 흰 칸 = 날짜 · 큰 글 · (운행 중이면) 운행 요약 · 버튼
+  Widget _today(int s, String big) {
+    final now = DateTime.now();
+    final date = '${now.month}/${now.day}'; // (11/19 사용자 요청) '11월 19일 목요일' 대신 짧게
+    final title = idle && s == 0 ? '오늘도 안전 운전해요' : big;
+    final sub = idle && s == 0 ? '졸음은 제가 옆에서 지켜볼게요' : null;
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(AppRadius.card), // (11/19) 홈 모든 카드 둥글기 같게
+        boxShadow: AppShadow.card,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        BuddySky(stage: s),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(22, 6, 22, 22),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(date, style: AppType.footnote.copyWith(color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            // (11/19 사용자 요청) 큰 글은 진한 검정 대신 단계 색 — 정상은 남색 · 주의는 진한 노랑 · 휴식 권고 주황 · 긴급은 투명도 준 빨강
+            Text(keepWords(title), style: AppType.title2.copyWith(color: AppColors.textPrimary)),
+            if (sub != null) ...[
+              const SizedBox(height: 12), // (11/19 사용자 요청) 큰 글 아래 한 줄 띄우고
+              Text(sub, style: AppType.subheadline.copyWith(color: AppColors.textSecondary)),
+            ],
+            if (stats.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              IntrinsicHeight(
+                child: Row(children: [
+                  for (var i = 0; i < stats.length; i++) ...[
+                    if (i > 0) const VerticalDivider(width: 1, thickness: 1, indent: 4, endIndent: 4, color: AppColors.line),
+                    Expanded(
+                      child: Column(children: [
+                        Text(stats[i].$1, textAlign: TextAlign.center, style: AppType.title3.copyWith(color: AppColors.textPrimary)),
+                        const SizedBox(height: 2),
+                        Text(stats[i].$2,
+                            textAlign: TextAlign.center, style: AppType.footnote.copyWith(color: AppColors.textSecondary)),
+                      ]),
+                    ),
+                  ],
+                ]),
+              ),
+            ],
+            const SizedBox(height: 20),
+            resume ?? _startButtons(),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  // (11/18 사용자 요청) [운행 시작] 아래 [이어서 운행] — 같은 크기 · 같은 알약 모양으로 나란히.
+  //   이어서 할 운행이 없으면 [이어서 운행] 은 흐리게 (눌리지 않음). 운행이 있으면 home_screen 의 resume 이 대신 들어옴
+  Widget _startButtons() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // (11/18 피드백) 두 버튼의 아이콘 · 글자 시작점을 맞춤 (애플 SF 심볼 느낌의 둥근 아이콘)
+        AuthButton(
+          text: startLabel,
+          onPressed: onStart,
+          height: 48,
+          contentWidth: 118,
+          leading: const Icon(Icons.play_arrow_rounded, size: 22, color: Colors.white),
+        ),
+        const SizedBox(height: 10),
+        const AuthButton(
+          text: '이어서 운행',
+          primary: false,
+          height: 48,
+          contentWidth: 118,
+          leading: Icon(Icons.redo_rounded, size: 22, color: AuthUi.placeholder),
+        ),
+      ]);
+
   // (11/16 R안 · readdy 홈 카드) 흰 카드 · 단계 점 + 이름 · 큰 글 · 운행 요약 숫자 · 버튼 (부엉이 · 그라데이션 · 그림자 없음)
+  // ignore: unused_element
   Widget _readdy(int s, String big) {
     // (11/17 사용자 요청) 운행 전 · 정상이면 '정상' 배지 · '안전 운전 중이에요' 없이 캐릭터 자리 + [운행 시작] 만
     if (idle && s == 0) {
@@ -55,65 +143,95 @@ class HomeStateCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Center(child: ImageSlot(label: '메인 캐릭터 이미지', width: 120, height: 120, radius: 22)),
-            const SizedBox(height: 22),
-            resume ??
-                FilledButton.icon(
-                  onPressed: onStart,
-                  icon: const Icon(Icons.photo_camera_outlined, size: 20),
-                  label: Text(startLabel),
+            // (11/18 사용자 요청) 캐릭터는 왼쪽 · 오른쪽에 애플 메시지 같은 말풍선
+            const Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+              Buddy(stage: 0, size: 104), // (11/19) 단계 캐릭터 — 운행 전은 초록 웃는 얼굴
+              SizedBox(width: 14),
+              Expanded(
+                // (11/18 사용자 요청) '안녕하세요' 굵게 · 다음 줄 '오늘도 안전운전하세요' 보통 굵기
+                child: SpeechBubble(
+                  child: Text.rich(
+                    TextSpan(children: [
+                      TextSpan(text: '안녕하세요\n', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: AppColors.navy)),
+                      TextSpan(text: '졸음을 지켜 주는 부엉이에요!', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: AppColors.textSecondary)),
+                    ]),
+                    style: TextStyle(height: 1.45, letterSpacing: -0.3, color: AppColors.textPrimary),
+                  ),
                 ),
+              ),
+            ]),
+            const SizedBox(height: 22),
+            resume ?? _startButtons(),
           ],
         ),
       );
     }
     // (11/17 관리자 웹 느낌) 흰 카드 · 단계 알약 배지 · 큰 글 · 오른쪽 캐릭터 그림 자리
     return WebCard(
-      padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 20), // 운행 전 카드와 같은 여백
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // (11/18 피드백) 운행 전 화면과 같은 크기 · 같은 줄 — 캐릭터 왼쪽 · 말풍선 안에는 큰 글만 (단계 배지 뺌)
+          Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+            Buddy(stage: s, size: 104), // (11/19) 지금 단계 색 · 표정
+            const SizedBox(width: 14),
             Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('지금 상태', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                const SizedBox(height: 8),
-                StageBadge(stage: s, fontSize: 13),
-                const SizedBox(height: 12),
-                Text(big,
-                    maxLines: 3,
-                    style: const TextStyle(
-                        fontSize: 24, height: 1.3, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: AppColors.textPrimary)),
-              ]),
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8), // (11/18 피드백) 말풍선 끝선 조금 안쪽
+                child: SpeechBubble(
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  // 단계 점 — 운행 기록 타임라인과 같은 모양 · 글이 두 줄이 돼도 첫 줄 높이에
+                  Padding(padding: const EdgeInsets.only(top: 5), child: Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: AppColors.stage(s),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                      boxShadow: [BoxShadow(color: AppColors.stage(s).withValues(alpha: 0.35), blurRadius: 0, spreadRadius: 1.5)],
+                    ),
+                  )),
+                  const SizedBox(width: 10), // 글은 점 오른쪽으로 살짝
+                  Expanded(
+                    // 단어 중간에서 줄이 안 나뉘게 ('가세 / 요' 방지)
+                    child: Text(keepWords(big),
+                        maxLines: 3,
+                        style: const TextStyle(
+                            fontSize: 17, height: 1.35, fontWeight: FontWeight.w700, letterSpacing: -0.4, color: AppColors.textPrimary)),
+                  ),
+                ]),
+              ),
+              ),
             ),
-            const SizedBox(width: 12),
-            const ImageSlot(label: '메인 캐릭터 이미지', width: 92, height: 92, radius: 18),
           ]),
           if (stats.isNotEmpty) ...[
-            const SizedBox(height: 22),
-            IntrinsicHeight(
-              child: Row(children: [
-                for (var i = 0; i < stats.length; i++) ...[
-                  if (i > 0) const VerticalDivider(width: 24, thickness: 1, color: AppColors.line),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(stats[i].$1,
-                          style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                      const SizedBox(height: 2),
-                      Text(stats[i].$2, style: const TextStyle(fontSize: 13, color: AppColors.textMuted)),
-                    ]),
-                  ),
-                ],
-              ]),
+            const SizedBox(height: 16),
+            // (11/18 피드백) 운행 시간 · 졸음 · 휴식 — 연한 회색 칸 하나로 꽉 채워서 위 캐릭터 · 말풍선 · 아래 버튼과
+            //   시작점 · 끝점이 같게 (칸 안은 세로선으로 나눔)
+            // (11/18 피드백) 원래대로 — 회색 칸 없이 세로선으로만 나눈 한 줄 (애플 스타일 숫자 · 작은 회색 이름)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: IntrinsicHeight(
+                child: Row(children: [
+                  for (var i = 0; i < stats.length; i++) ...[
+                    if (i > 0) const VerticalDivider(width: 1, thickness: 1, indent: 4, endIndent: 4, color: AppColors.line),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                        Text(stats[i].$1,
+                            textAlign: TextAlign.center, style: AppType.title3.copyWith(color: AppColors.textPrimary)),
+                        const SizedBox(height: 2),
+                        Text(stats[i].$2,
+                            textAlign: TextAlign.center, style: AppType.footnote.copyWith(color: AppColors.textSecondary)),
+                      ]),
+                    ),
+                  ],
+                ]),
+              ),
             ),
           ],
           const SizedBox(height: 22),
-          resume ??
-              FilledButton.icon(
-                onPressed: onStart,
-                icon: const Icon(Icons.photo_camera_outlined, size: 20),
-                label: Text(startLabel),
-              ),
+          resume ?? _startButtons(),
         ],
       ),
     );
@@ -125,7 +243,7 @@ class HomeStateCard extends StatelessWidget {
     final stageColor = AppColors.stage(s);
     final small = s == 0 ? '오늘도 안전하게' : '지금 단계';
     final big = s == 0 ? '안전 운전\n중이에요' : StageTexts.headline(s);
-    final sub = s == 0 ? '편안한 운전을\n도와드릴게요' : null;
+    final sub = s == 0 ? '편안한 운전을\n도와 드릴게요' : null;
 
     return Container(
       clipBehavior: Clip.antiAlias,
@@ -276,7 +394,7 @@ class HomeStateCard extends StatelessWidget {
                         ],
                         shape: BoxShape.circle,
                       ),
-                      child: const ImageSlot(label: '메인 캐릭터 이미지', width: 140, height: 140),
+                      child: const Buddy(stage: 0, size: 140),
                     ),
                   ],
                 ),
@@ -781,4 +899,46 @@ Future<bool?> showPermissionSheet(
       ),
     ),
   );
+}
+
+/// (11/18 사용자 요청) 애플 메시지 같은 말풍선 — 연회색 둥근 칸 + 왼쪽 아래 작은 꼬리 (캐릭터 쪽을 가리킴)
+class SpeechBubble extends StatelessWidget {
+  static const Color gray = AppleGray.fill; // (11/19) 따뜻한 연회색 말풍선
+  final Widget child;
+  final Color color; // (11/18) 사용 가이드는 연한 남색
+  const SpeechBubble({super.key, required this.child, this.color = gray});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _BubbleTail(color),
+      child: Container(
+        margin: const EdgeInsets.only(left: 6), // 꼬리 자리
+        padding: const EdgeInsets.fromLTRB(16, 13, 16, 14),
+        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)),
+        child: child,
+      ),
+    );
+  }
+}
+
+/// 말풍선 왼쪽 아래로 살짝 휘어 나온 꼬리 (iMessage 받은 말풍선 모양)
+class _BubbleTail extends CustomPainter {
+  final Color color;
+  const _BubbleTail(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final b = size.height; // 아래 끝
+    final path = Path()
+      ..moveTo(6 + 14, b - 18) // 말풍선 안쪽에서 시작
+      ..lineTo(6 + 14, b)
+      ..quadraticBezierTo(8, b, 0, b - 1) // 왼쪽 아래 끝으로 휘어 나감
+      ..quadraticBezierTo(6, b - 6, 6, b - 18)
+      ..close();
+    canvas.drawPath(path, Paint()..color = color..isAntiAlias = true);
+  }
+
+  @override
+  bool shouldRepaint(_BubbleTail old) => old.color != color;
 }

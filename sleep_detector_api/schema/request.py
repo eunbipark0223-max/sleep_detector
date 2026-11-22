@@ -111,6 +111,27 @@ class EmailVerifyRequest(BaseModel):
     code : str = Field(..., min_length=4, max_length=10)
 
 
+class FindEmailRequest(BaseModel):
+    """(11/18 C) POST /users/find-email — 전화번호 인증 뒤 가입한 이메일 찾기"""
+    phone      : str = Field(..., max_length=30)
+    phone_token: str = Field(..., max_length=64)
+
+    @field_validator("phone")
+    def check_phone(cls, value):
+        return format_phone(value)
+
+
+class PasswordResetRequest(BaseModel):
+    """(11/18 C) POST /users/password/reset — 이메일 인증 뒤 새 비밀번호로 바꾸기 (로그인 안 한 상태)"""
+    email       : EmailStr
+    email_token : str = Field(..., max_length=64)
+    new_password: str
+
+    @field_validator("new_password")
+    def validate_new_password(cls, value):
+        return check_password_rules(value)
+
+
 class EmailChangeRequest(BaseModel):
     """(11/19) POST /users/me/email/request — 이메일 변경 인증번호 받기 (관리자 웹 '내 정보')"""
     new_email       : EmailStr = Field(..., description="바꿀 새 이메일")
