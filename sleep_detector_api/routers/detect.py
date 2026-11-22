@@ -2,15 +2,23 @@
 # routers/detect.py — 졸음 의심 사진 확인 + 운행 API  ⭐ 핵심
 # ═══════════════════════════════════════════════════════════════
 # 담당: 팀장   |   우선: P0 (퀴즈 연결은 P1)
-# 수업 원본: road_hazard_api/routers/detect.py (🟡 수정)
 #
 # [이 파일이 하는 일]
 #   - POST /detect — 앱이 '졸음 의심' 때만 보냄 (사진 1장 + reason · closed_sec · perclos · eye_open_prob · 위도 · 경도, JWT 필수)
-#   -   ① 로그인 · 사진 확인 (uploads/tmp/ 에 잠깐)
-#   -   ② 확인 판정 face_service → 취소면 사진 삭제 후 바로 응답 (is_sleep false, AI 안 부름)
-#   -   ③ sleep_state 에 졸음 1회 → 규칙 단계   ④ LLM 요약   ⑤ RAG 규정
-#   -   ⑥ Agent 단계 · 안내문 · 보고서 · driver_voice → 바닥 · 천장 검사 + 음성 보고 숫자 검사
-#   -   ⑦ 저장 (사진 uploads/events/ + DB 1줄)   ⑧ 음성 퀴즈 1문제 (경고 저장 뒤, quiz_id ↔ event_id 기억)
+#     (11/16 재설계) 경고는 규칙이 바로 (응답 전 0.1초 미만) · AI 는 응답 뒤에서 관리자 보고서만
+#     ── 응답 전 ──
+#   -   ① 로그인 · 사진 확인 (uploads/tmp/ 에 잠깐) · 휴식 중이면 무시 · half(반쯤 감은 눈)는 4번 중 3번일 때만 확정
+#   -   ② 확인 판정 face_service (CNN + EAR) → 취소면 사진 삭제 후 바로 응답 (is_sleep false, AI 안 부름)
+#   -   ②-1 예비 경고 (PRE_WARN_ON, 11/15부터 기본 꺼짐)
+#   -   ③ sleep_state 에 졸음 1회 → 규칙 단계 (0 ~ 3) · facts (10분 졸음 횟수 · 감은 시간 · 운전 시간) · stage_note
+#   -   ④ 단계 · 기사 음성 · 요약 = 규칙 템플릿 (llm_service.template_summary · agent_service.rule_response)
+#   -   ⑦ 저장 (확정 사진 uploads/events/ + DB 1줄, guidance = 기사가 실제로 들은 문장)
+#   -   ⑧ 2단계만 음성 퀴즈 1문제 (경고 저장 뒤, quiz_id ↔ event_id 기억) · 3단계는 [깨어 있어요] 버튼
+#   -   ⑨ 2단계부터 BackgroundTasks 로 _fill_ai_report 예약 → 앱에 응답
+#     ── 응답 뒤 (2단계부터, 약 3 ~ 6초) ──
+#   -   _fill_ai_report: LLM 상황 요약 → RAG 규정 → Agent 관리자 보고서 → 같은 경고 기록의 summary · report 채움
+#       단계는 바꾸지 않음 (AGENT_MAX_STEP_UP = 0) · guidance 는 덮어쓰지 않음 · 실패해도 템플릿 기록 그대로
+#   -   1단계는 AI 를 부르지 않음 (첫 졸음 · 무료 한도 보호)
 #   -   reason 이 비어 있으면 '사진 1장 테스트' → 서버 EAR 만으로 판정
 #   -   사진 없이 오면 (고개를 떨궈 얼굴을 놓친 채 감김, 10/28) → '얼굴 없음' 과 같이 앱 판단대로 확정 (method mlkit, photo_path 없음)
 #       사진 1장 테스트(reason 없음)는 사진이 꼭 있어야 함 → 400

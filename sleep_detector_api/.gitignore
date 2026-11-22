@@ -23,3 +23,6 @@ ml_models/*.task
 # 얼굴 사진 테스트 폴더 (face_service.py 단독 실행용) — 얼굴 사진은 절대 올리지 않음
 images/
 result_images/
+
+# W&B 실험 기록 로컬 폴더 (tools/stt_wandb.py 등) — 결과는 W&B 에만
+wandb/

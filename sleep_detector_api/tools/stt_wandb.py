@@ -7,7 +7,7 @@
 #   - 앱 시험 도구(lib/tools/stt_test_main.dart)가 모은 CSV 를 tools/stt_score.py 와 같은 코드로 채점
 #   - 시험(--run) 하나 = W&B run 하나: 통과율(전체 · 따라 말하기 · 덧셈) · 무응답 · 걸린 시간 ·
 #     유사도 기준별 통과율(0.6 ~ 0.9) · 파일(회차)별 통과율 · 틀린 문제 표(들은 글자)
-#   - 시험이 2개 이상이면 '00_비교' run 을 하나 더 만들어 막대그래프로 나란히
+#   - 시험이 2개 이상이면 '00_비교' run 을 하나 더 만들어 막대그래프로 나란히 (이름은 --compare-name)
 #
 # [실행] (sleep_detector_api 폴더)
 #   1. (처음 1번) venv\Scripts\pip install wandb   ← 시험 도구 전용, requirements.txt 에는 넣지 않음
@@ -114,7 +114,7 @@ def show(name, s, by_file, wrong, meta):
         print(f"    [{w[1]} {w[2]}] {w[3]} → '{w[4]}' ({w[5]}){'' if w[6] is None else f' 유사도 {w[6]}'}")
 
 
-def upload(results):
+def upload(results, compare_name="00_비교"):
     import wandb  # 시험 도구 전용 — 없으면 '처음 1번' 안내대로 설치
 
     for name, (s, by_file, wrong, meta) in results.items():
@@ -131,7 +131,7 @@ def upload(results):
         run.finish()
 
     if len(results) > 1:
-        run = wandb.init(project=PROJECT, name="00_비교", group="stt", job_type="compare",
+        run = wandb.init(project=PROJECT, name=compare_name, group="stt", job_type="compare",
                          reinit="finish_previous", settings=wandb.Settings(console="off"))
         cols = ["시험", "통과율/전체", "통과율/따라 말하기", "통과율/덧셈", f"기준별/따라 말하기 ≥{REPEAT_MIN_SCORE}"]
         t = wandb.Table(columns=cols, data=[[n] + [r[0].get(c) for c in cols[1:]] for n, r in results.items()])
@@ -142,7 +142,7 @@ def upload(results):
                 log[f"비교 — {c}"] = wandb.plot.bar(sub, "시험", c, title=c)
         run.log(log)
         run.finish()
-    print(f"\n✅ W&B 프로젝트 '{PROJECT}' 에 {len(results)}개 시험" + (" + 00_비교" if len(results) > 1 else "") + " 올림")
+    print(f"\n✅ W&B 프로젝트 '{PROJECT}' 에 {len(results)}개 시험" + (f" + {compare_name}" if len(results) > 1 else "") + " 올림")
 
 
 def main():
@@ -150,6 +150,7 @@ def main():
     ap.add_argument("--run", nargs="+", action="append", required=True, metavar=("이름", "CSV"),
                     help="시험 이름 다음에 그 시험의 CSV 파일들 (여러 번 쓸 수 있음)")
     ap.add_argument("--dry", action="store_true", help="W&B 에 올리지 않고 표만 보기")
+    ap.add_argument("--compare-name", default="00_비교", help="비교 run 이름 (여러 번 올릴 때 겹치지 않게, 예: 00_비교_1029)")
     a = ap.parse_args()
 
     results = {}
@@ -169,7 +170,7 @@ def main():
     if a.dry:
         print("\n(--dry) W&B 에 올리지 않음")
     else:
-        upload(results)
+        upload(results, a.compare_name)
 
 
 if __name__ == "__main__":
