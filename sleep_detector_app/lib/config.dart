@@ -8,7 +8,7 @@
 //   - eyeClosedProb = 0.4      두 눈 평균 눈 뜸 확률이 이보다 작으면 '감김' (개인 기준이 없을 때, 10/27 0.3 → 0.2, 10/28 0.25, 11/02 0.4 확정)
 //   - smileOpenProb = 0.8      (🆕 11/04) 웃음 확률이 이 이상이면 감김으로 세지 않음
 //   - closedSec = 1.5          감김이 이만큼 이어지면 미세수면 의심
-//   - microsleepPhotos = 3 · photoGapSec   (🆕 11/09) 눈 감김 미세수면 때 넘기는 사진 수 · 보관 간격
+//   - microsleepPhotos = 1 · photoGapSec   (11/09 3장 → 11/23 1장) 눈 감김 순간 졸음 때 넘기는 사진 수 · 보관 간격
 //   - graceAfterWarningSec = 10   (🆕 11/10) 경고 뒤 눈을 한 번 뜨면 그때부터 미세수면 · 숙임 의심을 안 내는 시간
 //   - eyeResendOn              (🆕 11/10) 눈 감김을 서버가 취소했는데 계속 감으면 사진 없이 한 번 더
 //   - halfCheckOn (기본 꺼짐) · halfCheckSec = 10   (🆕 11/10) 반쯤 감은 눈 확인 사진 → onHalfCheck → 서버 EAR (출발 전 뜬 눈 × 0.85)
@@ -51,7 +51,9 @@ class AppConfig {
   // 🆕 (11/09) 미세수면(눈 감김) 의심 때 넘기는 사진 수 — 감김 처음 · 가운데 · 마지막 (팀장 3장 검토, 11/07 1장 vs 3장 시험)
   //   감는 동안 프레임을 photoGapSec 간격으로만 들고 있음 (1.5초 → 최대 약 8장, 의심 뒤 · 눈 뜨면 바로 비움)
   //   고개 숙임 · PERCLOS 는 1장, 재전송은 사진 없음 (11/09 팀장 결정: 숙임은 얼굴 없는 사진이 많고 재전송이 있음, PERCLOS 는 바로 확정 · 사진은 기록용)
-  static const int microsleepPhotos = 3;
+  //   (11/23 팀장) 1장으로 통일 — 서버 다수결은 근거 부족으로 채택 안 함 (D:	est_three_photos 에 보류), 서버는 'file' 1장으로만 판정
+  //   1이면 마지막 장만 남고 api_service 가 files 칸을 보내지 않음 (frames 2장 이상일 때만) → 'file' 사진은 지금까지와 같음
+  static const int microsleepPhotos = 1;
   static const double photoGapSec = 0.2;
 
   // 피로 누적(PERCLOS): 최근 30초 창 및 15% 임계값

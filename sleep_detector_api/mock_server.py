@@ -226,7 +226,7 @@ def make_ai_text(stage: int, reason: str, count: int, closed_sec: float, perclos
     if reason == "perclos":
         summary = f"최근 30초 중 {int(round(perclos * 100))}% 동안 눈을 감아 피로가 쌓인 상태로 보여요. 10분 안에 {count}번째 졸음이에요."
     else:
-        summary = f"약 {closed}초간 눈을 감은 미세수면 상태로 보여요. 10분 안에 {count}번째 졸음이에요." if closed >= 1 else f"졸음이 감지됐어요. 10분 안에 {count}번째 졸음이에요."
+        summary = f"약 {closed}초간 눈을 감은 순간 졸음 상태로 보여요. 10분 안에 {count}번째 졸음이에요." if closed >= 1 else f"졸음이 감지됐어요. 10분 안에 {count}번째 졸음이에요."
     # (11/16 팀장) 음성은 '사실 하나 + 행동 하나' 짧은 한 문장 (진짜 서버 agent_service._template_voice 와 같음, 이름은 응답 때 붙임)
     if stage == 1:
         voice = f"{closed}초 동안 눈을 감았어요. 정신 차려 주세요." if closed >= 1 else "눈을 자주 감고 있어요. 정신 차려 주세요."
@@ -378,7 +378,7 @@ def seed() -> None:
               "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[1], "location": "37.4021, 127.1088",
               "eye": {"closed_sec": 2.1, "perclos": 0.12, "eye_open_prob": 0.18}, "driving_quiz": quiz_ok,
               "is_real": {"llm": True, "rag": True, "agent": True, "driver_voice": True}},  # 시험용: 전부 진짜인 경고
-              summary="약 2초간 눈을 감은 미세수면 상태로 보여요. 10분 안에 1번째 졸음이에요.", guidance=GUIDANCE[1], ear=0.17, method="ear",
+              summary="약 2초간 눈을 감은 순간 졸음 상태로 보여요. 10분 안에 1번째 졸음이에요.", guidance=GUIDANCE[1], ear=0.17, method="ear",
               perclos=0.12, eye_closed_prob=0.82, lat=37.4021, lng=127.1088, status="확인", created_at=_now_text(now - timedelta(hours=3)))
     add_event(1, 2, "perclos", {"situation": "10분 안 두 번째 졸음, PERCLOS 33%", "stage_reason": STAGE_REASON[2],
               "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[2], "location": "37.4105, 127.1190",
@@ -392,9 +392,9 @@ def seed() -> None:
               "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[3], "location": "37.3950, 127.1100",
               "driving_quiz": quiz_fail}, summary="운전 중 음성 퀴즈에 2번 답하지 못했습니다.", guidance=GUIDANCE[3],
               lat=37.3950, lng=127.1100, created_at=_now_text(now - timedelta(minutes=20)))
-    add_event(1, 1, "rest_overdue", {"situation": "연속 운전 2시간 안내 뒤 15분 안에 쉬지 않음", "stage_reason": "휴게 미준수 (단계는 올리지 않고 최소 1단계로 기록)",
+    add_event(1, 1, "rest_overdue", {"situation": "연속 2시간 15분 운전 · 휴게 알림 뒤 15분 동안 쉬지 않음", "stage_reason": "\"연속 2시간 운전 후 15분 휴식\" 규정 미준수",  # (11/23 팀장) 진짜 서버와 같은 정해진 문장
               "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": "기사에게 휴식 안내", "location": "37.4300, 127.1300"},
-              summary="휴게 시간을 지키지 않았습니다.", guidance="가까운 졸음쉼터에서 쉬어 주세요.",
+              summary="연속 2시간 15분 운전 · 휴게 알림 뒤 15분 동안 쉬지 않음", guidance="가까운 졸음쉼터에서 15분 이상 쉬어 주세요.",
               lat=37.4300, lng=127.1300, created_at=_now_text(now - timedelta(minutes=50)))
 
 
@@ -448,6 +448,9 @@ def seed_more() -> None:
             make(u["id"], stage, reason, when, "조치완료" if stage == 3 else ("휴식완료" if stage == 2 else "확인"), rng_old)
 
 
+REST_OVERDUE_REASON = "\"연속 2시간 운전 후 15분 휴식\" 규정 미준수"   # (11/23 팀장) 진짜 서버와 같은 정해진 문장
+
+
 def demo_history(user_id: int) -> int:
     """(11/17 C) 화면 확인용 운행 기록 — 최근 3주에 걸친 경고 + 방금 생긴 경고 2개(알림 '새 알림' 확인용).
 
@@ -457,9 +460,9 @@ def demo_history(user_id: int) -> int:
     quiz_ok = [{"type": "add", "asked": "23+45", "heard": "육십팔", "passed": True, "answer_sec": 2.1}]
     quiz_fail = [{"type": "repeat", "asked": "졸리면 쉬어 가겠습니다", "heard": "", "passed": False, "answer_sec": None}]
     situations = {
-        "microsleep": "약 {s}초간 눈을 감은 미세수면 상태로 보여요.",
+        "microsleep": "약 {s}초간 눈을 감은 순간 졸음 상태로 보여요.",
         "perclos": "최근 30초 중 {p}% 동안 눈을 감아 피로가 쌓인 상태로 보여요.",
-        "rest_overdue": "연속 운전 2시간 안내 뒤 15분 안에 쉬지 않았어요.",
+        "rest_overdue": "연속 2시간 15분 운전 · 휴게 알림 뒤 15분 동안 쉬지 않음",
         "no_response": "운전 중 음성 퀴즈에 2번 답하지 못했어요.",
     }
     # (며칠 전, 시, 분, 단계, 이유, 처리 상태)  — 0일 전 = 오늘
@@ -480,7 +483,7 @@ def demo_history(user_id: int) -> int:
         closed = round(1.2 + (i % 4) * 0.4, 1)
         perclos = 0.18 + (i % 5) * 0.05
         add_event(user_id, stage, reason, {
-            "situation": situations[reason].format(s=closed, p=int(perclos * 100)), "stage_reason": STAGE_REASON[stage],
+            "situation": situations[reason].format(s=closed, p=int(perclos * 100)), "stage_reason": (REST_OVERDUE_REASON if reason == "rest_overdue" else STAGE_REASON[stage]),
             "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[stage], "location": f"{lat}, {lng}",
             "eye": {"closed_sec": closed, "perclos": perclos, "eye_open_prob": 0.3} if reason in ("microsleep", "perclos") else None,
             "driving_quiz": quiz_fail if reason == "no_response" else quiz_ok,
@@ -491,7 +494,7 @@ def demo_history(user_id: int) -> int:
         n += 1
     # 방금 생긴 경고 2개 — 알림 화면 '새 알림' 과 종 빨간 숫자 확인용
     for mins, stage, reason in ((6, 1, "microsleep"), (1, 2, "perclos")):
-        add_event(user_id, stage, reason, {"situation": situations[reason].format(s=1.8, p=31), "stage_reason": STAGE_REASON[stage],
+        add_event(user_id, stage, reason, {"situation": situations[reason].format(s=1.8, p=31), "stage_reason": (REST_OVERDUE_REASON if reason == "rest_overdue" else STAGE_REASON[stage]),
                   "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[stage], "location": "37.4021, 127.1088",
                   "eye": {"closed_sec": 1.8, "perclos": 0.31, "eye_open_prob": 0.3}, "driving_quiz": quiz_ok},
                   summary=situations[reason].format(s=1.8, p=31), guidance=GUIDANCE[stage], ear=0.18, method="ear",
@@ -1051,7 +1054,8 @@ def drive_state(user: dict = Depends(current_user)):
             "resting": resting, "rest_left_sec": left, "drive_min": drive_min_of(st), "summary": summary, "guidance": guidance}
 
 
-_REASON_TEXT = {"microsleep": "눈 감김", "perclos": "피로 누적", "no_face": "고개 숙임", "half": "눈 반쯤 감김"}
+_REASON_TEXT = {"microsleep": "순간 졸음", "perclos": "졸음 잦음", "no_face": "고개 숙임", "half": "눈 반쯤 감김",   # (11/23 팀장 용어표) 진짜 서버와 같게
+                "rest_overdue": "휴식 안 함", "no_response": "퀴즈 응답 없음", "pre_warning": "첫 졸음"}
 
 
 @app.post("/drive/end")

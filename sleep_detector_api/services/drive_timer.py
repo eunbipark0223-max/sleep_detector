@@ -67,6 +67,17 @@ def _find_rest_rule():
     return FALLBACK_RULE
 
 
+def span_text(minutes):
+    """분 → 소리 · 글로 읽기 좋은 말: 120 → '2시간' · 135 → '2시간 15분' · 2 → '2분'"""
+    h, m = divmod(int(minutes or 0), 60)
+    return f"{h}시간 {m}분" if h and m else (f"{h}시간" if h else f"{m}분")
+
+
+def rest_rule():
+    """휴게 규정 이름 (휴게 알림 때 RAG 로 찾아 둔 것 · 없으면 다시 찾고, 실패하면 기본 문구) — 휴게 미준수 기록의 '참고한 법규'"""
+    return _find_rest_rule()
+
+
 def _rest_message():
     hours = DRIVE_LIMIT_MIN // 60
     span = f"{hours}시간" if hours else f"{DRIVE_LIMIT_MIN}분"

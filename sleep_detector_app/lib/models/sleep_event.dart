@@ -6,7 +6,7 @@
 // [이 파일이 하는 일]
 //   - GET /events/my 의 한 줄
 //   - stageLabel (0~3 이름) · reason 이름
-//   -   microsleep 미세수면 · perclos 피로 누적 · rest_overdue 휴게 미준수 · no_response 음성 응답 없음
+//   -   microsleep 순간 졸음 · perclos 졸음 잦음 · rest_overdue 휴식 안 함 · no_response 퀴즈 응답 없음 (11/23 용어표)
 //
 // [주의]
 //   - 칸 이름은 서버 schema/response.py 의 SleepEventResponse 와 같다 (snake_case → camelCase)
@@ -20,10 +20,10 @@ import 'dart:convert';
 class SleepEvent {
   static const List<String> stageLabels = ['정상', '주의', '휴식 권고', '긴급'];
   static const Map<String, String> reasonLabels = {
-    'microsleep': '미세수면',
-    'perclos': '피로 누적',
-    'rest_overdue': '휴게 미준수',
-    'no_response': '음성 응답 없음',
+    'microsleep': '순간 졸음',
+    'perclos': '졸음 잦음',
+    'rest_overdue': '휴식 안 함',
+    'no_response': '퀴즈 응답 없음',
     'pre_warning': '첫 졸음',
   };
 
@@ -76,7 +76,7 @@ class SleepEvent {
     return '${two(t.month)}/${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
   }
 
-  /// 관리자 웹에서 빨간 줄로 보이는 경고 (3단계 · 음성 응답 없음)
+  /// 관리자 웹에서 빨간 줄로 보이는 경고 (3단계 · 퀴즈 응답 없음)
   bool get isUrgent => stage == 3 || reason == 'no_response';
 
   /// 보고서 속 운전 중 퀴즈 기록 (type · asked · heard · passed · answer_sec)

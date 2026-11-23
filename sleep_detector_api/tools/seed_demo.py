@@ -8,7 +8,7 @@
 #   - 예시 기사 이메일은 모두 @demo.test (예약된 가짜 주소) → 진짜 계정과 섞이지 않고, --clear 로 이 기사들과 경고만 지운다
 #   - 경고는 실제 서버가 만드는 모양 그대로: 단계 1~3 · reason(microsleep · perclos · rest_overdue · no_response) ·
 #     상태 · 보고서 JSON(눈 숫자 · 운전 중 퀴즈 · 휴식 기록). 졸음이 몰리는 새벽 · 점심 뒤 · 밤 시간대가 더 많다
-#   - 오늘 안에 아직 처리 안 된 3단계 · "음성 응답 없음"을 몇 건 남겨서 긴급 알림 · 긴급 카드도 보인다
+#   - 오늘 안에 아직 처리 안 된 3단계 · "퀴즈 응답 없음"을 몇 건 남겨서 긴급 알림 · 긴급 카드도 보인다
 #   - 사진은 만들지 않는다 (얼굴 사진은 가짜로도 만들지 않음) → 관리자 웹에는 "사진 없음"으로 보인다
 #   - 예시 기사의 비밀번호는 아무도 모르는 무작위 값 (로그인 못 함)
 #
@@ -75,15 +75,15 @@ def make_event(rng, driver_idx, when, stage, reason, status, count):
     if reason == "perclos":
         summary = f"최근 30초 중 {int(round(perclos * 100))}% 동안 눈을 감아 피로가 쌓인 상태로 보여요. 10분 안에 {count}번째 졸음이에요."
     elif reason == "microsleep":
-        summary = f"약 {int(round(closed_sec))}초간 눈을 감은 미세수면 상태로 보여요. 10분 안에 {count}번째 졸음이에요."
+        summary = f"약 {int(round(closed_sec))}초간 눈을 감은 순간 졸음 상태로 보여요. 10분 안에 {count}번째 졸음이에요."
     elif reason == "rest_overdue":
-        summary = "연속 운전 2시간이 지났는데 휴식을 취하지 않았습니다."
+        summary = "연속 2시간 15분 운전 · 휴게 알림 뒤 15분 동안 쉬지 않음"   # (11/23 팀장) 진짜 서버와 같은 정해진 문장
     else:
         summary = "운전 중 음성 퀴즈에 2번 답하지 못했습니다."
 
     report = {
         "situation": summary,
-        "stage_reason": "연속 운전 2시간 초과 · 휴게 미준수" if reason == "rest_overdue" else STAGE_REASON[stage],
+        "stage_reason": "\"연속 2시간 운전 후 15분 휴식\" 규정 미준수" if reason == "rest_overdue" else STAGE_REASON[stage],
         "regulation": REGULATION,
         "recommended_action": "기사에게 휴식 안내" if reason == "rest_overdue" else RECOMMENDED[stage],
         "location": f"{lat}, {lng}",
@@ -149,7 +149,7 @@ def build_events(rng, n_drivers, days, now):
                 when = day + timedelta(hours=rng.randint(10, 20), minutes=rng.randint(0, 59))
                 if when <= now:
                     events.append(dict(driver=d, when=when, stage=1, reason="rest_overdue", age=age, count=1))
-    # 오늘 처리 안 된 긴급(3단계 · 음성 응답 없음)이 최소 2건은 있게 (시연에서 긴급 카드 · 알림이 비어 보이지 않게)
+    # 오늘 처리 안 된 긴급(3단계 · 퀴즈 응답 없음)이 최소 2건은 있게 (시연에서 긴급 카드 · 알림이 비어 보이지 않게)
     todays = [e for e in events if e["age"] == 0 and (e["stage"] == 3 or e["reason"] == "no_response")]
     for k in range(max(0, 2 - len(todays))):
         d = k % n_drivers
@@ -170,7 +170,7 @@ def summarize(events, n_drivers):
     print(f"  예시 기사 {n_drivers}명 · 경고 {len(events)}건")
     print("  단계별  :", " · ".join(f"{s}단계 {by_stage.get(s, 0)}건" for s in (1, 2, 3)))
     print("  종류별  :", " · ".join(f"{k} {v}건" for k, v in sorted(by_reason.items())))
-    print(f"  처리 안 된 긴급(3단계 · 음성 응답 없음): {open_urgent}건")
+    print(f"  처리 안 된 긴급(3단계 · 퀴즈 응답 없음): {open_urgent}건")
 
 
 def open_session(db_url):

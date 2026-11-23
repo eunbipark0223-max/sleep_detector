@@ -231,12 +231,22 @@ def drive_ping_handler(
     stage = int(sleep_state.get_stage(user.id))
 
     if t["rest_overdue"]:                    # 휴게 알림 뒤 15분 안에 안 쉼 → 경고 1줄 (단계는 그대로)
+        # (11/23 팀장) 관리자 상세 'AI 분석 결과' 칸을 AI 없이 정해진 문장으로 채움 — 숫자 · 규정이 정해져 있어 정확하고 무료 한도도 안 씀
+        situation = (f"연속 {drive_timer.span_text(t['drive_min'])} 운전 · "
+                     f"휴게 알림 뒤 {config.REST_GRACE_MIN}분 동안 쉬지 않음")
         session.add(SleepEvent(
             user_id=user.id, stage=max(stage, 1), reason="rest_overdue", method="mlkit",
             perclos=body.perclos if body else None,
-            summary=f"휴게 알림 뒤 {config.REST_GRACE_MIN}분이 지나도록 휴식하지 않았습니다 (연속 운전 {t['drive_min']}분).",
+            summary=situation,
             guidance=f"가까운 졸음쉼터에서 {config.REST_MIN}분 이상 쉬어 주세요.",
-            report=json.dumps({"situation": "휴게 미준수", "drive_min": t["drive_min"]}, ensure_ascii=False),
+            report=json.dumps({
+                "situation": situation,
+                "stage_reason": f"\"연속 {drive_timer.span_text(config.DRIVE_LIMIT_MIN)} 운전 후 {config.REST_MIN}분 휴식\" 규정 미준수",
+                "regulation": drive_timer.rest_rule(),
+                "recommended_action": "기사에게 연락해 휴식 안내",
+                "drive_min": t["drive_min"],
+                "is_real": {"llm": False, "rag": False, "agent": False, "driver_voice": False},   # 정해진 문장 (AI 아님)
+            }, ensure_ascii=False),
         ))
         session.commit()
 
@@ -282,8 +292,9 @@ _session_start: dict[int, tuple] = {}   # user_id → (시작 시각, 그때 마
 _drive_reports: dict[str, dict] = {}
 DRIVE_REPORT_KEEP_SEC = 600   # 10분 지난 것은 지움 (앱은 화면을 연 동안만 물어봄)
 STAGE1_DELIVERED = "졸음이 감지됐어요. 정신 차려 주세요."   # (11/18) 앱 1단계 음성과 같은 문장 (drive_screen._stage1Voice · stage_texts)
-_REASON_TEXT = {"microsleep": "눈 감김", "perclos": "피로 누적", "no_face": "고개 숙임", "half": "눈 반쯤 감김",
-                "rest_overdue": "휴게 미준수"}
+# (11/23 팀장 용어표) 운행 리포트 타임라인 = 기사 앱 말 (관리자 웹은 admin.html REASON_LABEL)
+_REASON_TEXT = {"microsleep": "순간 졸음", "perclos": "졸음 잦음", "no_face": "고개 숙임", "half": "눈 반쯤 감김",
+                "rest_overdue": "휴식 안 함", "no_response": "퀴즈 응답 없음", "pre_warning": "첫 졸음"}
 
 
 def _driver_name(name):

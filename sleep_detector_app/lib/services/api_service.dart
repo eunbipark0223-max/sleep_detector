@@ -90,6 +90,7 @@ class ApiService {
   // ── 함수들 (이름 약속 그대로) ───────────────────────────────────
 
   // 여러 장 사진을 보낼 칸 이름 — 서버(팀장 다수결 판정)와 맞춰 정할 것. 정해지면 이 한 줄만 바꾸면 됨 (11/10)
+  //   (11/23 팀장) AppConfig.microsleepPhotos = 1 로 통일 → frames 가 1장이라 이 칸은 지금 보내지 않음
   //   지금 서버는 이 칸을 모르면 그냥 무시하고 'file' 1장으로 판정한다 → 서버가 바뀌기 전에도 앱은 그대로 돌아감
   static const String detectFramesField = 'files';
 

@@ -340,8 +340,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       .replaceAllMapped(RegExp(r'PERCLOS\s*\(?([0-9.]+)\s*%\)?', caseSensitive: false), (m) => '눈을 감고 있던 시간 ${m[1]}%')
       .replaceAll(RegExp(r'PERCLOS', caseSensitive: false), '눈을 감고 있던 시간 비율')
       .replaceAll(RegExp(r'\bEAR\b'), '눈 뜬 정도')
-      .replaceAll(RegExp(r'microsleep', caseSensitive: false), '아주 짧은 졸음')
-      .replaceAll('미세수면', '아주 짧은 졸음(미세수면)');
+      .replaceAll(RegExp(r'microsleep', caseSensitive: false), '순간 졸음')
+      .replaceAll('미세수면', '순간 졸음'); // (11/23 팀장 용어표) 예전 기록 문장도 같은 말로
 
   // 남색 AI 카드 안 한 줄 (11/19 안 씀 · 되돌릴 때 참고)
   // ignore: unused_element
