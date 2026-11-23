@@ -1704,6 +1704,14 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         h('h3', { class: 'sheet-title', id: 'pageTitle', tabindex: '-1' }, nameKids),
         sub ? h('p', { class: 'sheet-sub' }, sub) : null);
     }
+    // (11/23 팀장) 사진이 없는 이유 — 30일 지나 지움 · 운전 시간 기록 · 퀴즈 기록 · 고개를 떨궈 얼굴이 안 찍힘
+    function noPhotoText(e) {
+      if (Date.now() - new Date(e.created_at).getTime() > 30 * 864e5) return '보관 기간(30일)이 지나 사진을 지웠어요';
+      if (e.reason === 'rest_overdue') return '운전 시간 기록이라 사진이 없어요';
+      if (e.reason === 'no_response') return '퀴즈 응답 기록이라 사진이 없어요';
+      if (e.reason === 'microsleep') return '고개를 떨궈 얼굴이 찍히지 않았어요';
+      return '캡처 사진이 없어요';
+    }
     // 사진 칸: 사진이 없어도 같은 크기의 네모를 보여 줌
     function photoSlot(url, cap, emptyText) {
       return h('div', { class: 'sheet-photo' },
@@ -1769,7 +1777,8 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
           h('p', { class: 'q-line' }, icon('volume', 14), q.asked),
           h('p', { class: 'q-line' }, icon('mic', 14), q.heard ? q.heard : '무응답'))))) : null;
       // 졸음 순간 캡처 사진: 창 맨 위에 크게 (사진이 없는 경고에는 자리를 만들지 않음)
-      const photoSec = photoSlot(e.photo_url, '졸음 순간 캡처 · ' + fmtTime(e.created_at), '캡처 사진이 없어요');
+      const photoSec = photoSlot(e.photo_url,
+        (e.reason === 'no_response' ? '퀴즈 직전 졸음 경고 사진 · ' : '졸음 순간 캡처 · ') + fmtTime(e.created_at), noPhotoText(e));
 
       // 아래 고정 버튼: [전화 연결](번호가 없으면 [이메일 보내기]) + [조치완료](미처리 긴급일 때) 아니면 [기사 상세]
       const foot = [

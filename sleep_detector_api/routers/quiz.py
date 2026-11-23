@@ -93,8 +93,12 @@ def quiz_answer_handler(
         new_stage = int(sleep_state.set_stage(user.id, stage + 1))
         stage_up, stage = new_stage > stage, new_stage
         message = MSG_NO_RESPONSE
+        # (11/23 팀장) 퀴즈를 내게 만든 2단계 경고의 사진을 같이 보여 줌 — 새로 찍지 않고 같은 파일을 가리키기만
+        #   30일 자동 삭제(photo_cleanup)는 파일이 이미 없어도 photo_path 만 비우므로 두 경고가 같은 파일을 써도 괜찮음
+        src = session.get(SleepEvent, event_id) if event_id else None
+        src_photo = src.photo_path if src is not None and src.user_id == user.id else None
         session.add(SleepEvent(
-            user_id=user.id, stage=stage, reason="no_response", method="mlkit", status="미확인",
+            user_id=user.id, stage=stage, reason="no_response", method="mlkit", status="미확인", photo_path=src_photo,
             summary=f"운전 중 음성 퀴즈에 {config.VOICE_QUIZ_MAX_TRIES}번 답하지 못했습니다.",
             guidance=MSG_NO_RESPONSE,
             report=json.dumps({"situation": "운전 중 음성 퀴즈 응답 없음", "stage_reason": "퀴즈 2번 실패로 한 단계 올림",
