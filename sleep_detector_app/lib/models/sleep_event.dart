@@ -2,11 +2,12 @@
 // models/sleep_event.dart — 경고 1건 (운행 기록 목록)
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P0
+// 수업 원본: road_hazard_app/lib/models/hazard.dart (🟡 이름 변경 + 수정)
 //
 // [이 파일이 하는 일]
 //   - GET /events/my 의 한 줄
 //   - stageLabel (0~3 이름) · reason 이름
-//   -   microsleep 순간 졸음 · perclos 졸음 잦음 · rest_overdue 휴식 안 함 · no_response 퀴즈 응답 없음 (11/23 용어표)
+//   -   microsleep 미세수면 · perclos 피로 누적 · rest_overdue 휴게 미준수 · no_response 음성 응답 없음
 //
 // [주의]
 //   - 칸 이름은 서버 schema/response.py 의 SleepEventResponse 와 같다 (snake_case → camelCase)
@@ -20,6 +21,7 @@ import 'dart:convert';
 class SleepEvent {
   static const List<String> stageLabels = ['정상', '주의', '휴식 권고', '긴급'];
   static const Map<String, String> reasonLabels = {
+    // (11/23 시나리오) 앱(기사님)에서 부르는 이름
     'microsleep': '순간 졸음',
     'perclos': '졸음 잦음',
     'rest_overdue': '휴식 안 함',
@@ -67,7 +69,9 @@ class SleepEvent {
   String get stageLabel => reason == 'pre_warning' ? '예비 경고' : stageLabels[stage.clamp(0, 3)];
 
   /// 경고 종류 이름. 모르는 값이면 서버가 준 글자 그대로.
-  String get reasonLabel => reasonLabels[reason] ?? reason;
+  // (11/23 사용자 요청) '미세수면' · '피로 누적' 이 애매해서 단계 이름으로 통일 — '음성 응답 없음' 만 그대로
+  // (11/23 시나리오) 이유 이름 = 순간 졸음 · 졸음 잦음 · 퀴즈 응답 없음 · 휴식 안 함 (모르는 이유면 단계 이름)
+  String get reasonLabel => reasonLabels[reason] ?? const ['정상', '주의', '휴식 권고', '긴급'][stage.clamp(0, 3)];
 
   /// 목록에 보여 줄 발생 시각 (예: 10/27 16:30)
   String get createdLabel {
@@ -76,7 +80,7 @@ class SleepEvent {
     return '${two(t.month)}/${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
   }
 
-  /// 관리자 웹에서 빨간 줄로 보이는 경고 (3단계 · 퀴즈 응답 없음)
+  /// 관리자 웹에서 빨간 줄로 보이는 경고 (3단계 · 음성 응답 없음)
   bool get isUrgent => stage == 3 || reason == 'no_response';
 
   /// 보고서 속 운전 중 퀴즈 기록 (type · asked · heard · passed · answer_sec)
@@ -113,7 +117,7 @@ class SleepEvent {
     );
   }
 
-  // '5' 같은 문자열 사고 방지 — 숫자 칸이 글자로 와도 숫자로 바꿔 읽는다
+  // 수업에서 배운 '5' 문자열 사고 방지 — 숫자 칸이 글자로 와도 숫자로 바꿔 읽는다
   static int _toInt(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
   static double? _toDouble(dynamic v) => v is num ? v.toDouble() : double.tryParse('${v ?? ''}');
 

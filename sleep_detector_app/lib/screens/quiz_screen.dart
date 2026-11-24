@@ -30,6 +30,7 @@ import '../services/voice_service.dart';
 import '../design_tokens.dart';
 import '../theme.dart';
 import '../widgets/buddy.dart';
+import '../widgets/owl_says.dart' show keepWords, balancedLines;
 
 class QuizScreen extends StatefulWidget {
   final VoiceQuiz quiz;
@@ -161,7 +162,9 @@ class _QuizScreenState extends State<QuizScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // (11/19 사용자 요청 · Headspace) 단계 알약 + 큰 흰 카드 안에 따라 말할 문장 (운전석에서 한눈에 읽히게 아주 크게)
-                Center(
+                // (11/24 사용자 요청 · 애플식) 모든 글 왼쪽 시작선
+                Align(
+                  alignment: Alignment.centerLeft,
                   child: Container(
                     padding: const EdgeInsets.fromLTRB(12, 7, 14, 7),
                     decoration: BoxDecoration(color: AppColors.stageTint(_stage), borderRadius: BorderRadius.circular(999)),
@@ -172,7 +175,7 @@ class _QuizScreenState extends State<QuizScreen> {
                         decoration: BoxDecoration(color: AppColors.stage(_stage), shape: BoxShape.circle),
                       ),
                       const SizedBox(width: 7),
-                      Text('$_stage단계 | ${const ['정상', '주의', '휴식 권고', '긴급'][_stage.clamp(0, 3)]} · $_typeLabel',
+                      Text('${const ['정상', '주의', '휴식 권고', '긴급'][_stage.clamp(0, 3)]} · $_typeLabel',
                           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.stageInk(_stage))),
                     ]),
                   ),
@@ -181,61 +184,60 @@ class _QuizScreenState extends State<QuizScreen> {
                 Container(
                   padding: const EdgeInsets.fromLTRB(20, 22, 20, 26),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(28),
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [for (final c in AppIllust.cardGradient[2]) c.withValues(alpha: 0.78)],
-                    ),
+                    // (11/23 리디자인_3) 흰색 → 아주 연한 노랑 · 얇은 테두리 · 둥글기 16
+                    borderRadius: BorderRadius.circular(AppRadius.card),
+                    // (11/24) 흰 카드 · 테두리 없이 부드러운 그림자
+                    color: Colors.white,
+                    boxShadow: AppShadow.card,
                   ),
-                  child: Column(children: [
-                    Buddy(stage: 0, size: 44, breathe: false),
-                    const SizedBox(height: 10),
-                    const Text('크게 말하세요',
-                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xB31C2033))),
-                    const SizedBox(height: 12),
-                    Text(question,
-                        textAlign: TextAlign.center,
-                        maxLines: 3,
-                        style: const TextStyle(fontSize: 38, height: 1.3, fontWeight: FontWeight.w800, letterSpacing: -1.0, color: AppColors.textPrimary)),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      const Buddy(stage: 2, size: 30, breathe: false), // (11/23 사용자 요청) 2단계 주황
+                      const SizedBox(width: 10),
+                      const Text('크게 말하세요', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xB31C2033))),
+                    ]),
+                    const SizedBox(height: 16),
+                    // (11/24 사용자 요청 · 3단계 카드처럼) 뜻 단위로 한 줄씩 · 줄마다 한 줄 고정 (단어 중간에서 안 끊김) · 왼쪽 시작선
+                    for (final (i, line) in balancedLines(question.replaceAll('"', '').replaceAll('“', '').replaceAll('”', '')).indexed) ...[
+                      if (i > 0) const SizedBox(height: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 40), // (11/24 사용자 요청) '크게 말하세요' 글자와 같은 시작선
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(line,
+                              maxLines: 1,
+                              softWrap: false,
+                              style: const TextStyle(fontSize: 34, height: 1.3, fontWeight: FontWeight.w800, letterSpacing: -0.8, color: AppColors.textPrimary)), // (11/24) 조금 크게
+                        ),
+                      ),
+                    ],
                   ]),
                 ),
                 const Spacer(),
                 // 마이크 (듣는 중이면 물결)
                 Center(child: _MicOrbit(active: listening, color: stateColor)),
                 const SizedBox(height: 12),
+                // (11/24 사용자 요청) 남색 점 + '듣는 중' — 카드 안 '크게 말하세요' 와 같은 시작선 · '들은 글자' 칸은 뺌 (결과는 이 줄에)
                 SizedBox(
                   height: 30,
-                  child: listening
-                      ? Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(width: 9, height: 9, decoration: BoxDecoration(color: stateColor, shape: BoxShape.circle)),
-                            const SizedBox(width: 7),
-                            Text(again ? '다시 한번 말씀해 주세요' : '듣는 중',
-                                style: AppType.headline.copyWith(color: AppColors.textPrimary)), // (11/18 팀장) 글자는 진회색
-                          ],
+                  child: (listening || _message.isNotEmpty)
+                      ? Padding(
+                          padding: const EdgeInsets.only(left: 20),
+                          child: Row(children: [
+                            Container(width: 9, height: 9, decoration: const BoxDecoration(color: AppColors.navy, shape: BoxShape.circle)),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(listening ? (again ? '다시 한번 말씀해 주세요' : '듣는 중') : _message,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppType.headline.copyWith(color: AppColors.textPrimary)),
+                            ),
+                          ]),
                         )
                       : null,
                 ),
                 const Spacer(),
-                // 들은 글자 · 결과
-                Container(
-                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-                  decoration: BoxDecoration(color: AppleGray.fill, borderRadius: BorderRadius.circular(AppRadius.card)),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(_message.isNotEmpty ? '결과' : '들은 글자',
-                          style: AppType.footnote.copyWith(fontWeight: FontWeight.w600, color: _sub)),
-                      const SizedBox(height: 6),
-                      Text(
-                        _message.isNotEmpty ? _message : (_heard.isEmpty ? '…' : _heard),
-                        style: AppType.title3.copyWith(color: AppColors.textPrimary),
-                      ),
-                    ],
-                  ),
-                ),
               ],
             ),
           ),

@@ -25,6 +25,7 @@ import '../services/api_service.dart';
 import '../services/eye_monitor.dart';
 import '../theme.dart';
 import 'warning_screen.dart';
+import '../design_tokens.dart';
 
 class UploadScreen extends StatefulWidget {
   const UploadScreen({super.key});
@@ -205,7 +206,7 @@ class _UploadScreenState extends State<UploadScreen> {
       children: [
         Container(
           padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(16)),
+          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(AppRadius.card)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

@@ -19,12 +19,13 @@ import '../stage_texts.dart';
 import '../design_tokens.dart';
 import '../theme.dart';
 import '../widgets/buddy.dart';
+import '../widgets/owl_says.dart' show keepWords;
 
 class GuideScreen extends StatelessWidget {
   const GuideScreen({super.key});
 
   static const List<(String, String)> _steps = [
-    ('휴대폰을 거치해 주세요', '얼굴이 카메라 가운데 보이도록 맞춰 주세요'),
+    ('휴대폰을 거치대에 고정한 뒤 시작해 주세요', '얼굴이 카메라 가운데 보이도록 맞춰 주세요'), // (11/24 사용자 요청)
     ('앞을 보고 운전해 주세요', '화면 대신 음성 안내를 들어 주세요'),
     ('경고가 들리면 따라 주세요', '단계별 안내에 따라 안전한 곳에서 쉬어 주세요'),
   ];
@@ -130,9 +131,9 @@ class _StepLine extends StatelessWidget {
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              Text(keepWords(title), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)), // (11/24) 단어 중간에서 안 끊김
               const SizedBox(height: 2),
-              Text(body, style: const TextStyle(fontSize: 14, height: 1.4, color: AppColors.textSecondary)),
+              Text(keepWords(body), style: const TextStyle(fontSize: 14, height: 1.4, color: AppColors.textSecondary)),
             ]),
           ),
         ]),

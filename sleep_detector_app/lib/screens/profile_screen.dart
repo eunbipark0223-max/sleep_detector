@@ -49,7 +49,8 @@ class ProfileScreen extends StatefulWidget {
   /// 전화번호 · 차량번호 저장. 비워 두면 AuthService.updateProfile. 바뀐 내 정보(Map)를 돌려준다.
   final Future<Map<String, dynamic>> Function({String? phone, String? vehicleNo})? saveContact;
 
-  const ProfileScreen({super.key, this.pickPhoto, this.saveContact});
+  final VoidCallback? onLogout; // (11/23) 맨 아래 [로그아웃] (MY 탭과 같은 동작)
+  const ProfileScreen({super.key, this.pickPhoto, this.saveContact, this.onLogout});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -100,7 +101,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (user == null) {
             return _Message(text: '로그인이 만료됐어요\n다시 로그인해 주세요', buttonText: '로그인 화면으로', onPressed: _goLogin);
           }
-          return _Body(user: user, pickPhoto: widget.pickPhoto, saveContact: widget.saveContact);
+          return _Body(user: user, pickPhoto: widget.pickPhoto, saveContact: widget.saveContact, onLogout: widget.onLogout);
         },
       ),
     );
@@ -113,7 +114,8 @@ class _Body extends StatefulWidget {
   final Map<String, dynamic> user;
   final Future<PickedPhoto?> Function(ImageSource source)? pickPhoto;
   final Future<Map<String, dynamic>> Function({String? phone, String? vehicleNo})? saveContact;
-  const _Body({required this.user, this.pickPhoto, this.saveContact});
+  final VoidCallback? onLogout;
+  const _Body({required this.user, this.pickPhoto, this.saveContact, this.onLogout});
 
   @override
   State<_Body> createState() => _BodyState();
@@ -351,16 +353,16 @@ class _BodyState extends State<_Body> {
         // 비밀번호 변경은 그대로 따로 한 줄 (구글 계정은 비밀번호가 없어서 숨김)
         if (!isGoogle) ...[
           const SizedBox(height: 24),
-          _Section(title: '로그인 및 보안', rows: [_Row(label: '비밀번호 변경', value: '', onTap: _changePassword)]),
+          // (11/24 사용자 요청) [로그아웃] 은 '비밀번호 변경' 바로 아래 같은 카드 줄 — 글자 시작선 · 크기 · 높이 같게 (빨간 글자)
+          _Section(title: '로그인 및 보안', rows: [
+            _Row(label: '비밀번호 변경', value: '', onTap: _changePassword),
+            if (widget.onLogout != null) _Row(label: '로그아웃', value: '', onTap: widget.onLogout, color: AppColors.danger),
+          ]),
+        ] else if (widget.onLogout != null) ...[
+          // 구글 계정 (비밀번호 없음) — 로그아웃만 같은 모양 카드로
+          const SizedBox(height: 24),
+          _Section(title: '로그인 및 보안', rows: [_Row(label: '로그아웃', value: '', onTap: widget.onLogout, color: AppColors.danger)]),
         ],
-        const SizedBox(height: 24),
-        // (11/18 피드백) '경고 건수' = 지금까지 받은 졸음 경고 전부 (1 · 2 · 3단계 합) — 단계별로 나눠서 보여 줌
-        _Section(title: '운전 기록', rows: [
-          _Row(label: '전체 경고', value: _eventCount == null ? '—' : '$_eventCount건'),
-          _Row(label: '1단계 주의', value: _eventCount == null ? '—' : '${_byStage[0]}건'),
-          _Row(label: '2단계 휴식 권고', value: _eventCount == null ? '—' : '${_byStage[1]}건'),
-          _Row(label: '3단계 위험', value: _eventCount == null ? '—' : '${_byStage[2]}건'),
-        ]),
       ],
     );
   }
@@ -463,7 +465,8 @@ class _Row extends StatelessWidget {
   final String label;
   final String value;
   final VoidCallback? onTap;
-  const _Row({required this.label, required this.value, this.onTap});
+  final Color? color; // (11/24) 로그아웃 = 빨간 글자
+  const _Row({required this.label, required this.value, this.onTap, this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -474,7 +477,7 @@ class _Row extends StatelessWidget {
         padding: EdgeInsets.fromLTRB(20, 12, onTap == null ? 20 : 14, 12),
         child: Row(
           children: [
-            Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, letterSpacing: -0.2, color: AppColors.textPrimary)),
+            Text(label, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, letterSpacing: -0.2, color: color ?? AppColors.textPrimary)),
             const SizedBox(width: 16),
             Expanded(
               child: Text(value,

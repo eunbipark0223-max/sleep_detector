@@ -17,7 +17,8 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
 import 'main_screen.dart';
-import '../widgets/buddy.dart';
+import '../widgets/system_status.dart';
+import '../design_tokens.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -69,42 +70,38 @@ class _SplashScreenState extends State<SplashScreen> {
     );
   }
 
+  // (11/24 사용자 요청) 연한 파랑 그라데이션 바탕 · 가운데 남색 둥근 네모 아이콘(흰 방패) + 앱 이름 · 맨 아래 작은 글
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background, // (11/17) 로그인 · 회원가입과 같은 흰 바탕
-      body: Stack(
-        children: [
-          // 트럭 부엉이 시작 화면 그림 ("졸음 가드" 글씨 포함, 노션 '메인 로고 아이디어' 스플래시, 11/10) — 화면 폭에 꽉 차게
-          Positioned.fill(
-            child: const Center(
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                // (11/17) 그림은 아직 안 넣음 — 자리만 표시
-                Buddy(stage: 0, size: 200),
-                SizedBox(height: 20),
-                Text('졸음가드', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-              ]),
-            ),
-          ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 56),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // "졸기 전 · 졸 때 · 졸고 나서" 는 위 부엉이 3개 이름으로 옮김 (11/11)
-
-                  // (11/17 사용자 요청) '운수 안전관리팀 · Sleep Guard System' 글씨 뺌
-                  const CircularProgressIndicator(
-                    color: AppColors.navy,
-                    strokeWidth: 2.5,
-                  ),
-                ],
+    return DecoratedBox(
+      decoration: const BoxDecoration(gradient: AppSol.pageGradient),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          child: SizedBox(
+            width: double.infinity, // 가운데 정렬 (화면 폭 전체)
+            child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+            const Spacer(flex: 5),
+            Container(
+              width: 84,
+              height: 84,
+              decoration: BoxDecoration(
+                color: AppColors.navy,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [BoxShadow(color: AppColors.navy.withValues(alpha: 0.25), blurRadius: 20, offset: const Offset(0, 8))],
               ),
+              child: const Icon(Icons.verified_user_rounded, size: 46, color: Colors.white),
             ),
+            const SizedBox(height: 22),
+            const Text('졸음가드', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -0.8, color: AppColors.navy)),
+            const SizedBox(height: 6),
+            const Text('운전자 졸음 안전관리 솔루션', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.textSecondary)),
+            const Spacer(flex: 6),
+            const Text('안전한 운행을 함께 지켜요', style: TextStyle(fontSize: 13, color: AppColors.textMuted)),
+            const SizedBox(height: 28),
+          ]),
           ),
-        ],
+        ),
       ),
     );
   }

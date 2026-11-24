@@ -13,7 +13,7 @@ import 'press.dart';
 import 'package:flutter/services.dart';
 
 import '../theme.dart';
-import 'web_ui.dart';
+import 'system_status.dart';
 
 // (11/17 저녁 · 관리자 웹 로그인과 같게) 화면 전체 흰색 + 연회색 입력칸(아이콘 없음) + 남색 알약 버튼
 class AuthUi {
@@ -26,7 +26,7 @@ class AuthUi {
   static const Color hint = AppColors.textMuted;
   static const Color error = AppColors.urgent;
   static const double controlHeight = 53; // 입력칸 · 큰 버튼 공통 높이
-  static const double noteIndent = 6; // 칸 아래 설명 글이 칸보다 안쪽으로 들어가는 정도 (아주 살짝)
+  static const double noteIndent = 18; // (11/23) 칸 안 글자와 같은 시작선 // 칸 아래 설명 글이 칸보다 안쪽으로 들어가는 정도 (아주 살짝)
   static const Color appleBlue = Color(0xFF007AFF); // 애플 시스템 파랑 (iOS 기본 버튼 색)
   static const Color readOnlyFill = AppleGray.fill; // 바꿀 수 없는 칸 바탕 (입력칸보다 살짝 진한 회색)
 }
@@ -108,7 +108,7 @@ class AuthLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // (11/17) 로고 그림은 아직 안 넣음 — 자리만 표시
-    return ImageSlot.logo(size: size);
+    return ShieldMark(size: size); // (11/23 사용자 요청) 로그인 로고 = 방패 이모지
   }
 }
 
@@ -242,7 +242,10 @@ class _AuthFieldState extends State<AuthField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(widget.label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AuthUi.label)),
+        Padding(
+          padding: const EdgeInsets.only(left: 18), // (11/23 사용자 요청) 칸 안 글자와 같은 시작선
+          child: Text(widget.label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AuthUi.label)),
+        ),
         const SizedBox(height: 7),
         TextFormField(
           key: _fieldKey,
@@ -295,16 +298,17 @@ class AuthButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool primary;
   final Widget? leading;
+  final Color? color; // (11/23) 큰 버튼 색 (없으면 남색)
   final double? contentWidth; // (11/18) 주면 아이콘 + 글자를 이 폭 안에서 왼쪽부터 — 위아래 버튼 글자 시작점 맞춤
   final double height; // (11/18) 홈 운행 버튼은 조금 낮게 (48)
 
   const AuthButton(
-      {super.key, required this.text, this.onPressed, this.primary = true, this.leading, this.contentWidth, this.height = AuthUi.controlHeight});
+      {super.key, required this.text, this.onPressed, this.primary = true, this.leading, this.contentWidth, this.height = AuthUi.controlHeight, this.color});
 
   @override
   Widget build(BuildContext context) {
     // (11/17 관리자 웹) 남색 알약 (primary) · 흰 알약 + 회색 테두리 (secondary)
-    final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(999));
+    final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)); // (11/23 Headspace 토큰) 다시 알약
     // (11/17 사용자 요청) [Google로 계속하기] 글씨 굵기를 [로그인] 과 같게 보이게 — 흰 바탕 검은 글씨는 같은 굵기여도 더 굵어 보여서 한 단계 가볍게
     final textStyle = TextStyle(fontSize: 16, fontWeight: primary ? FontWeight.w600 : FontWeight.w500);
     final Widget row = Row(
@@ -325,7 +329,7 @@ class AuthButton extends StatelessWidget {
       onPressed: onPressed,
       style: ElevatedButton.styleFrom(
         minimumSize: Size.fromHeight(height), // 기본은 입력칸과 같은 높이 — 로그인 · 가입하기 · 사번 확인 · 구글 모두 같게
-        backgroundColor: primary ? AppColors.navy : AppColors.card,
+        backgroundColor: primary ? (color ?? AppColors.navy) : AppColors.card,
         foregroundColor: primary ? Colors.white : AppColors.textPrimary,
         side: primary ? null : const BorderSide(color: AppColors.fill),
         disabledBackgroundColor: AuthUi.disabledBg,

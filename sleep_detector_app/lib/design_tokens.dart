@@ -22,26 +22,27 @@ import 'package:flutter/material.dart';
 ///   (이름은 그대로 두어 앱 전체가 한 번에 따뜻한 톤으로 바뀜)
 class AppleGray {
   AppleGray._();
-  static const Color page = Color(0xFFF9F5F1); // 화면 바탕 — Headspace 크림 (#F9F4F2 계열)
+  static const Color page = Color(0xFFF0F4FB); // (11/24 사용자 요청) 차가운 연파랑 바탕색 · 예전 크림 #F9F5F1
   static const Color label = Color(0xFF1C2033); // 제목 · 본문 — (11/19 사용자 요청) 남색 한 방울 섞은 검정
   static const Color secondaryLabel = Color(0xFF63605D); // 설명 · 부제 — Headspace
   static const Color softLabel = Color(0xFF363B50); // 큰 제목 · 안내 문장 — 남색 기운 진회색
-  static const Color tertiaryLabel = Color(0xFF8E8A84); // 시각 · 힌트 · 비활성 (따뜻한 회색)
-  static const Color separator = Color(0xFFE2DED9); // 카드 테두리 · 구분선 — Headspace
+  static const Color tertiaryLabel = Color(0xFF8E8A84); // 시각 · 힌트 — 따뜻한 회색
+  static const Color separator = Color(0xFFE1E6EF); // 카드 테두리 · 구분선 — (11/24) 연파랑 바탕에 맞춘 차가운 회색 (예전 #E2DED9)
   static const Color opaqueSeparator = Color(0xFFECE7E1); // 목록 줄 사이 얇은 선
-  static const Color fill = Color(0xFFF2EDE7); // 입력칸 · 연한 칸 (따뜻한 연회색)
-  static const Color chevron = Color(0xFFC6C1B9); // 목록 오른쪽 꺾쇠 › — Headspace
+  static const Color fill = Color(0xFFE8ECF4); // 입력칸 · 연한 칸 — (11/24) 연파랑 바탕에 맞춘 차가운 연회색 (예전 #F2EDE7)
+  static const Color chevron = Color(0xFFC6C1B9); // 목록 꺾쇠 › — Headspace
   static const Color tabInactive = Color(0xFF9A958E); // 탭바 안 고른 아이콘 · 글자
   static const Color tabBar = Color(0xFFF6F1EC); // 탭바 바탕
-  static const Color tabBarTop = Color(0xFFF9F5F1); // 탭바 위 — 화면 바탕과 같은 크림 (선 없이 이어짐)
+  static const Color tabBarTop = Color(0xFFF0F4FB); // 탭바 위 — 화면 바탕과 같은 색 (11/24 연파랑 바탕)
   static const Color tabBarBottom = Color(0xFFF1EBE4); // 탭바 아래 — 조금 더 짙은 크림
 }
 
 /// Headspace 식 납작 그림자 — 버튼이 살짝 떠 있는 느낌 (번지지 않고 아래로만 2px)
 class AppShadow {
   AppShadow._();
-  static const List<BoxShadow> button = [BoxShadow(color: Color(0x33413D45), offset: Offset(0, 2), blurRadius: 0)];
-  static const List<BoxShadow> card = [BoxShadow(color: Color(0x0F413D45), offset: Offset(0, 2), blurRadius: 0)];
+  static const List<BoxShadow> button = [BoxShadow(color: Color(0x33413D45), offset: Offset(0, 2), blurRadius: 0)]; // Headspace 납작 그림자
+  // (11/24) 흰 카드가 살짝 떠 있게 — 옅은 그림자
+  static const List<BoxShadow> card = [BoxShadow(color: Color(0x0D000000), offset: Offset(0, 8), blurRadius: 20)];
 }
 
 /// 글자 크기 단계 — iOS Dynamic Type 기본(Large) 값 · 굵기
@@ -64,6 +65,7 @@ class AppType {
 /// 애플 탭바 · 목록 줄 크기 (기사 앱이라 누르는 칸은 애플보다 조금 넉넉하게)
 class AppSize {
   AppSize._();
+  static const double button = 56; // (11/23) 큰 동작 버튼 높이 — 앱 전체 하나 (운행 시작 · 운행 종료 · 측정 시작 · 운행 재개 …)
   static const double rowMin = 50; // 목록 한 줄 최소 높이 (애플 44 → 장갑 · 운전 중 고려해 50)
   static const double tabIcon = 25; // 탭바 아이콘
   static const double tabLabel = 10.5; // 탭바 글자
@@ -84,10 +86,10 @@ class AppSpace {
 /// 둥글기 — 앱 전체가 이 값만 씀 ('제각각' 방지)
 class AppRadius {
   AppRadius._();
-  static const double small = 10; // 작은 칸 · 배지가 아닌 네모
+  static const double small = 8; // (v2) 작은 칸
   static const double field = 12; // 입력칸
-  static const double card = 20; // 흰 카드 · 묶음 목록 — Headspace(32)와 애플(14)의 사이
-  static const double sheet = 22; // 아래에서 올라오는 시트 · 큰 카메라 칸
+  static const double card = 16; // (11/23 사용자 요청) 카드 · 칸 · 카메라 · 시트 둥글기 모두 하나로
+  static const double sheet = 16; // (v2) 시트 · 카메라 칸
   static const double pill = 999; // 알약 버튼 · 배지
 }
 
@@ -115,7 +117,7 @@ class AppIllust {
     Color(0xFFF2665A), // 3 긴급 — 빨강 (깜짝 놀란 눈)
   ];
   static Color bodyOf(int stage) => body[stage.clamp(0, 3)];
-  static const Color ink = Color(0xFF3A302C); // 얼굴 선
+  static const Color ink = Color(0xFF1C2033); // 얼굴 선 — (11/23 사용자 요청) 모든 검정은 블랙 네이비
   static const Color cheek = Color(0xB3FF9E94); // 볼 (진한 분홍 · 몸 색과 섞여 탁해지지 않게)
   static const Color belly = Color(0x33FFFFFF); // 배 (몸 색 위 반투명 흰색)
   static const Color shadow = Color(0x14000000); // 바닥 납작 그림자
@@ -140,10 +142,69 @@ class AppIllust {
     [Color(0xFFFADB6A), Color(0xFFF6C646)], // 2 휴식 권고 — Headspace 노랑
     [Color(0xFFFFD5BC), Color(0xFFFFB896)], // 3 긴급 — 살구
   ];
+  // (11/23 리디자인_3) 카드 바탕용 아주 연한 단계 색 — 흰색에서 이 색으로 살짝 물듦 (진한 파스텔 대신)
+  static const List<Color> softTint = [Color(0xFFE6F5EC), Color(0xFFFFF6DC), Color(0xFFFFF0CC), Color(0xFFFFE6D9)];
   static const List<List<Color>> orbGradient = [
     [Color(0xFF86D3A3), Color(0xFF2E9E5B)],
     [Color(0xFFFFD866), Color(0xFFF2A81E)],
     [Color(0xFFF8A73E), Color(0xFFEC772E)],
     [Color(0xFFF78A7C), Color(0xFFD93025)],
   ];
+}
+
+/// (11/23 C · 기업용 리디자인) 시스템 상태 색 — Samsara 웹(samsara.com) CSS 에서 뽑은 토큰을 참고해 정리
+///   Samsara 실제 값: 회색 단계 gray-50 #F5F4F1 · gray-500 #9C9890 · gray-900 #1C1917 / emerald-500 #01B665 /
+///     gold-500 #F0BC00 / orange-500 #FF6319 / red #DF2036 / blue-500 #2A75D4 / 둥글기 md 6px · 알약 9999px / 숫자는 고정폭(Mono) 글꼴
+///   - 유지: 우리 단계 색 0~3 (관리자 웹과 같은 팀 약속) · 남색 브랜드 · 크림 바탕 (Samsara gray-50 과 거의 같은 따뜻한 회색이라 그대로)
+///   - 새로 도입: '연결 끊김 · 확인 중' 회색(Samsara gray-500) · 상태는 색 + 아이콘 + 글을 함께 · 숫자는 고정폭(tabular) 숫자
+///   - 적용 안 함: Samsara 노랑 브랜드색 #FEAE0F (우리 '주의' 노랑과 헷갈림) · 각진 6px 둥글기 (우리 카드 20 유지)
+class AppStatus {
+  AppStatus._();
+  static const Color normal = Color(0xFF2E9E5B); // 정상 · 준비 완료 · 감지 중 (단계 0 색)
+  static const Color caution = Color(0xFFE0A100); // 주의 · 권한 필요 (단계 1 노랑을 글자로 읽히게 조금 진하게)
+  static const Color warning = Color(0xFFF28C28); // 휴식 권고 (단계 2)
+  static const Color danger = Color(0xFFD93025); // 위험 · 서버 끊김 (단계 3)
+  static const Color info = Color(0xFF1F2A5C); // 연결됨 · 안내 (브랜드 남색)
+  static const Color offline = Color(0xFF9C9890); // 확인 중 · 꺼짐 — Samsara gray-500
+  static Color ink(Color c) => Color.lerp(c, const Color(0xFF1C2033), 0.25)!; // 알약 글자 — 같은 색을 조금 어둡게
+  static const List<FontFeature> figures = [FontFeature.tabularFigures()]; // 숫자 폭 고정 (Samsara Mono 숫자 대신)
+}
+
+/// (11/24 사용자 요청) 운행 기록 · MY 바탕 — 위는 남색 그라데이션, 아래로 갈수록 차가운 연회색
+///   네모 카드(흰색)는 그대로 · 바탕만 바뀜. header() 는 목록과 함께 스크롤됨 (글자가 남색 위에 머무르지 않게)
+class AppSol {
+  AppSol._();
+  static const Color bg = Color(0xFFF2F4F8); // 차가운 연회색 바탕
+  static const Color navyTop = Color(0xFF1F2A5C); // = AppColors.navy
+  static const Color navyMid = Color(0xFF34489A);
+  static const double headH = 260;
+  // (11/24 사용자 요청) 앱 바탕 — 위는 연파랑 #F0F4FB, 아래로 갈수록 살짝 진한 연파랑 (카드는 흰색 그대로)
+  static const LinearGradient pageGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [Color(0xFFE9EEF7), Color(0xFFF8FAFD)], // (11/24 사용자 요청) 뒤집음 · 파란 기운 줄이고 아래는 거의 흰색
+  );
+
+  // (11/24 사용자 요청) 남색 그라데이션은 되돌림 — 지금은 내용만 그대로 (홈 바탕을 정하면 여기서 바꿈)
+  static Widget header({required Widget child}) => child;
+  // ignore: unused_element
+  static Widget _navyHeader({required Widget child}) => Stack(children: [
+        const Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: headH,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [navyTop, navyMid, bg],
+                stops: [0, 0.55, 1],
+              ),
+            ),
+          ),
+        ),
+        child,
+      ]);
 }

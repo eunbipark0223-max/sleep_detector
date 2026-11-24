@@ -28,6 +28,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
@@ -48,6 +49,10 @@ import 'rest_screen.dart';
 import 'warning_screen.dart';
 import '../services/drive_log.dart';
 import 'quiz_screen.dart';
+import '../widgets/system_status.dart';
+import '../design_tokens.dart';
+import 'package:flutter/services.dart';
+import '../widgets/owl_says.dart' show keepWords;
 
 class DriveScreen extends StatefulWidget {
   /// 측정 화면(D)이 돌려준 "내 눈 기준값". 측정을 건너뛰었으면 null → 기본 기준을 쓴다.
@@ -112,6 +117,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   Timer? _pingTimer;
   String _restMessage = ''; // 휴게 배너 글 (비어 있으면 배너 없음)
   Future<String?>? _restVoice; // 휴게 배너 — 가까운 졸음쉼터 안내 문장 (못 찾으면 null)
+  String? _restLine; // (11/23 시나리오) 2단계 — 화면에 쉼터 한 줄
 
   // 인터넷 연결 끊김 (와이파이 · 데이터 꺼짐, 터널 등) — ping · 졸음 전송이 실패하면 true, 다시 성공하면 false
   //   끊기면 [다시 시도] 창 + 음성 한 번 (반복 안 함). 따로 자주 확인하지 않음 — 평소 30초 ping 이 성공하면 창이 저절로 닫힘
@@ -223,7 +229,14 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     final changed = stage != _stage;
     setState(() {
       _stage = stage;
+      if (stage != 2) _restLine = null;
     });
+    // (11/23 시나리오) 2단계 — 가까운 졸음쉼터 한 줄을 찾아 화면에 (자동으로 읽지는 않음)
+    if (stage == 2 && _restLine == null) {
+      (_restVoice ??= nearRestVoice(_lat, _lng)).then((v) {
+        if (mounted && v != null && _stage == 2) setState(() => _restLine = v);
+      });
+    }
     _liveStage.value = stage;
     if (changed && stage >= 1) _flash();
   }
@@ -350,7 +363,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
           title: const Text('인터넷 연결이 끊겼어요'),
           content: const Text('와이파이나 데이터를 확인해 주세요', style: TextStyle(fontSize: 15, height: 1.4)),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('닫기')),
+            TextButton(onPressed: () => SystemNavigator.pop(), child: const Text('닫기')), // (11/23 사용자 요청) 닫기 = 앱 닫기
             ValueListenableBuilder<bool>(
               valueListenable: _retryingNote,
               builder: (_, busy, _) => TextButton(
@@ -641,6 +654,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   // 경고 화면 띄우기 — 이미 떠 있으면 새 경고로 바로 바꾼다 (새 알람 · 음성 · 퀴즈)
   //   퀴즈 · 휴식 화면이 위에 떠 있으면 그대로 둔다 (대답하는 중 · 쉬는 중을 끊지 않게)
   Future<void> _showWarning(SleepResponse res, {bool silent = false, bool resumeRest = false}) async {
+    if (_quizOpen && res.stage < 3) return; // (11/23 사용자 요청) 퀴즈 동안은 졸음 경고를 다시 띄우지 않음 (판정도 쉼)
     // (11/19 사용자 요청) 2단계는 경고 화면을 띄우지 않음 — 운행 화면 카드 + 알람 + 한 문장 + 아래 버튼
     if (res.stage < 3 && !resumeRest) {
       _setStage(res.stage);
@@ -717,6 +731,10 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       restedStage = await Navigator.of(context).push(route);
     }
     if (!mounted) return;
+    if (restedStage == -1) {
+      _warningRoute = null;
+      return _endDrive(); // (11/23) 경고 화면 → 휴식 화면에서 [운행 종료]
+    }
     if (_warningRoute == route) {
       _warningRoute = null; // 이 경고 화면이 닫혔으면 다시 띄울 수 있게
       _eye.reset(); // 경고 화면 동안 쌓인 눈 감김으로 돌아오자마자 의심이 나지 않게 (11/03 팀장)
@@ -745,6 +763,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     _pauseDetect.value = false;
     if (result == null) return; // 휴식 시작 실패 → 배너를 그대로 둠
+    if (result['end'] == true) return _endDrive(); // (11/23) 휴식 화면에서 [운행 종료]
     setState(() => _restMessage = '');
     final s = result['stage'];
     final stage = s is num ? s.toInt() : int.tryParse('$s');
@@ -839,46 +858,37 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
 
   // [운행 종료] · 뒤로 가기 — 운전 중 잘못 눌러 감지가 꺼지지 않게 한 번 묻는다 (11/12 팀장)
   Future<void> _confirmEnd() async {
+    // (11/24 사용자 요청) '정차하셨나요?' 창과 같은 아이폰 알림창 — 가운데 제목 · 설명 · 아래 [계속 운행 | 운행 종료]
     final yes = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('운행을 끝낼까요?', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
-        content: const Text('운행을 끝내면 졸음 감지가 멈춰요', style: TextStyle(fontSize: 18, height: 1.45, color: AppColors.textPrimary)),
-        actionsPadding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Padding(
+          padding: EdgeInsets.only(bottom: 4),
+          child: Text('운행을 끝낼까요?', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        ),
+        content: const Text('운행을 끝내면 졸음 감지가 멈춰요', style: TextStyle(fontSize: 15, height: 1.45, color: AppColors.textSecondary)),
         actions: [
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.navy,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size.fromHeight(58),
-                    textStyle: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
-                  ),
-                  child: const Text('계속 운행'),
-                ),
-              ),
-              const SizedBox(width: 28),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.textPrimary,
-                    side: const BorderSide(color: AppColors.cardBorder, width: 2),
-                    minimumSize: const Size.fromHeight(58),
-                    textStyle: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
-                  ),
-                  child: const Text('운행 종료'),
-                ),
-              ),
-            ],
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(ctx, false),
+            textStyle: const TextStyle(fontSize: 18, color: AppColors.textSecondary),
+            child: const Text('계속 운행'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.pop(ctx, true),
+            textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.navy),
+            child: const Text('운행 종료'),
           ),
         ],
       ),
     );
     if (yes != true || !mounted) return;
+    await _endDrive();
+  }
+
+  // (11/23) 운행 끝내기 (묻는 창 뒤) — 휴식 화면 [운행 종료] 도 여기로
+  Future<void> _endDrive() async {
+    if (!mounted) return;
     DriveLog.end().ignore(); // (11/19) 운행 한 번의 끝 — 홈 리포트 '운행 1 · 운행 2' 를 나누는 기준
     // 서버에 운행이 끝났다고 알림 (홈 배너가 안 뜨게, 2 · 3단계는 그대로)
     // (11/16 팀장) + 서버가 오늘 운행 AI 리포트를 돌려줌 → 리포트 화면. 못 받으면(연결 끊김 · 8초) 그냥 홈으로
@@ -914,17 +924,20 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
           backgroundColor: bg,
           foregroundColor: fg,
           elevation: 0,
-          toolbarHeight: 48,
+          toolbarHeight: 34, // (11/24 사용자 요청) 상태 줄을 더 위로
           // (11/19 사용자 요청) '운행 중' 은 맨 위 '<' 와 같은 줄 가운데
           centerTitle: true,
-          title: const Text('운행 중', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          title: const Text('운행 중', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         ),
         body: SafeArea(
           top: false,
           child: StageLayout(
             // (11/19 사용자 요청) '운행 중' 은 맨 위 줄로 옮기고 그 자리만큼 카메라를 크게 — 단계 · 운전 시간은 아래 카드에
-            camRatio: 0.5, // (11/19 사용자 요청) 측정 · 운행 · 경고 화면 카메라 크기 모두 같게
+            camRatio: 0.57, // (11/24 사용자 요청) 카메라 더 크게 · 모든 운행 · 경고 화면 같은 크기 · // (11/23 사용자 요청) 카메라는 예전처럼 크게 — 모든 단계 같은 크기
             actionsHeight: 76,
+            header: DriveStatusStrip(online: !_offline, stage: _stage), // (11/23) 감지 · 단계 · 운전 시간 · 서버를 한 줄 격자로
+            headerInset: 0,
+            gap: 28, // (11/24 사용자 요청) 카드 조금 더 아래로 · 모든 단계 같은 자리
             // 카메라 확인 · 확인 중 띠 — 카메라 위에 겹침
             cameraOverlay: Column(mainAxisSize: MainAxisSize.min, children: [
               CameraBanner(faceLost: _faceLostNote),
@@ -934,10 +947,10 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
             camera: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               // (11/18 피드백) 진한 단계 색 테두리는 뺌 — 둥근 네모만 (단계는 위 '● 주의' 와 바탕색으로 알림)
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(26)),
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(AppRadius.sheet)),
               // (11/19 사용자 요청) 카메라 둘레 남색 선도 뺌 — 테두리 없이 둥근 칸만
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(26),
+                borderRadius: BorderRadius.circular(AppRadius.sheet), // (11/23 리디자인_2) 26 → 16
                 child: (_controller != null && _controller!.value.isInitialized)
                     ? FollowFacePreview(controller: _controller!, face: _faceBoxNote)
                     : Container(
@@ -947,13 +960,14 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
               ),
             ),
             message: [
-              StageMessage(_stageTitle(_stage), stage: _stage, info: true), // (11/19) Headspace 카드 — 큰 글 · 단계 · 운전 시간
+              // (11/24 사용자 요청) 2단계 가까운 쉼터는 카드 안 한 줄 — 모든 단계 카드 크기 · 위치 같음 (스크롤 없음)
+              StageMessage(_stageTitle(_stage), stage: _stage, sub: _stage == 2 ? shortRestLine(_restLine) : null),
               // 휴게 배너 (연속 운전 2시간) — [닫기]로 숨김, [가까운 졸음쉼터 듣기]로 지도, [정차했어요]로 휴식 시작
               if (_restMessage.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 Container(
                   padding: const EdgeInsets.fromLTRB(16, 8, 4, 12),
-                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(20)),
+                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(AppRadius.card)),
                   child: Column(
                     children: [
                       Row(
@@ -973,22 +987,18 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
                       ),
                       Padding(
                         padding: const EdgeInsets.only(right: 12, bottom: 8),
-                        child: OutlinedButton.icon(
-                          onPressed: () => listenRestMap(context, _restVoice ??= nearRestVoice(_lat, _lng)),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.textPrimary,
-                            side: const BorderSide(color: AppColors.cardBorder, width: 1.5),
-                            minimumSize: const Size.fromHeight(46),
-                          ),
-                          icon: const Icon(Icons.location_on_outlined), // (11/16) 쉼터 = 위치 마커
-                          label: const Text('가까운 졸음쉼터 듣기'),
+                        child: FilledButton.icon(
+                          onPressed: () => listenRestMap(context, _restVoice ??= nearRestVoice(_lat, _lng), pause: _pauseDetect),
+                          style: stageButton('white'), // (11/23) 앱 버튼 규격 하나
+                          icon: const Icon(Icons.location_on_rounded, size: 22), // (11/16) 쉼터 = 위치 마커
+                          label: const Text('가까운 졸음쉼터 안내'),
                         ),
                       ),
                       Padding(
                         padding: const EdgeInsets.only(right: 12),
                         child: FilledButton(
                           onPressed: _goRest,
-                          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+                          style: stageButton('navy'), // (11/23) 앱 버튼 규격 하나
                           child: const Text('정차했어요'),
                         ),
                       ),
@@ -1006,8 +1016,8 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
                 Row(children: [
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: () => listenRestMap(context, _restVoice ??= nearRestVoice(_lat, _lng)),
-                      style: stageButton('white', height: 60),
+                      onPressed: () => listenRestMap(context, _restVoice ??= nearRestVoice(_lat, _lng), pause: _pauseDetect),
+                      style: stageButton('navy', height: 60), // (11/24 사용자 요청) 남색
                       icon: const Icon(Icons.location_on_rounded, size: 22),
                       label: const FittedBox(child: Text('쉼터 안내')),
                     ),
@@ -1025,7 +1035,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
               else
                 FilledButton(
                   onPressed: _confirmEnd, // 한 번 묻고 끝냄 (11/12)
-                  style: stageButton('white', height: 60), // 흰 반투명 + 남색 글 · 카메라와 같은 폭 · 둥글기 26
+                  style: stageButton('navy', height: 60), // (11/23 사용자 요청) [운행 종료] 는 늘 남색 · 흰 글
                   child: const Text('운행 종료'),
                 ),
             ],

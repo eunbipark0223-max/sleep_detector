@@ -47,7 +47,7 @@ class AppColors {
   static const Color cardBorder = AppleGray.separator; // 카드 · 입력창 테두리
 
   /// 단계 바탕 (부엉이가 잘 보이는 연한 단계 색 — 사용자 지정 11/16): 정상 · 주의 · 휴식 권고 · 긴급
-  static const List<Color> _stagePastel = [Color(0xFFB8DBCA), Color(0xFFF3D9A2), Color(0xFFF2BB86), Color(0xFFE9A6A5)];
+  static const List<Color> _stagePastel = [Color(0xFF82C59D), Color(0xFFF7D078), Color(0xFFF7BA7E), Color(0xFFE8837C)]; // (11/24 사용자 요청) 단계 원래 색에 투명도 40% (흰 바탕 위) — 파스텔 아님
   static Color stagePastel(int stage) => _stagePastel[stage.clamp(0, 3)];
 
   // 다른 화면이 쓰는 이름 (우리 색에 연결한 별명)
@@ -74,7 +74,7 @@ class AppColors {
 ThemeData buildAppTheme() {
   return ThemeData(
     useMaterial3: true,
-    fontFamily: 'Pretendard', // (11/17) 애플 글꼴 느낌의 무료 글꼴 (pubspec.yaml fonts)
+    fontFamily: 'SpoqaHanSansNeo', // (11/24 사용자 요청) 새 앱 글꼴 스포카 한 산스 Neo (예전: Pretendard — pubspec.yaml 에 그대로 있음)
     // (11/17 사용자 요청) 뒤로 가기 = 애플처럼 '<' 꺾쇠 (안드로이드 기본 ← 화살표 대신) — 앱 전체
     actionIconTheme: ActionIconThemeData(
       backButtonIconBuilder: (context) => const Icon(Icons.arrow_back_ios_new_rounded, size: 22),

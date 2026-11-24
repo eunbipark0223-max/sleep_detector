@@ -46,6 +46,8 @@ import '../theme.dart';
 import '../widgets/auth_ui.dart';
 import '../widgets/stage_layout.dart';
 import '../widgets/buddy.dart';
+import 'warning_screen.dart' show ServerCancelText, noCancel;
+import '../widgets/owl_says.dart' show keepWords;
 
 class CalibrationScreen extends StatefulWidget {
   /// 사진 1장 찍고 파일 경로를 돌려준다. 비우면 전면 카메라로 찍는다 (이때만 카메라를 열고 미리보기를 보여 준다).
@@ -212,15 +214,16 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     }
 
     final value = threshold ?? AppConfig.eyeClosedProb;
+    _value = value;
     setState(() {
       _result = threshold == null ? '얼굴을 확인하지 못해 기본 설정으로 시작해요' : '준비됐어요\n안전 운전하세요'; // 숫자 · 서버 용어는 기사에게 안 보임 (11/11)
       _note = serverOk ? '' : '연결이 불안정해 기본 설정으로 시작해요';
       _phase = _Phase.finishing;
     });
-    await Future<void>.delayed(widget.finishDelay);
-    if (!mounted) return;
-    Navigator.of(context).pop<double>(value);
+    // (11/23 사용자 요청) 바로 운행으로 넘어가지 않음 — 아래 [운행 시작] 을 눌러야 운행 시작
   }
+
+  double? _value; // (11/23) 측정 결과 — [운행 시작] 때 돌려줌
 
   // 앱 기준: 실패하면 null (→ 기본값)
   Future<double?> _measureApp(List<String> paths) async {
@@ -262,16 +265,37 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
       canPop: canLeave, // 측정 중에는 뒤로 가기로 나갈 수 없다
       child: Scaffold(
         // (11/18 피드백) 카메라가 보이는 단계는 운행 화면과 똑같은 틀(StageLayout) — 제목 · 카메라 칸 · 글 · 버튼 자리가 같음
-        appBar: AppBar(toolbarHeight: 48, automaticallyImplyLeading: canLeave),
+        // (11/23 사용자 요청) '< 눈 기준 측정' — 제목은 예전 큰 글의 5/6 크기
+        appBar: AppBar(
+          toolbarHeight: 68, // (11/23 사용자 요청) 규정 도우미 탭 제목과 같은 높이 · 자리
+          automaticallyImplyLeading: false, // (11/23 사용자 요청) 제목을 아래 칸과 같은 시작선에 (뒤로는 휴대폰 뒤로 가기)
+          titleSpacing: 16, // (11/23 사용자 요청) 탭 제목들과 같은 자리 · 같은 글꼴
+          centerTitle: false,
+          // (11/24 사용자 요청) '< 눈 기준 측정' — 시작선 · 높이는 다른 탭 제목과 같게 (누르면 뒤로)
+          title: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.of(context).maybePop(),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.arrow_back_ios_new_rounded, size: 22, color: AppColors.textPrimary),
+              const SizedBox(width: 6),
+              Text('눈 기준 측정', style: AppType.title1.copyWith(color: AppColors.textPrimary)),
+            ]),
+          ),
+        ),
+        bottomNavigationBar: ServerCancelText(cancelled: noCancel), // (11/23) 운행 · 경고 화면과 같은 아래 자리
         body: SafeArea(
           top: false,
           child: _cameraPhase
               ? StageLayout(
-                  header: const _CalHeader(),
-                  camRatio: 0.5, // (11/19) 운행 화면과 같은 카메라 크기
+                  // (11/23 사용자 요청) 카메라 크기 · 위치 = 운행 · 경고 화면과 똑같이 (위 칸 60 · 간격 12 · 카메라 0.5 · 아래 버튼 칸 76)
+                  header: _CalStrip(shot: _shot, total: widget.photoCount, done: _phase == _Phase.finishing),
+                  headerInset: 0,
+                  gap: 12,
+                  camRatio: 0.53, // (11/24) 운행 화면과 같은 카메라 크기 ·
+                  actionsHeight: 76,
                   camera: _Preview(controller: _controller, fill: true),
                   // (11/18 팀장) 거치대 안내가 안 보였음 → 카메라 위쪽에 겹쳐서 늘 보이게 (측정 전)
-                  cameraOverlay: (_phase == _Phase.ready || _phase == _Phase.measuring) ? const Center(child: _MountTip()) : null,
+                  cameraOverlay: const Center(child: _MountTip()), // (11/23 사용자 요청) 측정 끝난 뒤에도 같은 안내
                   message: _message(),
                   actions: _actions(),
                 )
@@ -294,22 +318,38 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
   static const double _inset = 0; // 틀(StageLayout)이 이미 12 들여씀
 
   // (11/19 사용자 요청 · Headspace) 카메라 아래 그라데이션 카드 — 작은 '운행 전 준비' · 큰 안내 · (측정 중) 진행 막대
-  Widget _calCard(String title, {Color? color, Widget? extra}) => HsCard(
-        stage: 0,
-        face: 0,
-        minHeight: 124,
-        orb: 150,
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('운행 전 준비', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Color(0xB31C2033))),
-          const SizedBox(height: 6),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(title,
-                maxLines: 1,
-                style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700, letterSpacing: -0.5, color: color ?? AppColors.textPrimary)),
-          ),
-          if (extra != null) ...[const SizedBox(height: 12), extra],
+  // (11/23 사용자 요청 · 애플 느낌) 흰 카드 가운데 — 캐릭터 먼저 · 그다음 글 / (측정 중) 아래 진행 막대
+  Widget _calCard(String title, {Color? color, Widget? extra}) => Container(
+        constraints: const BoxConstraints(minHeight: 116), // (11/24 사용자 요청) 측정 중에도 잘리지 않게 칸에 맞춤 (측정 전과 같은 크기)
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(color: AppleGray.separator),
+          boxShadow: AppShadow.card,
+        ),
+        // (11/24 사용자 요청) 3단계 경고 카드처럼 — 왼쪽 시작선 · 뜻 단위로 한 줄씩(단어 중간에서 안 끊김) · 오른쪽 캐릭터
+        child: Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+          Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                for (final (i, line) in title.split('\n').indexed) ...[
+                  if (i > 0) const SizedBox(height: 4),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(line,
+                        maxLines: 1,
+                        softWrap: false,
+                        style: TextStyle(fontSize: 22, height: 1.3, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: color ?? AppColors.textPrimary)),
+                  ),
+                ],
+              ]),
+            ),
+            const SizedBox(width: 12),
+            const Buddy(stage: 0, size: 56, breathe: false),
+          ]),
+          if (extra != null) ...[const SizedBox(height: 14), extra],
         ]),
       );
 
@@ -319,38 +359,32 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
         return [
           _retryMessage.isNotEmpty
               ? _calCard(_retryMessage, color: AppColors.stageInk(2))
-              : _calCard('화면을 정면으로 바라봐 주세요'),
+              : _calCard('화면을 정면으로\n바라봐 주세요'),
         ];
       case _Phase.measuring:
         return [
-          _calCard(
-            '그대로 정면을 바라봐 주세요',
-            extra: Row(children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                      value: widget.photoCount == 0 ? 0 : _shot / widget.photoCount,
-                      minHeight: 8,
-                      color: AppColors.navy,
-                      backgroundColor: Colors.white.withValues(alpha: 0.6)),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text('$_shot / ${widget.photoCount}',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xB31C2033))),
-            ]),
-          ),
+          _calCard('그대로 정면을\n바라봐 주세요'), // (11/23 사용자 요청) 측정 전과 같은 카드 (진행은 위 단계 칸에)
         ];
       default:
-        return [_calCard('눈 기준 측정이 끝났어요')];
+        return [
+          _calCard('눈 기준 측정이\n끝났어요'), // (11/23 사용자 요청) 아래 안내 글 뺌
+        ];
     }
   }
 
   // 아래 버튼 자리 (운행 화면과 같은 곳)
   List<Widget> _actions() => _phase == _Phase.ready
-      ? [AuthButton(text: _failures > 0 ? '다시 측정' : '측정 시작', onPressed: _measure)]
-      : const [];
+      ? [AuthButton(text: _failures > 0 ? '다시 측정' : '측정 시작', onPressed: _measure, height: AppSize.button)]
+      : _phase == _Phase.finishing
+          ? [
+              AuthButton(
+                text: '운행 시작',
+                height: AppSize.button,
+                leading: const Icon(Icons.play_arrow_rounded, size: 22, color: Colors.white),
+                onPressed: () => Navigator.of(context).pop<double>(_value ?? AppConfig.eyeClosedProb),
+              ),
+            ]
+          : const [];
 
   List<Widget> _content() {
     switch (_phase) {
@@ -443,15 +477,15 @@ class _Preview extends StatelessWidget {
     // (11/18 피드백) 운행 화면처럼 둥근 네모 카메라 칸 (동그라미 대신) · 얇은 남색 테두리
     if (fill) {
       // (11/18 피드백 · 애플 스타일) 굵은 테두리 없이 둥근 네모만 (운행 화면 정상 상태와 같음)
-      return ClipRRect(borderRadius: BorderRadius.circular(26), child: SizedBox.expand(child: inner));
+      return ClipRRect(borderRadius: BorderRadius.circular(AppRadius.card), child: SizedBox.expand(child: inner));
     }
     return Center(
       child: Container(
         width: _size,
         height: _size * 1.15,
         padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(color: AppColors.navy, borderRadius: BorderRadius.circular(26)),
-        child: ClipRRect(borderRadius: BorderRadius.circular(23), child: inner),
+        decoration: BoxDecoration(color: AppColors.navy, borderRadius: BorderRadius.circular(AppRadius.card)),
+        child: ClipRRect(borderRadius: BorderRadius.circular(13), child: inner),
       ),
     );
   }
@@ -493,5 +527,49 @@ class _MountTip extends StatelessWidget {
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: AppColors.navy)),
           ]),
         ),
+      );
+}
+
+/// (11/23 사용자 요청) 측정 화면 위 칸 — 운행 화면 상태 줄과 같은 자리 · 같은 크기
+///   왼쪽 '● 운행 전 준비' / 오른쪽 사진 5장 촬영 단계 (찍을 때마다 남색으로 채워짐 · 끝나면 초록 체크)
+class _CalStrip extends StatelessWidget {
+  final int shot;
+  final int total;
+  final bool done;
+  const _CalStrip({required this.shot, required this.total, required this.done});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        height: AppSize.button,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(color: AppleGray.separator),
+        ),
+        child: Row(children: [
+          Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.normal, shape: BoxShape.circle)),
+          const SizedBox(width: 7),
+          const Text('운행 전 준비', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+          const Spacer(),
+          for (var i = 0; i < total; i++) ...[
+            if (i > 0)
+              Container(width: 10, height: 2, color: (done || i < shot) ? AppColors.navy : AppleGray.separator),
+            Container(
+              width: 22,
+              height: 22,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: done ? AppColors.normal : (i < shot ? AppColors.navy : Colors.white),
+                border: Border.all(color: done ? AppColors.normal : (i < shot ? AppColors.navy : AppleGray.separator), width: 1.5),
+              ),
+              child: done
+                  ? const Icon(Icons.check_rounded, size: 14, color: Colors.white)
+                  : Text('${i + 1}',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: i < shot ? Colors.white : AppColors.textMuted)),
+            ),
+          ],
+        ]),
       );
 }

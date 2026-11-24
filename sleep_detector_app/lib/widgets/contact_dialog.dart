@@ -18,6 +18,7 @@ import '../services/auth_service.dart';
 import '../theme.dart';
 import '../utils/phone_format.dart';
 import 'auth_ui.dart';
+import '../design_tokens.dart';
 
 class ContactRules {
   ContactRules._();
@@ -114,7 +115,7 @@ class _ContactDialogState extends State<ContactDialog> {
         backgroundColor: AppColors.card,
         surfaceTintColor: Colors.transparent,
         insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.card)),
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(22, 26, 22, 20),
           child: Form(

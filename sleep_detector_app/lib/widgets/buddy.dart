@@ -128,19 +128,10 @@ class _OrbPainter extends CustomPainter {
           canvas.drawPath(Path()..moveTo(e.dx - 6, e.dy - 1)..quadraticBezierTo(e.dx, e.dy + 5, e.dx + 6, e.dy - 1), ink);
         }
         canvas.drawPath(Path()..moveTo(36, 46)..quadraticBezierTo(50, 58, 64, 46), ink);
-      case 1: // 졸림 — 눈꺼풀이 반쯤 · 입 일자
-        for (final e in [l, r]) {
-          canvas.drawArc(Rect.fromCircle(center: e, radius: 4), 0, 3.1416, true, inkFill);
-          canvas.drawLine(e.translate(-6, 0), e.translate(6, 0), ink);
-        }
-        canvas.drawLine(const Offset(44, 50), const Offset(56, 50), ink);
-      case 2: // 꾸벅 — 처진 눈 · 작은 하품 · z
-        for (final e in [l, r]) {
-          canvas.drawPath(Path()..moveTo(e.dx - 6, e.dy + 1)..quadraticBezierTo(e.dx, e.dy + 5, e.dx + 6, e.dy + 1), ink);
-        }
-        canvas.drawOval(Rect.fromCenter(center: const Offset(50, 51), width: 7, height: 8), ink);
-        _z(canvas, const Offset(78, 4), 9, ink);
-        _z(canvas, const Offset(90, -6), 6, ink..strokeWidth = 2.6);
+      case 1: // (11/23 사용자 요청) 주의 — 졸린 얼굴 대신 '앗, 조심!' 귀여운 얼굴
+        _cautionFace(canvas, ink, inkFill, l, r);
+      case 2: // (11/23 사용자 요청) 휴식 권고 — 자는 얼굴 대신 '어떡해, 쉬어요!' 귀여운 걱정 얼굴
+        _restFace(canvas, ink, inkFill, l, r);
       default: // 3 긴급 — (11/19) 귀여운 깜짝 얼굴: 동그란 눈 + 반짝 · 위로 올라간 짧은 눈썹 · 작은 'o' 입 · 분홍 볼
         for (final e in [l, r]) {
           canvas.drawCircle(e, 4.6, inkFill);
@@ -154,22 +145,44 @@ class _OrbPainter extends CustomPainter {
     canvas.restore();
   }
 
+  /// (11/23 사용자 요청) 2단계 휴식 권고 얼굴 — 반짝 동그란 눈 · 안쪽이 올라간 걱정 눈썹 · 물결 입 · 볼
+  void _restFace(Canvas canvas, Paint ink, Paint inkFill, Offset l, Offset r) {
+    for (final e in [l, r]) {
+      canvas.drawCircle(e, 4.4, inkFill);
+      canvas.drawCircle(e.translate(-1.4, -1.5), 1.4, Paint()..color = Colors.white);
+    }
+    canvas.drawLine(const Offset(33, 27), const Offset(43, 23.5), ink); // 걱정 눈썹 (안쪽이 위로)
+    canvas.drawLine(const Offset(57, 23.5), const Offset(67, 27), ink);
+    canvas.drawPath(Path()..moveTo(42, 51)..quadraticBezierTo(46, 47.5, 50, 51)..quadraticBezierTo(54, 54.5, 58, 51), ink); // 물결 입
+    canvas.drawCircle(const Offset(29, 46), 4.5, Paint()..color = const Color(0x66FFFFFF));
+    canvas.drawCircle(const Offset(71, 46), 4.5, Paint()..color = const Color(0x66FFFFFF));
+  }
+
+  /// (11/23 사용자 요청) 1단계 주의 얼굴 — 반짝이는 동그란 눈 · 살짝 올라간 짧은 눈썹 · 작은 미소 · 이마 옆 땀방울 · 볼
+  void _cautionFace(Canvas canvas, Paint ink, Paint inkFill, Offset l, Offset r) {
+    for (final e in [l, r]) {
+      canvas.drawCircle(e, 4.4, inkFill);
+      canvas.drawCircle(e.translate(-1.4, -1.5), 1.4, Paint()..color = Colors.white);
+      canvas.drawPath(Path()..moveTo(e.dx - 5, e.dy - 9)..quadraticBezierTo(e.dx, e.dy - 12, e.dx + 5, e.dy - 9), ink);
+    }
+    canvas.drawPath(Path()..moveTo(44, 49)..quadraticBezierTo(50, 54, 56, 49), ink); // 작은 미소
+    canvas.drawCircle(const Offset(29, 46), 4.5, Paint()..color = const Color(0x66FFFFFF)); // 볼
+    canvas.drawCircle(const Offset(71, 46), 4.5, Paint()..color = const Color(0x66FFFFFF));
+    // 땀방울 (오른쪽 이마) — 연한 하늘색
+    final drop = Path()
+      ..moveTo(76, 18)
+      ..quadraticBezierTo(71, 26, 76, 29)
+      ..quadraticBezierTo(81, 26, 76, 18)
+      ..close();
+    canvas.drawPath(drop, Paint()..color = const Color(0xFF8FC8F2));
+  }
+
   /// (11/19 사용자 요청) 운행 화면 경고 얼굴 — 1단계 '어? 조심해요' · 2단계 '쉬어야 해요' (졸린 얼굴 대신)
   void _alertFace(Canvas canvas, Paint ink, Paint inkFill, Offset l, Offset r) {
     if (stage == 1) {
-      // 걱정하는 얼굴 — 동그란 눈 · 안쪽이 올라간 눈썹 · 일자 입
-      canvas.drawCircle(l, 3.6, inkFill);
-      canvas.drawCircle(r, 3.6, inkFill);
-      canvas.drawLine(const Offset(32, 27), const Offset(43, 24), ink);
-      canvas.drawLine(const Offset(57, 24), const Offset(68, 27), ink);
-      canvas.drawPath(Path()..moveTo(43, 51)..quadraticBezierTo(50, 48, 57, 51), ink);
+      _cautionFace(canvas, ink, inkFill, l, r); // (11/23) 홈 · 운행 화면 같은 얼굴
     } else {
-      // 걱정스럽게 경고하는 얼굴 (화난 얼굴 X) — 또렷한 눈 · 살짝 모인 짧은 눈썹 · 작게 시무룩한 입
-      canvas.drawCircle(l, 3.8, inkFill);
-      canvas.drawCircle(r, 3.8, inkFill);
-      canvas.drawLine(const Offset(33, 25), const Offset(43, 27), ink);
-      canvas.drawLine(const Offset(57, 27), const Offset(67, 25), ink);
-      canvas.drawPath(Path()..moveTo(44, 53)..quadraticBezierTo(50, 49, 56, 53), ink);
+      _restFace(canvas, ink, inkFill, l, r); // (11/23) 홈 · 운행 화면 같은 얼굴
     }
   }
 
@@ -234,43 +247,42 @@ class HsCard extends StatelessWidget {
   final Widget child; // 왼쪽 글
   final double minHeight;
   final double orb; // 캐릭터 크기
-  const HsCard({super.key, required this.stage, int? face, required this.child, this.minHeight = 132, this.orb = 172})
+  final String? label; // (11/23) 왼쪽 위 작은 글 (달 · 날짜)
+  final Widget? labelWidget; // (11/23) 왼쪽 위에 글 대신 넣을 것 (MY 달 고르기)
+  final double? faceSize; // (11/24) 캐릭터 크기를 직접 (두 줄 글 높이에 맞춤)
+  const HsCard({super.key, required this.stage, int? face, required this.child, this.minHeight = 132, this.orb = 172, this.label, this.labelWidget, this.faceSize})
       : face = face ?? stage;
 
   @override
   Widget build(BuildContext context) {
+    // (11/23 리디자인_3) 홈 운행 카드와 같은 모양 — 흰색에서 아주 연한 단계 색 · 얇은 테두리 · 둥글기 16 ·
+    //   캐릭터는 잘리지 않게 오른쪽에 작게 (빛 번짐 · 큰 캐릭터 걸침은 뺌)
     final s = stage.clamp(0, 3);
+    // (11/23 사용자 요청) 카드 공통 — 왼쪽 연한 단계 색 → 오른쪽 흰색 · 구분선 없음
+    //   왼쪽 위 작은 글(달 · 날짜) / 아래 큰 글 · 캐릭터는 맨 오른쪽이 아니라 글이 끝나는 바로 옆
+    final size = faceSize ?? (orb * 0.36).clamp(48.0, 60.0);
     return Container(
       constraints: BoxConstraints(minHeight: minHeight),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        // (11/19 사용자 요청) 카드 바탕은 살짝 투명하게 — 크림 화면이 은은하게 비침
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [for (final c in AppIllust.cardGradient[s]) c.withValues(alpha: 0.78)],
-        ),
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppleGray.separator),
+        gradient: LinearGradient(colors: [AppIllust.softTint[s], Colors.white]),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(alignment: Alignment.centerLeft, children: [
-        // (11/19) 캐릭터 뒤 은은한 빛 — 카드 노랑과 캐릭터 주황이 자연스럽게 이어지게
-        Positioned(
-          right: -orb * 0.6,
-          bottom: -orb * 0.7,
-          child: Container(
-            width: orb * 1.7,
-            height: orb * 1.7,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(colors: [
-                AppIllust.orbGradient[s][0].withValues(alpha: 0.42),
-                AppIllust.orbGradient[s][0].withValues(alpha: 0),
-              ]),
-            ),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (labelWidget != null || label != null) ...[
+          // (11/24 사용자 요청) 숫자 '1' 의 왼쪽 여백만큼 살짝 당겨 아래 '졸음 경고' 와 같은 시작선
+          Transform.translate(
+            offset: const Offset(-0.8, 0),
+            child: labelWidget ?? Text(label!, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppleGray.label)),
           ),
-        ),
-        Positioned(right: -orb * 0.24, bottom: -orb * 0.36, child: _OrbOn(stage: s, face: face.clamp(0, 3), size: orb)),
-        Padding(padding: EdgeInsets.fromLTRB(22, 20, orb * 0.66, 20), child: child),
+          const SizedBox(height: 10),
+        ],
+        Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          Flexible(child: child),
+          const SizedBox(width: 14),
+          _OrbOn(stage: s, face: face.clamp(0, 3), size: size),
+        ]),
       ]),
     );
   }

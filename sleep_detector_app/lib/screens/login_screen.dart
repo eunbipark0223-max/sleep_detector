@@ -142,7 +142,11 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Center(child: AuthLogo(size: 64)),
+                const Column(children: [ // (11/23 사용자 요청) 방패 대신 글자 로고
+                  Text('졸음가드', style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, letterSpacing: -1.2, color: AppColors.navy)),
+                  SizedBox(height: 4),
+                  Text('운전자 졸음 안전관리', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.textMuted)),
+                ]),
                 const SizedBox(height: 36),
                 _loginForm(),
                 const SizedBox(height: 24),

@@ -18,6 +18,8 @@ import 'auth_ui.dart';
 import 'owl_says.dart' show keepWords;
 import 'web_ui.dart';
 import 'buddy.dart';
+import 'system_status.dart';
+import 'stage_layout.dart' show titleLines;
 
 /// 남색 '지금 상태' 카드 (시안 .current-state-card)
 class HomeStateCard extends StatelessWidget {
@@ -62,39 +64,122 @@ class HomeStateCard extends StatelessWidget {
   // (11/19 사용자 요청 · Headspace 오늘 탭) 위 = 반투명 단계 색 하늘 + 흰 언덕 뒤로 떠오르는 동그란 캐릭터
   //   아래 흰 칸 = 날짜 · 큰 글 · (운행 중이면) 운행 요약 · 버튼
   Widget _today(int s, String big) {
+    // (11/23 사용자 요청) 단계마다 문구 · 캐릭터 얼굴 · 바탕 색 · 왼쪽 위 단계 알약이 바뀜 (버튼 · 날짜 자리는 그대로)
     final now = DateTime.now();
     final date = '${now.month}/${now.day}'; // (11/19 사용자 요청) '11월 19일 목요일' 대신 짧게
-    final title = idle && s == 0 ? '오늘도 안전 운전해요' : big;
-    final sub = idle && s == 0 ? '졸음은 제가 옆에서 지켜볼게요' : null;
+    // 큰 글 · 작은 글 — 시나리오 단계 문장과 같은 뜻
+    final title = const ['오늘도 안전 운행하세요', '졸음이 감지됐어요', '쉼터에서 쉬어 가세요', '지금 바로 정차하세요'][s];
+    const String? sub = null; // (11/23 리디자인_2) 설명 글 뺌
+    // (11/23 기업용 리디자인) 상태 알약 — 운행 대기 / 운행 중 / n단계
+    const names = ['정상', '주의', '휴식 권고', '긴급'];
+    // (11/23 사용자 요청) 운행 전 = '11/23' 만 · 운행 중 = 남색 알약 · 단계 = 점 + 이름
+    final (String pill, Color pc) = idle && s == 0
+        ? (date, AppStatus.info)
+        : s == 0
+            ? ('운행 중', AppColors.navy)
+            : (names[s], [AppStatus.normal, AppStatus.caution, AppStatus.warning, AppStatus.danger][s]);
+    final String? friendly = const [
+      '졸음은 제가 옆에서 지켜볼게요',
+      '정신 차리고 앞을 봐 주세요',
+      '15분 쉬면 다시 출발할 수 있어요',
+      '관리자에게 알렸어요',
+    ][s];
+    final stageCol = [AppStatus.normal, AppStatus.caution, AppStatus.warning, AppStatus.danger][s];
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.card,
+        // (11/23 리디자인_3) 흰색에서 오른쪽 아래로 아주 연한 단계 색 — 졸음가드다운 따뜻함 (장식 그라데이션은 이것 하나만)
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft, // (11/23 사용자 요청) 왼쪽 → 오른쪽
+          end: Alignment.centerRight,
+          colors: [Colors.white, AppIllust.softTint[s]],
+        ),
+        border: Border.all(color: AppleGray.separator),
         borderRadius: BorderRadius.circular(AppRadius.card), // (11/19) 홈 모든 카드 둥글기 같게
         boxShadow: AppShadow.card,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        BuddySky(stage: s),
         Padding(
-          padding: const EdgeInsets.fromLTRB(22, 6, 22, 22),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24), // (11/24 사용자 요청) 위 여백을 조금 써서 내용을 위로
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text(date, style: AppType.footnote.copyWith(color: AppColors.textMuted, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 6),
-            // (11/19 사용자 요청) 큰 글은 진한 검정 대신 단계 색 — 정상은 남색 · 주의는 진한 노랑 · 휴식 권고 주황 · 긴급은 투명도 준 빨강
-            Text(keepWords(title), style: AppType.title2.copyWith(color: AppColors.textPrimary)),
+            // (11/23) 캐릭터는 작은 칸으로 (친근함은 남기고 정보가 먼저) · 오른쪽 = 상태 알약 + 큰 글
+            // (11/23 사용자 요청) 왼쪽 = 맨 위 상태 알약 · 아래 캐릭터 / 오른쪽 = 큰 글 — 문장마다 한 줄
+            //   관리자에게 알렸어요
+            //   지금 바로 정차하세요
+            // (11/23 사용자 요청) 단계 알약 = 오른쪽 맨 위 (조금 작게) · 왼쪽 캐릭터 · 오른쪽 큰 글 두 줄 (줄 사이 한 칸)
+            Stack(clipBehavior: Clip.none, children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 36), // (11/23) 위 단계 알약과 숨 쉴 틈
+                child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                  Buddy(stage: s, size: 64, breathe: !idle),
+                  const SizedBox(width: 18),
+                  Expanded(
+                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      for (final (i, line) in titleLines(title).indexed) ...[
+                        if (i > 0) const SizedBox(height: 4), // 줄 사이 한 칸
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(line, maxLines: 1, softWrap: false, style: AppType.title2.copyWith(height: 1.25, color: AppColors.textPrimary)),
+                        ),
+                      ],
+                      if (friendly != null) ...[
+                        const SizedBox(height: 6),
+                        Text(friendly, style: AppType.subheadline.copyWith(color: AppColors.textSecondary)), // (11/23) 글자 키움
+                      ],
+                    ]),
+                  ),
+                ]),
+              ),
+              // (11/23 사용자 요청) 왼쪽 위 — 지금 단계 (연한 단계 색 알약 · 틀 없는 색 점 · 이름)
+              // (11/24 사용자 요청) '정상' 알약 · '11/24' = 같은 줄 · 같은 높이(22) · 같은 글자 크기(13)
+              Positioned(
+                top: 0,
+                left: 0,
+                child: Container(
+                  height: 22,
+                  padding: const EdgeInsets.fromLTRB(8, 0, 10, 0),
+                  decoration: BoxDecoration(color: stageCol.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.pill)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Container(width: 6, height: 6, decoration: BoxDecoration(color: stageCol, shape: BoxShape.circle)),
+                    const SizedBox(width: 5),
+                    Text(names[s], style: TextStyle(fontSize: 13, height: 1.0, fontWeight: FontWeight.w700, color: s == 1 ? const Color(0xFF9A6B00) : stageCol)),
+                  ]),
+                ),
+              ),
+              // (11/23 사용자 요청) 점 · 알약 없이 — 오른쪽 끝 = 아래 버튼 끝선
+              Positioned(
+                top: 0,
+                right: 10, // (11/23 사용자 요청) 조금 더 왼쪽
+                child: SizedBox(
+                  height: 22, // 알약과 같은 높이 · 같은 가운데 줄
+                  child: Center(
+                    child: Text(date, style: TextStyle(fontSize: 13, height: 1.0, fontWeight: FontWeight.w700, color: AppColors.textSecondary, fontFeatures: AppStatus.figures)),
+                  ),
+                ),
+              ),
+            ]),
             if (sub != null) ...[
-              const SizedBox(height: 12), // (11/19 사용자 요청) 큰 글 아래 한 줄 띄우고
+              const SizedBox(height: 14),
               Text(sub, style: AppType.subheadline.copyWith(color: AppColors.textSecondary)),
             ],
-            if (stats.isNotEmpty) ...[
-              const SizedBox(height: 16),
+            if (stats.isNotEmpty && pill.isEmpty && pc == Colors.transparent) ...[ // (11/23) 첫 카드에서는 숫자 줄 안 보임
+              const SizedBox(height: 24),
               IntrinsicHeight(
                 child: Row(children: [
                   for (var i = 0; i < stats.length; i++) ...[
                     if (i > 0) const VerticalDivider(width: 1, thickness: 1, indent: 4, endIndent: 4, color: AppColors.line),
                     Expanded(
                       child: Column(children: [
-                        Text(stats[i].$1, textAlign: TextAlign.center, style: AppType.title3.copyWith(color: AppColors.textPrimary)),
+                        Text(stats[i].$1,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                fontSize: 26,
+                                height: 1.15,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.6,
+                                fontFeatures: AppStatus.figures,
+                                color: stats[i].$2 == '졸음' && stats[i].$1 != '0회' ? const Color(0xFFD97706) : AppColors.textPrimary)),
                         const SizedBox(height: 2),
                         Text(stats[i].$2,
                             textAlign: TextAlign.center, style: AppType.footnote.copyWith(color: AppColors.textSecondary)),
@@ -104,7 +189,7 @@ class HomeStateCard extends StatelessWidget {
                 ]),
               ),
             ],
-            const SizedBox(height: 20),
+            const SizedBox(height: 28), // (11/23) 버튼은 넉넉하게
             resume ?? _startButtons(),
           ]),
         ),
@@ -119,15 +204,15 @@ class HomeStateCard extends StatelessWidget {
         AuthButton(
           text: startLabel,
           onPressed: onStart,
-          height: 48,
+          height: AppSize.button, // (11/23) 운전자 장갑 · 큰 손가락 — 누르는 칸 넉넉히
           contentWidth: 118,
           leading: const Icon(Icons.play_arrow_rounded, size: 22, color: Colors.white),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         const AuthButton(
           text: '이어서 운행',
           primary: false,
-          height: 48,
+          height: AppSize.button,
           contentWidth: 118,
           leading: Icon(Icons.redo_rounded, size: 22, color: AuthUi.placeholder),
         ),
@@ -138,7 +223,7 @@ class HomeStateCard extends StatelessWidget {
   Widget _readdy(int s, String big) {
     // (11/17 사용자 요청) 운행 전 · 정상이면 '정상' 배지 · '안전 운전 중이에요' 없이 캐릭터 자리 + [운행 시작] 만
     if (idle && s == 0) {
-      return WebCard(
+      return WebCard(outline: true, 
         padding: const EdgeInsets.fromLTRB(22, 24, 22, 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -167,7 +252,7 @@ class HomeStateCard extends StatelessWidget {
       );
     }
     // (11/17 관리자 웹 느낌) 흰 카드 · 단계 알약 배지 · 큰 글 · 오른쪽 캐릭터 그림 자리
-    return WebCard(
+    return WebCard(outline: true, 
       padding: const EdgeInsets.fromLTRB(22, 24, 22, 20), // 운행 전 카드와 같은 여백
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -248,7 +333,7 @@ class HomeStateCard extends StatelessWidget {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: const Color(0xFF334275)),
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -404,7 +489,7 @@ class HomeStateCard extends StatelessWidget {
                 else
                   DecoratedBox(
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(17),
+                      borderRadius: BorderRadius.circular(AppRadius.card),
                       boxShadow: const [
                         BoxShadow(
                           color: Color(0x3D0B1234),
@@ -429,7 +514,7 @@ class HomeStateCard extends StatelessWidget {
                         foregroundColor: AppColors.navy,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(17),
+                          borderRadius: BorderRadius.circular(AppRadius.card),
                         ),
                       ),
                     ),
@@ -492,7 +577,7 @@ class HomeReadyTile extends StatelessWidget {
       padding: const EdgeInsets.all(9),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(color: AppColors.cardBorder),
       ),
       child: Row(
@@ -633,14 +718,14 @@ class HomeReadyRow extends StatelessWidget {
                 color: Colors.transparent,
                 child: InkWell(
                   onTap: onTap,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   child: Container(
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
                       color: all
                           ? const Color(0xFFE8F5ED)
                           : const Color(0xFFE7E9EE),
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(AppRadius.card),
                       border: Border.all(
                         color: all
                             ? const Color(0xFFBFE2CB)
@@ -719,7 +804,7 @@ Future<bool?> showPermissionSheet(
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
     decoration: BoxDecoration(
       color: const Color(0xFFF7F8FB),
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadius.card),
       border: Border.all(color: AppColors.cardBorder),
     ),
     child: Row(
@@ -768,7 +853,7 @@ Future<bool?> showPermissionSheet(
     backgroundColor: Colors.white,
     barrierColor: const Color(0x8F11172D),
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
     ),
     builder: (ctx) => SafeArea(
       child: Padding(
@@ -868,7 +953,7 @@ Future<bool?> showPermissionSheet(
             const SizedBox(height: 11),
             DecoratedBox(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(17),
+                borderRadius: BorderRadius.circular(AppRadius.card),
                 boxShadow: const [
                   BoxShadow(
                     color: Color(0x251F2A5C),
@@ -885,7 +970,7 @@ Future<bool?> showPermissionSheet(
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(17),
+                    borderRadius: BorderRadius.circular(AppRadius.card),
                   ),
                 ),
                 child: const Text(
@@ -915,7 +1000,7 @@ class SpeechBubble extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.only(left: 6), // 꼬리 자리
         padding: const EdgeInsets.fromLTRB(16, 13, 16, 14),
-        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)),
+        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(AppRadius.card)),
         child: child,
       ),
     );
@@ -941,4 +1026,56 @@ class _BubbleTail extends CustomPainter {
 
   @override
   bool shouldRepaint(_BubbleTail old) => old.color != color;
+}
+
+/// (11/23 리디자인_3 · Samsara Driver 타일 메뉴 참고) 홈 바로가기 2 x 2 — 이미 있는 탭으로만 이동 (새 기능 없음)
+class HomeTiles extends StatelessWidget {
+  final ValueChanged<int> onOpenTab;
+  const HomeTiles({super.key, required this.onOpenTab});
+
+  static const _items = [
+    (Icons.article_rounded, '운행 기록', '감지 이력 · 리포트', 1),
+    (Icons.location_on_rounded, '졸음쉼터', '가까운 쉼터 찾기', 2),
+    (Icons.smart_toy_rounded, '규정 도우미', '휴게 규정 묻기', 3),
+    (Icons.insights_rounded, 'MY', '이번 달 안전 분석', 4),
+  ];
+
+  Widget _tile((IconData, String, String, int) t) => Material(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          onTap: () => onOpenTab(t.$4),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppRadius.card),
+              border: Border.all(color: AppleGray.separator),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(color: AppColors.navy.withValues(alpha: 0.08), shape: BoxShape.circle),
+                  child: Icon(t.$1, size: 20, color: AppColors.navy),
+                ),
+                const Spacer(),
+                const Icon(Icons.chevron_right_rounded, size: 20, color: AppleGray.chevron),
+              ]),
+              const SizedBox(height: 12),
+              Text(t.$2, style: AppType.headline.copyWith(color: AppColors.textPrimary)),
+              const SizedBox(height: 2),
+              Text(t.$3, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppType.footnote.copyWith(color: AppColors.textSecondary)),
+            ]),
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) => Column(children: [
+        Row(children: [Expanded(child: _tile(_items[0])), const SizedBox(width: 10), Expanded(child: _tile(_items[1]))]),
+        const SizedBox(height: 10),
+        Row(children: [Expanded(child: _tile(_items[2])), const SizedBox(width: 10), Expanded(child: _tile(_items[3]))]),
+      ]);
 }
