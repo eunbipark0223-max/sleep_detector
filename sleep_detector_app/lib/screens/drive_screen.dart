@@ -25,7 +25,6 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/cupertino.dart';
@@ -53,7 +52,6 @@ import 'quiz_screen.dart';
 import '../widgets/system_status.dart';
 import '../design_tokens.dart';
 import 'package:flutter/services.dart';
-import '../widgets/owl_says.dart' show keepWords;
 
 class DriveScreen extends StatefulWidget {
   /// 측정 화면(D)이 돌려준 "내 눈 기준값". 측정을 건너뛰었으면 null → 기본 기준을 쓴다.

@@ -26,3 +26,6 @@ result_images/
 
 # W&B 실험 기록 로컬 폴더 (tools/stt_wandb.py 등) — 결과는 W&B 에만
 wandb/
+
+# KPI 4 시험 질문 — CSV 는 구글 드라이브에만 (11/24 팀장)
+tools/kpi4_questions.csv

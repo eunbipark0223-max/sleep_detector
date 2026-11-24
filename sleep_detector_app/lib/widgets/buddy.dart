@@ -186,16 +186,6 @@ class _OrbPainter extends CustomPainter {
     }
   }
 
-  void _z(Canvas c, Offset o, double w, Paint p) {
-    c.drawPath(
-        Path()
-          ..moveTo(o.dx, o.dy)
-          ..lineTo(o.dx + w, o.dy)
-          ..lineTo(o.dx, o.dy + w)
-          ..lineTo(o.dx + w, o.dy + w),
-        p);
-  }
-
   @override
   bool shouldRepaint(_OrbPainter old) => old.stage != stage || old.t != t || old.alert != alert;
 }

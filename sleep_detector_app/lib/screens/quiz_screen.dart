@@ -30,7 +30,7 @@ import '../services/voice_service.dart';
 import '../design_tokens.dart';
 import '../theme.dart';
 import '../widgets/buddy.dart';
-import '../widgets/owl_says.dart' show keepWords, balancedLines;
+import '../widgets/owl_says.dart' show balancedLines;
 
 class QuizScreen extends StatefulWidget {
   final VoiceQuiz quiz;
@@ -52,7 +52,6 @@ class _QuizScreenState extends State<QuizScreen> {
   late VoiceQuiz _quiz = widget.quiz;
   late int _stage = widget.stage;
   String _guide = '';
-  String _heard = '';
   String _message = '';
 
   @override
@@ -60,7 +59,6 @@ class _QuizScreenState extends State<QuizScreen> {
     super.initState();
     if (widget.previewGuide != null || widget.previewHeard != null) {
       _guide = widget.previewGuide ?? '';
-      _heard = widget.previewHeard ?? '';
       return;
     }
     _run();
@@ -70,7 +68,6 @@ class _QuizScreenState extends State<QuizScreen> {
     while (mounted) {
       setState(() {
         _guide = '';
-        _heard = '';
         _message = '';
       });
       await VoiceService.speak(_quiz.speak);
@@ -79,9 +76,6 @@ class _QuizScreenState extends State<QuizScreen> {
         type: _quiz.type,
         display: _quiz.display,
         listenSec: _quiz.listenSec,
-        onPartial: (t) {
-          if (mounted) setState(() => _heard = t);
-        },
         onGuide: (g) {
           if (mounted) setState(() => _guide = g);
         },
@@ -120,7 +114,6 @@ class _QuizScreenState extends State<QuizScreen> {
   // (11/16 팀장) 운전 중에 뜨는 화면이라 운행 · 경고 화면과 같은 남색 (밤에 흰 화면이 눈부시지 않게)
   // (11/18 피드백 · 애플 토큰) 흰 바탕 · 검정 제목 · 회색 설명 · 남색은 마이크에만
   static const Color _bg = AppColors.background;
-  static const Color _sub = AppleGray.secondaryLabel;
 
   String get _typeLabel => switch (_quiz.type) {
         'add' => '간단 계산',

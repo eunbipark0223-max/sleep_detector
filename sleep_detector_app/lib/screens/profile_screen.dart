@@ -26,7 +26,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../design_tokens.dart';
 import '../theme.dart';
@@ -126,8 +125,6 @@ class _BodyState extends State<_Body> {
   bool _busy = false; // 올리거나 지우는 중
   late Map<String, dynamic> _user = Map<String, dynamic>.of(widget.user); // 저장하면 이 복사본의 전화번호 · 차량번호를 바꾼다
 
-  int? _eventCount; // 내 경고 건수 (못 받으면 null → '—')
-  List<int> _byStage = const [0, 0, 0]; // (11/18) 1 · 2 · 3단계 각각 몇 건
 
   Map<String, dynamic> get user => _user;
 
@@ -136,19 +133,6 @@ class _BodyState extends State<_Body> {
     super.initState();
     final url = user['photo_url'];
     if (url is String && url.isNotEmpty) _loadPhoto();
-    _loadEventCount();
-  }
-
-  // 홈 · 운행 기록과 같은 fetchMyEvents 로 센다. 못 받아도 오류 안내 없이 '—' 로 둔다
-  Future<void> _loadEventCount() async {
-    try {
-      final events = await ApiService.fetchMyEvents();
-      if (!mounted) return;
-      setState(() {
-        _eventCount = events.length;
-        _byStage = [for (var s = 1; s <= 3; s++) events.where((e) => e.stage == s).length];
-      });
-    } catch (_) {/* '—' 그대로 */}
   }
 
   // 사진을 못 받아도(404 · 연결 오류) 화면은 이름 첫 글자로 보여 주면 되므로 오류 안내는 띄우지 않는다

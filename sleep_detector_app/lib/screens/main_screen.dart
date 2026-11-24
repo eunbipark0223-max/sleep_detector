@@ -479,8 +479,6 @@ class _TabBar extends StatelessWidget {
     (Icons.person_outline_rounded, Icons.person_rounded, 'MY'), // (11/17) ≡ 메뉴 대신
   ];
 
-  // (11/19 사용자 요청) 탭바 색은 남색 하나로 — 평소 연한 남색 · 누르면 진한 남색
-  static final Color _soft = AppColors.navy.withValues(alpha: 0.38);
 
   @override
   Widget build(BuildContext context) {

@@ -71,7 +71,6 @@ class _DriveReportScreenState extends State<DriveReportScreen> {
   }
 
   static const Color _bg = AppColors.background; // (11/18 피드백) 다른 화면과 같은 흰 바탕
-  static const List<String> _stageNames = ['정상', '주의', '휴식 권고', '긴급'];
   static const double _side = 20; // 다른 탭과 같은 좌우 여백 (시작점 · 끝점)
 
   int _i(String k) => (report[k] is num) ? (report[k] as num).toInt() : 0;

@@ -237,25 +237,6 @@ class StageMessage extends StatelessWidget {
   }
 }
 
-/// 카드 안 작은 알약 — 왼쪽 14 칸(아이콘 · 점) + 글. 두 알약의 글 시작선이 같음
-class _CardChip extends StatelessWidget {
-  final Widget lead;
-  final String text;
-  final Color bg;
-  final Color color;
-  const _CardChip({required this.lead, required this.text, required this.bg, required this.color});
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
-        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          SizedBox(width: 14, child: Center(child: lead)),
-          const SizedBox(width: 6),
-          Text(text, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, letterSpacing: -0.2, color: color)),
-        ]),
-      );
-}
-
 /// 운행 · 경고 화면 큰 버튼 (readdy) — kind: 'white'(흰 반투명 + 남색 글) · 'navy'(남색 꽉 참)
 ButtonStyle stageButton(String kind, {double height = AppSize.button}) => FilledButton.styleFrom(
       backgroundColor: kind == 'navy' ? AppColors.navy : Colors.white,

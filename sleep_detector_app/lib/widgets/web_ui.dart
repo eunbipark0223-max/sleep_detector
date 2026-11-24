@@ -293,7 +293,7 @@ class WebHeader extends StatelessWidget {
         const Text('LIVE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.live)),
       ],
       const Spacer(),
-      if (trailing != null) trailing!,
+      ?trailing,
     ]);
   }
 }

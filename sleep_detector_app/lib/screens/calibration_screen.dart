@@ -47,7 +47,6 @@ import '../widgets/auth_ui.dart';
 import '../widgets/stage_layout.dart';
 import '../widgets/buddy.dart';
 import 'warning_screen.dart' show ServerCancelText, noCancel;
-import '../widgets/owl_says.dart' show keepWords;
 
 class CalibrationScreen extends StatefulWidget {
   /// 사진 1장 찍고 파일 경로를 돌려준다. 비우면 전면 카메라로 찍는다 (이때만 카메라를 열고 미리보기를 보여 준다).
@@ -489,25 +488,6 @@ class _Preview extends StatelessWidget {
       ),
     );
   }
-}
-
-/// 맨 위 — 운행 화면의 StageHeader 와 같은 자리 · 같은 크기 ('● 운행 전 준비' + 큰 제목)
-class _CalHeader extends StatelessWidget {
-  const _CalHeader();
-
-  @override
-  Widget build(BuildContext context) => Padding(
-      padding: EdgeInsets.zero, // 틀(StageLayout)이 카메라 안쪽으로 들여씀
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(width: 10, height: 10, decoration: const BoxDecoration(color: AppColors.normal, shape: BoxShape.circle)),
-          const SizedBox(width: 8),
-          const Text('운행 전 준비', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
-        ]),
-        const SizedBox(height: 8),
-        const Text('눈 기준 측정',
-            style: TextStyle(fontSize: 28, height: 1.2, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: AppleGray.softLabel)),
-      ]));
 }
 
 /// '휴대폰을 거치대에 고정한 뒤 시작해 주세요' — 연한 남색 알약 + 작은 휴대폰 아이콘 (눈에 띄지만 화면을 해치지 않게)

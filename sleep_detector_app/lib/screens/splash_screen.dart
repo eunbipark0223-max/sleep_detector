@@ -17,7 +17,6 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
 import 'main_screen.dart';
-import '../widgets/system_status.dart';
 import '../design_tokens.dart';
 
 class SplashScreen extends StatefulWidget {

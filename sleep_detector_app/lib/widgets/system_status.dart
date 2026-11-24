@@ -140,7 +140,6 @@ class DriveStatusStrip extends StatelessWidget {
   final DateTime? reportedAt; // 3단계 — 관리자에게 알린 시각
   const DriveStatusStrip({super.key, this.online = true, this.stage = 0, this.reportedAt});
 
-  static const _names = ['정상', '주의', '휴식 권고', '긴급'];
 
   Widget _value(String text, {Color? dot, Color? color}) => Row(mainAxisSize: MainAxisSize.min, children: [
         if (dot != null) ...[

@@ -94,10 +94,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ]);
                   }
                   final events = snapshot.data;
-                  if (events == null)
+                  if (events == null) {
                     return _scroll(const [_Hint(text: '운행 기록 불러오기는 준비 중이에요')]);
-                  if (events.isEmpty)
+                  }
+                  if (events.isEmpty) {
                     return _scroll(const [_Hint(text: '아직 경고 기록이 없어요')]);
+                  }
 
                   // 보고 있는 달의 경고만 (달력 · 도넛 · 목록 모두 같은 달)
                   bool inMonth(SleepEvent e) {

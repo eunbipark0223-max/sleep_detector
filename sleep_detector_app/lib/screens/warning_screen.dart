@@ -43,7 +43,6 @@ import 'quiz_screen.dart';
 import 'rest_screen.dart';
 import '../widgets/system_status.dart';
 import '../design_tokens.dart';
-import '../widgets/owl_says.dart' show keepWords;
 
 /// "정차하셨나요?" 창을 아무것도 안 누르고 띄워 둘 수 있는 시간 — 지나면 [취소]처럼 닫힌다 (11/10 팀장 · C: 1분)
 const int confirmRestSec = 60;
@@ -868,22 +867,6 @@ class _WarningScreenState extends State<WarningScreen> {
       ),
     );
   }
-}
-
-/// (11/19) 버튼 안 [아이콘 · 글] — 폭 210 칸 안에서 왼쪽부터 → 위아래 버튼의 아이콘 시작선이 같음
-class _IconLabel extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  const _IconLabel({required this.icon, required this.text});
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        width: 210,
-        child: Row(children: [
-          Icon(icon, size: 24),
-          const SizedBox(width: 12),
-          Flexible(child: Text(text, maxLines: 1, overflow: TextOverflow.fade, softWrap: false)),
-        ]),
-      );
 }
 
 /// (11/24) 카드 안 쉼터 한 줄 — '가까운 ○○ 졸음쉼터, ○○방향, 약 ○킬로미터' → '○○ 졸음쉼터 · ○○방향 · 약 ○km'

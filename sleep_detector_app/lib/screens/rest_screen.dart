@@ -49,7 +49,7 @@ import 'regulation_screen.dart';
 import '../widgets/buddy.dart';
 import '../widgets/auth_ui.dart';
 import '../design_tokens.dart';
-import '../widgets/owl_says.dart' show keepWords, balancedLines;
+import '../widgets/owl_says.dart' show balancedLines;
 
 class RestScreen extends StatefulWidget {
   /// 휴식 시작 (POST /drive/rest). 서버 JSON 을 돌려준다.
