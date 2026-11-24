@@ -748,10 +748,10 @@ class _WarningScreenState extends State<WarningScreen> {
           foregroundColor: fg,
           elevation: 0,
           toolbarHeight: 34, // (11/24 사용자 요청) 상태 줄을 더 위로
-          automaticallyImplyLeading: !_locked,
+          automaticallyImplyLeading: true, // (11/24 사용자 요청) 3단계도 0 · 1 · 2단계처럼 '<' 표시 (3단계는 잠금이라 눌러도 나가지 않음)
           // (11/19 사용자 요청) '운행 중' 은 맨 위 '<' 와 같은 줄 가운데
           centerTitle: true,
-          title: const Text('운행 중', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          title: const Text('운행 중', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         ),
         body: SafeArea(
           top: false,
