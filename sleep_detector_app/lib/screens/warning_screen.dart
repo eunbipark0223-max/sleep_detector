@@ -9,7 +9,8 @@
 //   - 소리 순서: 🔔 알람 → 서버 한 문장 driverVoice ('OOO님, 쉼터에서 쉬어 가세요.' / '… 지금 바로 정차하세요.', 없으면 stage_texts.dart 고정 문구) (11/17)
 //   - 운전 중 음성 퀴즈 (부품 A): D 의 quiz_screen 을 띄우고, 돌려받은 단계로 색 갱신 (2번 실패면 한 단계 위 + 알람)
 //   - 같은 단계에서 또 졸면 알람 · 음성 보고 없이 낼 퀴즈만 (silent, 기획안 6-6)
-//   - 3단계: 관리자 조치완료 전까지 30초마다 알람 + 'OOO님, 지금 바로 정차하세요.' ('관리자에게 알렸어요' 는 화면 큰 글씨, 11/17)
+//   - 3단계: 30초마다 알람 + 'OOO님, 지금 바로 정차하세요.' ('관리자에게 알렸어요' 는 화면 큰 글씨, 11/17)
+//     [깨어 있어요] 를 누르면 30초 반복을 멈추고 버튼이 [쉼터 안내] 로 바뀜 (11/24) — 화면 잠금 · 감지는 관리자 조치완료까지 그대로
 //   - 졸음쉼터 안내 (B 의 rest_area_service): 자동으로 읽지 않음 (11/17) — 2단계 화면에 '📍 가까운 ○○ 졸음쉼터, ○○방향, 약 ○킬로미터' 한 줄
 //     + [가까운 졸음쉼터 듣기] → 다시 읽고 지도 화면 (새 창 없음, 3단계는 길안내를 먼저 권하지 않음, 30초 반복은 짧게 그대로)
 //   - 2단계 [정차했어요] → 확인 창 (음성 · 1분 뒤 저절로 취소) → rest_screen → [운행 재개] 뒤 운행 화면으로 복귀
@@ -112,14 +113,24 @@ Color stageTint(int stage) {
 
 /// 가까운 졸음쉼터 1곳 음성 문장 — "가까운 ○○ 졸음쉼터, ○○방향, 약 ○킬로미터" (B 의 rest_area_service 문장 그대로)
 ///   경고 화면(2 · 3단계) · 운행 화면 휴게 띠(2시간 연속 운전)가 같이 쓴다. 위치를 모르거나 5초 안에 못 찾으면 null
-Future<String?> nearRestVoice(double? lat, double? lng) async {
+Future<String?> nearRestVoice(double? lat, double? lng) async => (await nearRestArea(lat, lng))?.voice;
+
+/// 가까운 졸음쉼터 1곳 (위치를 모르거나 5초 안에 못 찾으면 null)
+Future<NearRestArea?> nearRestArea(double? lat, double? lng) async {
   if (lat == null || lng == null) return null;
   try {
     final near = await nearestRestAreasByRoad(lat, lng, n: 1).timeout(const Duration(seconds: 5));
-    return near.isEmpty ? null : near.first.voice;
+    return near.isEmpty ? null : near.first;
   } catch (_) {
     return null;
   }
+}
+
+/// (11/24 팀장) 2시간 연속 운전 안내 끝 문장 — "태인 졸음쉼터 약 14킬로미터에 있습니다." (쉼터를 못 찾으면 null)
+String? restDueLine(NearRestArea? r) {
+  if (r == null) return null;
+  final km = r.bestKm < 1 ? '1킬로미터 안' : '약 ${r.bestKm.round()}킬로미터';
+  return '${r.area.name} $km에 있습니다.';
 }
 
 /// [가까운 졸음쉼터 듣기] — 쉼터 문장을 다시 읽어 주고 B 의 지도 화면을 연다 (목록 · [길찾기] · 반대편 차로면 다른 쉼터)

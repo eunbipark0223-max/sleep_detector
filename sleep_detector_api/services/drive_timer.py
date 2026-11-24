@@ -6,8 +6,9 @@
 # [이 파일이 하는 일]
 #   - 연속 운전 시간 = /drive/start 이후 ping 이 계속 들어온 시간
 #   - 휴식 인정 = [정차했어요] 후 15분, 또는 ping 이 15분 이상 안 옴 (앱을 끄고 쉰 경우) → 운전 시간 0부터
-#   - 2시간이면 rest_due = true + 안내문 (RAG 규정 제목, 실패 시 고정 문구) — 한 번만
-#     예) "연속 2시간 운전했습니다. 화물자동차 운수사업법 시행규칙 제22조에 따라 15분 이상 쉬어 가세요. 가까운 졸음쉼터를 확인하세요."
+#   - 2시간이면 rest_due = true + 안내문 — 한 번만
+#     예) "2시간 연속 운전했어요. 15분 이상 쉬어 가세요." (11/24 팀장: 짧게 · 법 이름은 빼고 휴게 미준수 기록의 '참고한 법규'에만)
+#     이름 '○○님, ' 은 detect.py 가 앞에 붙이고, 앱이 뒤에 '○○ 졸음쉼터 약 ○킬로미터에 있습니다.' 를 붙여 배너 · 음성 같은 문장으로
 #   - 안내 뒤 15분 안에 안 쉬면 reason = rest_overdue 경고 저장 (단계는 그대로)
 #
 # [만들 것 (이름 약속 — detect.py 가 이 이름으로 부름)]
@@ -19,6 +20,9 @@
 #
 # [주의]
 #   - GPS 속도 · 정차 판단은 쓰지 않는다
+#   - [한계] ping 이 15분 넘게 없으면 '앱을 끄고 쉼'으로 보고 운전 시간을 0부터 다시 잰다.
+#     앱을 끈 채 계속 달려도 서버는 구별하지 못함 → 휴게 알림이 처음부터 다시 셈, 관리자 웹에는 '운행 안 함'으로만 보임
+#     (향후: GPS 속도로 정차 확인 뒤 휴식 인정 · 운행 중 앱 꺼짐을 관리자에게 알림)
 #   - 기사별 기록은 서버 메모리(dict) — 서버를 다시 켜면 지워짐 (sleep_state 와 같음)
 #   - 숫자는 config (DRIVE_LIMIT_MIN · REST_MIN · REST_GRACE_MIN), DEMO_MODE 면 2분 · 1분 · 1분
 #
@@ -79,10 +83,8 @@ def rest_rule():
 
 
 def _rest_message():
-    hours = DRIVE_LIMIT_MIN // 60
-    span = f"{hours}시간" if hours else f"{DRIVE_LIMIT_MIN}분"
-    return (f"연속 {span} 운전했습니다. {_find_rest_rule()}에 따라 "
-            f"{REST_MIN}분 이상 쉬어 가세요. 가까운 졸음쉼터를 확인하세요.")
+    """(11/24 팀장) '2시간 연속 운전했어요. 15분 이상 쉬어 가세요.' — 숫자는 config (시연 모드면 '2분 연속 · 1분 이상')"""
+    return f"{span_text(DRIVE_LIMIT_MIN)} 연속 운전했어요. {REST_MIN}분 이상 쉬어 가세요."
 
 
 def start(user_id):
@@ -125,7 +127,7 @@ def ping(user_id):
         d = _drives.get(user_id)
         if d is None:                                   # /drive/start 없이 와도 시작한 것으로 본다
             d = _drives[user_id] = _new(now)
-        elif now - d["last_ping"] >= REST_MIN * 60:     # ping 이 15분 이상 안 옴 = 앱을 끄고 쉼 → 휴식 인정
+        elif now - d["last_ping"] >= REST_MIN * 60:     # ping 이 15분 이상 안 옴 = 앱을 끄고 쉼 → 휴식 인정 ([한계] 끄고 달려도 같음 — 맨 위 주의)
             d.update(_new(now))
         d["last_ping"] = now
         d["ended"] = False                              # 운행 종료 뒤 다시 ping 이 오면 이어서 운전 중 (시간 기록은 그대로)
@@ -140,5 +142,5 @@ def ping(user_id):
             d["overdue_sent"] = True
             overdue = True
 
-    message = _rest_message() if rest_due else ""   # RAG 검색은 잠금 밖에서 (다른 기사의 ping 을 막지 않게)
+    message = _rest_message() if rest_due else ""
     return {"drive_min": minutes, "rest_due": rest_due, "rest_message": message, "rest_overdue": overdue}

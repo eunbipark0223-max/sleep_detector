@@ -40,6 +40,7 @@ import '../models/sleep_response.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/eye_monitor.dart';
+import '../services/rest_area_service.dart' show NearRestArea;
 import '../services/voice_service.dart';
 import '../stage_texts.dart';
 import '../theme.dart';
@@ -318,8 +319,9 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       // 휴게 알림은 서버가 한 번만 true 로 보내 줌 → 한 번만 읽기
       // (경고 음성 · 퀴즈 · 휴식 중이면 배너만 띄우고 소리는 내지 않음)
       if (status.restDue) {
-        _restVoice = nearRestVoice(_lat, _lng); // 가까운 졸음쉼터 문장 (휴게 띠 [가까운 졸음쉼터 듣기] 도 이걸 씀)
-        if (!_pauseDetect.value) _speakRestDue(status.restMessage);
+        final near = nearRestArea(_lat, _lng);
+        _restVoice = near.then((r) => r?.voice); // 가까운 졸음쉼터 문장 (휴게 띠 [가까운 졸음쉼터 안내] 도 이걸 씀)
+        _announceRestDue(status.restMessage, near);
       }
       // 경고 화면 없이 2 · 3단계 (앱을 껐다 켬) → 경고 화면을 다시 띄운다. 그래야 2단계는 쉴 수 있고 3단계는 반복 음성이 나옴
       if (status.stage >= 2 && _warningRoute == null && !_sending && !_pauseDetect.value) {
@@ -742,13 +744,16 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     }
   }
 
-  // 2시간 연속 운전 — 휴게 안내 → 가까운 졸음쉼터 한 번 읽기 (11/11 팀장: B 부품 문장 그대로)
-  Future<void> _speakRestDue(String message) async {
-    await VoiceService.speak(message);
-    final v = await _restVoice;
-    // 그 사이 경고가 떴거나(판정 쉬는 중) 기사가 띠를 닫았으면 읽지 않음
-    if (v == null || !mounted || _pauseDetect.value || _restMessage.isEmpty) return;
-    await VoiceService.speak(v);
+  // 2시간 연속 운전 — 배너 · 음성 같은 문장 한 번 (11/24 팀장)
+  //   "○○님, 2시간 연속 운전했어요. 15분 이상 쉬어 가세요. 태인 졸음쉼터 약 14킬로미터에 있습니다."
+  //   앞 두 문장은 서버 rest_message, 쉼터 문장은 앱이 붙임 (최대 5초 찾고, 못 찾으면 서버 문장만)
+  Future<void> _announceRestDue(String message, Future<NearRestArea?> near) async {
+    final line = restDueLine(await near);
+    if (!mounted || _restMessage.isEmpty) return; // 그 사이 기사가 배너를 닫음
+    final full = line == null ? message : '$message $line';
+    setState(() => _restMessage = full);
+    // 경고 음성 · 퀴즈 · 휴식 중이면 배너만 띄우고 소리는 내지 않음
+    if (!_pauseDetect.value) await VoiceService.speak(full);
   }
 
   // 휴게 배너의 [정차했어요] → 휴식 15분 → [운행 재개] (2시간 연속 운전 휴식 인정, 기획안 3-2)
@@ -975,7 +980,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
                           const Icon(Icons.local_cafe, color: AppColors.textPrimary),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: Text(_restMessage.replaceAll('.', ''), // 마침표 없음 (사용자 요청 6)
+                            child: Text(_restMessage.replaceAll('.', '').replaceAll('킬로미터', 'km'), // 마침표 없음 (사용자 요청 6) · 글은 km
                                 style: const TextStyle(
                                     color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w700)),
                           ),

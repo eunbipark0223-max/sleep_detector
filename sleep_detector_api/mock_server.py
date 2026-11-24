@@ -1028,7 +1028,7 @@ def drive_ping(body: Optional[DrivePing] = None, user: dict = Depends(current_us
     if minutes >= DRIVE_LIMIT_MIN and not st["rest_due_sent"]:  # 한 번만
         st["rest_due_sent"] = True
         rest_due = True
-        rest_message = f"연속 {DRIVE_LIMIT_MIN // 60}시간 운전했습니다. 규정상 15분 이상 휴식이 필요합니다. 가까운 졸음쉼터를 확인하세요."
+        rest_message = f"기사님, {DRIVE_LIMIT_MIN // 60}시간 연속 운전했어요. 15분 이상 쉬어 가세요."  # 진짜 서버와 같은 말투 (11/24)
     return {"stage": stage, "status": STAGE_LABELS[stage], "drive_min": minutes, "rest_due": rest_due, "rest_message": rest_message}
 
 

@@ -251,7 +251,9 @@ def drive_ping_handler(
         session.commit()
 
     out = {"stage": stage, "status": _label(stage), "drive_min": int(t["drive_min"]),
-           "rest_due": bool(t["rest_due"]), "rest_message": t["rest_message"]}
+           "rest_due": bool(t["rest_due"]),
+           # (11/24 팀장) 휴게 안내는 다른 경고처럼 '○○님, ' 으로 시작
+           "rest_message": f"{_driver_name(user.name) or '기사'}님, {t['rest_message']}" if t["rest_message"] else ""}
     new_token = refreshed_token(authorization, user)
     if new_token:                            # 앱이 저장해서 다음 요청부터 씀 (운행 중 401 방지)
         out["access_token"] = new_token
