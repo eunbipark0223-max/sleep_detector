@@ -19,6 +19,7 @@ import '../stage_texts.dart';
 import '../design_tokens.dart';
 import '../theme.dart';
 import '../widgets/buddy.dart';
+import '../widgets/owl_says.dart' show keepWords;
 
 class GuideScreen extends StatelessWidget {
   const GuideScreen({super.key});
@@ -130,9 +131,9 @@ class _StepLine extends StatelessWidget {
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              Text(keepWords(title), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)), // (11/24) 단어 중간에서 안 끊김
               const SizedBox(height: 2),
-              Text(body, style: const TextStyle(fontSize: 14, height: 1.4, color: AppColors.textSecondary)),
+              Text(keepWords(body), style: const TextStyle(fontSize: 14, height: 1.4, color: AppColors.textSecondary)),
             ]),
           ),
         ]),

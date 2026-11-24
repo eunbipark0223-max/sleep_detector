@@ -85,7 +85,7 @@ class _NoticeRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final done = event.status == '조치완료';
     // 조치완료 = 초록 점 '조치완료되었습니다' · 아직 = 빨간 점 '3단계 경고 · 관리자에게 알렸어요'
-    final dot = done ? AppColors.normal : AppColors.urgent;
+    final dot = done ? AppColors.navy : AppColors.urgent; // (11/24 사용자 요청) 조치완료 = 남색 점
     final title = done ? '조치완료되었습니다' : '3단계 경고 · 관리자에게 알렸어요';
     final what = done ? '관리자가 3단계 경고를 확인하고 해제했어요' : event.reasonLabel;
     return Material(
@@ -94,16 +94,13 @@ class _NoticeRow extends StatelessWidget {
         onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => EventDetailScreen(event: event))),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(10, 15, 16, 15),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // 아이콘 없이 색 점 하나 (빨강 = 3단계 · 초록 = 조치완료)
-            Padding(
-              padding: const EdgeInsets.only(left: 6, top: 6),
-              child: Container(width: 10, height: 10, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
+          // (11/24 사용자 요청) 색 점은 제목 '조' 줄 가운데에 딱 맞게 (같은 줄 안에)
+          child: Padding(
+            padding: const EdgeInsets.only(left: 6),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                  Container(width: 8, height: 8, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(title,
                         style: TextStyle(
@@ -115,10 +112,12 @@ class _NoticeRow extends StatelessWidget {
                   Text(event.createdLabel, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
                 ]),
                 const SizedBox(height: 3),
-                Text(what, style: const TextStyle(fontSize: 13.5, color: AppColors.textSecondary)),
+                Padding(
+                  padding: const EdgeInsets.only(left: 22), // (11/24 사용자 요청) 조금 더 오른쪽
+                  child: Text(what, style: const TextStyle(fontSize: 13.5, color: AppColors.textSecondary)),
+                ),
               ]),
-            ),
-          ]),
+          ),
         ),
       ),
     );

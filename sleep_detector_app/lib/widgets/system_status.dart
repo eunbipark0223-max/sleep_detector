@@ -142,60 +142,58 @@ class DriveStatusStrip extends StatelessWidget {
 
   static const _names = ['정상', '주의', '휴식 권고', '긴급'];
 
-  Widget _value(String text, {Color? dot, Color? color}) => FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (dot != null) ...[
-            Container(width: 7, height: 7, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
-            const SizedBox(width: 5),
-          ],
-          Text(text,
-              style: AppType.subheadline.copyWith(
-                  height: 1.2, fontWeight: FontWeight.w700, color: color ?? AppColors.textPrimary, fontFeatures: AppStatus.figures)),
-        ]),
-      );
+  Widget _value(String text, {Color? dot, Color? color}) => Row(mainAxisSize: MainAxisSize.min, children: [
+        if (dot != null) ...[
+          Container(width: 6, height: 6, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
+          const SizedBox(width: 4),
+        ],
+        Text(text,
+            style: AppType.caption.copyWith(fontSize: 12.5, fontWeight: FontWeight.w600, color: color ?? AppColors.textPrimary, fontFeatures: AppStatus.figures)),
+      ]);
 
   @override
   Widget build(BuildContext context) {
     String two(int n) => n.toString().padLeft(2, '0');
-    final s = stage.clamp(0, 3);
-    // (11/23 사용자 요청) 운전 시간 | 감지 | 관제 서버 (3단계면 마지막 칸 = 관리자 알림 시각)
-    final cells = <(String, Widget)>[
-      (
-        '운전 시간',
+    // (11/24 사용자 요청 · 애플 느낌) 아이콘 + 값만 — 시계 13분 · 눈 감지 중 · 구름 연결됨 (3단계: 종 관리자 알림 시각)
+    Widget cell(IconData icon, Widget value, {Color? iconColor}) => Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 15, color: iconColor ?? AppColors.textSecondary),
+          const SizedBox(width: 5),
+          value,
+        ]);
+    final cells = <Widget>[
+      cell(
+        Icons.schedule_rounded,
         ValueListenableBuilder<int?>(
           valueListenable: DriveClock.minutes,
           builder: (_, m, _) => _value(m == null ? '—' : DriveClock.label(m)),
-        )
+        ),
       ),
-      ('감지', _value('작동 중', dot: AppStatus.normal)),
+      cell(Icons.visibility_rounded, _value('감지 중'), iconColor: AppStatus.normal),
       reportedAt != null
-          ? ('관리자 알림', _value('${two(reportedAt!.hour)}:${two(reportedAt!.minute)}', color: AppStatus.danger))
-          : ('관제 서버', _value(online ? '연결됨' : '끊김', dot: online ? const Color(0xFF2A75D4) : AppStatus.danger, color: online ? null : AppStatus.danger)),
+          ? cell(Icons.notifications_active_rounded, _value('관리자 알림 ${two(reportedAt!.hour)}:${two(reportedAt!.minute)}', color: AppStatus.danger),
+              iconColor: AppStatus.danger)
+          : cell(online ? Icons.cloud_done_rounded : Icons.cloud_off_rounded, _value(online ? '연결됨' : '끊김', color: online ? null : AppStatus.danger),
+              iconColor: online ? const Color(0xFF2A75D4) : AppStatus.danger),
     ];
-    final _ = s; // 단계는 아래 카드에 (위 칸에서는 뺌)
-    return Container(
-      height: 60,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: AppleGray.separator),
-      ),
-      child: Row(children: [
-        for (var i = 0; i < cells.length; i++) ...[
-          if (i > 0) const VerticalDivider(width: 1, thickness: 1, indent: 13, endIndent: 13, color: Color(0x1F1C2033)),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Text(cells[i].$1, style: AppType.caption.copyWith(color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 3),
-                cells[i].$2,
-              ]),
-            ),
+    return SizedBox(
+      height: 32,
+      child: FractionallySizedBox(
+        widthFactor: 0.94,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.82), // 애플 반투명 알약
+            borderRadius: BorderRadius.circular(AppRadius.pill),
           ),
-        ],
-      ]),
+          // (11/24 사용자 요청 · 애플 느낌) 칸 사이 짧은 세로선 — 꽉 차지 않게 (높이 14 · 옅은 회색)
+          child: Row(children: [
+            for (var i = 0; i < cells.length; i++) ...[
+              if (i > 0) Container(width: 1, height: 14, decoration: BoxDecoration(color: const Color(0x261C2033), borderRadius: BorderRadius.circular(1))),
+              Expanded(child: Center(child: FittedBox(fit: BoxFit.scaleDown, child: cells[i]))),
+            ],
+          ]),
+        ),
+      ),
     );
   }
 }

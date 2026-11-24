@@ -418,7 +418,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     _recordCard(context, rows, visible, shown, now, todayN, weekN, urgentN),
                     const Padding(
-                      padding: EdgeInsets.only(top: 12, left: 16),
+                      padding: EdgeInsets.only(top: 12, left: 6), // (11/24 사용자 요청) 카드 시작선에서 아주 조금 안쪽
                       child: Text('› 를 누르면 AI 분석 보고서를 볼 수 있어요', style: TextStyle(fontSize: 13.5, color: AppColors.textMuted)),
                     ),
                   ]);
@@ -725,7 +725,7 @@ class _DayReportScreen extends StatelessWidget {
           ),
           // (11/23 사용자 요청) 마지막 칸 밑 안내 — 카드 안 글 시작선
           const Padding(
-            padding: EdgeInsets.only(top: 12, left: 16),
+            padding: EdgeInsets.only(top: 12, left: 6), // (11/24 사용자 요청) 카드 시작선에서 아주 조금 안쪽
             child: Text('› 를 누르면 AI 분석 보고서를 볼 수 있어요', style: TextStyle(fontSize: 13.5, color: AppColors.textMuted)),
           ),
         ],
@@ -1078,7 +1078,7 @@ class _DriveTimeTable extends StatelessWidget {
                 fit: BoxFit.scaleDown,
                 child: Text(_DriveCard.timeRange(g), style: const TextStyle(fontSize: 14, color: AppColors.textSecondary, fontFeatures: num)),
               )),
-              cell(Text(_dur(g, live: i == liveI), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w400, color: AppColors.textPrimary, fontFeatures: num))), // (11/23) 합계만 굵게
+              cell(Text(_dur(g, live: i == liveI), style: const TextStyle(fontSize: 14, color: AppColors.textSecondary, fontFeatures: num))), // (11/24 사용자 요청) 옆 '17:50' 시간 글씨와 같게 · 합계만 굵게
             ]),
           ),
         ],
@@ -1113,23 +1113,22 @@ class _RestRow extends StatelessWidget {
         if (header)
           SizedBox(
             height: 40,
-            child: Row(children: [cell(const Text('휴식 시간', style: head)), cell(const Text('운행', style: head)), cell(const Text('쉰 시간', style: head))]),
+            child: Row(children: [cell(const Text('시간', style: head)), cell(const Padding(padding: EdgeInsets.only(left: 16), child: Text('운행', style: head))), cell(const Text('총 휴식 시간', style: head))]),
           ),
         const Divider(height: 1, thickness: 1, color: AppColors.line),
         SizedBox(
           height: 52,
           child: Row(children: [
             cell(Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.coffee_outlined, size: 18, color: AppColors.textMuted), // (11/24 사용자 요청) 선 그림 · 안내 글과 같은 색
-              const SizedBox(width: 6),
               Flexible(child: FittedBox( // (11/24) 칸이 좁으면 글자를 줄임 (넘침 고침)
                 fit: BoxFit.scaleDown,
                 child: Text(end.isEmpty ? '$start 부터' : '$start ~ $end',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: AppColors.textPrimary, fontFeatures: [FontFeature.tabularFigures()])), // (11/24) 굵게 안 함
+                    style: const TextStyle(fontSize: 14, color: AppColors.textSecondary, fontFeatures: [FontFeature.tabularFigures()])), // (11/24 사용자 요청) '1번째 운행' 과 같은 글씨
               )),
             ])),
-            cell(Text(no == null ? '—' : '$no번째 운행', textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary))),
-            cell(Text(min < 1 ? '1분 미만' : '$min분', textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: AppColors.textPrimary))), // (11/24) 굵게 안 함
+            // (11/24 사용자 요청) 가운데 열을 조금 오른쪽으로
+            cell(Padding(padding: const EdgeInsets.only(left: 16), child: Text(no == null ? '—' : '$no번째 운행', textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)))),
+            cell(Text(min < 1 ? '1분 미만' : '$min분', textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: AppColors.textPrimary))), // (11/24 사용자 요청) 쉰 시간만 원래대로 (검정)
           ]),
         ),
       ]),

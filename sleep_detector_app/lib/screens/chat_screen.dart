@@ -173,7 +173,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // ── 화면 (11/16 Figma 시안 '졸음운전 감지 앱5' 규정 도우미 — 디자인만. 서버 호출 · 대화 흐름은 위 그대로) ──
-  static const Color _bg = AppColors.background; // (11/17 R안) readdy 바탕
+  static const Color _bg = Color(0xFFF9F5F1); // (11/24 사용자 요청) 규정 도우미 바탕은 처음 크림색 그대로
 
   @override
   Widget build(BuildContext context) {

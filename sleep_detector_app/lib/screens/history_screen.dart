@@ -26,6 +26,7 @@ import '../theme.dart';
 import '../widgets/web_ui.dart';
 import 'event_detail_screen.dart';
 import '../widgets/buddy.dart';
+import '../widgets/month_picker.dart';
 
 class HistoryScreen extends StatefulWidget {
   /// 경고 목록을 가져오는 함수. 비워 두면 기본(_defaultLoad). null 을 돌려주면 '아직 서버와 연결되지 않음'.
@@ -62,11 +63,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
   // (11/17 관리자 웹 '졸음 경고' 화면) 달력에서 보는 달 · 누른 날짜 (null = 그 달 전체)
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
   DateTime? _day;
+  bool _picking = false; // (11/24) 달력 제목을 눌러 연도 · 달 바퀴를 펼쳤는지
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.background,
+      color: Colors.transparent, // (11/24 사용자 요청) 앱 바탕 그라데이션이 비치게
       child: Column(
         children: [
           Expanded(
@@ -154,6 +156,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         _day = null;
                       }),
                       onDay: (d) => setState(() => _day = (_day != null && _day == d) ? null : d),
+                      // (11/24 사용자 요청 · 아이폰 사진) 제목 누르면 달력 자리에서 흰 바탕 년 · 월 · 일 바퀴 (다시 누르면 접힘)
+                      picking: _picking,
+                      onPick: () => setState(() => _picking = !_picking),
+                      onWheel: (d) => setState(() {
+                        _month = DateTime(d.year, d.month);
+                        _day = null;
+                      }),
                     ),
                     const SizedBox(height: 22),
                     // (11/19 Headspace) 둥근 알약 필터 — 고른 것만 남색
@@ -169,7 +178,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ..._byDay(shown, now),
                     // (11/19 사용자 요청) 안내는 맨 아래
                     const Padding(
-                      padding: EdgeInsets.only(top: 12, left: 18), // (11/23 사용자 요청) 카드 안 글과 같은 시작선 (홈과 똑같이)
+                      padding: EdgeInsets.only(top: 12, left: 6), // (11/24 사용자 요청) 카드 시작선에서 아주 조금 안쪽 (홈과 똑같이)
                       child: Text('› 를 누르면 AI 분석 보고서를 볼 수 있어요', style: TextStyle(fontSize: 13.5, color: AppColors.textMuted)),
                     ),
                   ]);
@@ -207,8 +216,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget _scroll(List<Widget> children) {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 110), // (11/19) 떠 있는 탭바 높이만큼
-      children: children,
+      padding: const EdgeInsets.only(bottom: 110), // (11/19) 떠 있는 탭바 높이만큼
+      children: [
+        // (11/24 사용자 요청 · 신한 슈퍼SOL) 남색 그라데이션 바탕이 목록과 함께 움직임
+        AppSol.header(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -570,7 +587,7 @@ class _EventCard extends StatelessWidget {
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                 ),
                 const SizedBox(width: 8),
-                StageBadge(stage: s, fontSize: 11.5), // (11/23) 조금 작게
+                StageBadge(stage: s, fontSize: 11.5, vPad: 2), // (11/24 사용자 요청) '순간 졸음' 글자 높이에 맞게 세로 얇게
                 const SizedBox(width: 2),
                 const Icon(Icons.chevron_right_rounded, size: 20, color: AppleGray.chevron),
               ]),
@@ -718,6 +735,9 @@ class _Hint extends StatelessWidget {
 /// (11/17 관리자 웹) 한 달 달력 — 경고가 있던 날 아래에 단계 색 점, 누르면 그날만 보기 (다시 누르면 풀림)
 class _MonthCalendar extends StatelessWidget {
   final ValueChanged<int>? onSwipe; // (11/18) 달력을 옆으로 밀면 이전 · 다음 달
+  final VoidCallback? onPick; // (11/24) 제목 누르면 연도 · 달 바퀴 펼치기 / 접기
+  final bool picking;
+  final ValueChanged<DateTime>? onWheel;
   final DateTime month; // 그 달 1일
   final List<SleepEvent> events; // 그 달 경고
   final DateTime? selected;
@@ -727,6 +747,9 @@ class _MonthCalendar extends StatelessWidget {
   final ValueChanged<DateTime> onDay;
   const _MonthCalendar({
     this.onSwipe,
+    this.onPick,
+    this.picking = false,
+    this.onWheel,
     required this.month,
     required this.events,
     required this.selected,
@@ -760,8 +783,21 @@ class _MonthCalendar extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           const SizedBox(width: 4),
-          Text('${month.year}년 ${month.month}월',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.4, color: AppColors.textPrimary)),
+          // (11/24 사용자 요청) 누르면 아래에서 연도 · 달 고르기
+          GestureDetector(
+            onTap: onPick,
+            behavior: HitTestBehavior.opaque,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text('${month.year}년 ${month.month}월',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: -0.4, color: picking ? AppColors.navy : AppColors.textPrimary)),
+              const SizedBox(width: 2),
+              AnimatedRotation(
+                turns: picking ? 0.5 : 0,
+                duration: AppMotion.normal,
+                child: const Icon(Icons.keyboard_arrow_down_rounded, size: 22, color: AppColors.textSecondary),
+              ),
+            ]),
+          ),
           const Spacer(),
           // (11/19 Headspace) 동그란 연한 칸 안 화살표
           _RoundArrow(icon: Icons.chevron_left_rounded, onTap: onPrev, tooltip: '이전 달'),
@@ -770,6 +806,12 @@ class _MonthCalendar extends StatelessWidget {
         ]),
         const SizedBox(height: 6),
         // (11/18 사용자 요청) 회색 칸 없이 흰 바탕 그대로 · 달이 바뀌면 옆으로 부드럽게 미끄러짐
+        if (picking)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: MonthWheel(initial: month, onChanged: (d) => onWheel?.call(d)), // (11/24 사용자 요청) 처음 애플 느낌 — 년 · 월
+          )
+        else
         SlideSwitcher(
           index: month.year * 12 + month.month,
           onSwipe: onSwipe,
@@ -869,43 +911,31 @@ class _HsHero extends StatelessWidget {
   final int? diff; // null = 날짜를 골랐을 때 (비교 없음)
   const _HsHero({required this.month, required this.day, required this.total, required this.diff});
 
-  // (11/23 사용자 요청 · 애플 느낌) 흰 카드 — 왼쪽 캐릭터 · 'n월 졸음 경고' 작은 글 · 큰 숫자 · 지난달 비교 알약
+  // (11/24 사용자 요청 · 보내 준 사진) 예전 모양으로 — 연한 노랑 그라데이션 · 왼쪽 위 '11월' · '졸음 경고 n건' · 오른쪽 주황 캐릭터
   @override
   Widget build(BuildContext context) {
     final d = diff;
-    final trendColor = d == null || d == 0 ? AppColors.textSecondary : (d > 0 ? AppStatus.danger : AppStatus.normal);
-    return WebCard(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-      child: Row(children: [
-        const Buddy(stage: 2, size: 62, breathe: false),
-        const SizedBox(width: 18),
-        Expanded(
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(day != null ? '${day!.month}월 ${day!.day}일 졸음 경고' : '${month.month}월 졸음 경고',
-                style: AppType.subheadline.copyWith(fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
-            const SizedBox(height: 2),
-            Text.rich(
-              TextSpan(children: [
-                TextSpan(text: '$total', style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w800, letterSpacing: -1)),
-                const TextSpan(text: ' 건', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
-              ]),
-              style: TextStyle(color: AppColors.textPrimary, fontFeatures: AppStatus.figures),
-            ),
-            if (d != null) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.fromLTRB(8, 4, 10, 4),
-                decoration: BoxDecoration(color: trendColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(AppRadius.pill)),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(d == 0 ? Icons.remove_rounded : (d > 0 ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded), size: 14, color: trendColor),
-                  const SizedBox(width: 3),
-                  Text(d == 0 ? '지난달과 같아요' : '지난달보다 ${d.abs()}건 ${d < 0 ? '줄었어요' : '늘었어요'}',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: trendColor)),
-                ]),
-              ),
-            ],
+    return HsCard(
+      stage: 2,
+      face: 0,
+      minHeight: 138,
+      orb: 168,
+      faceSize: 70, // (11/24 사용자 요청) 두 줄 글 높이에 맞게
+      label: day != null ? '${day!.month}/${day!.day}' : '${month.month}월',
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text.rich(
+          TextSpan(children: [
+            const TextSpan(text: '졸음 경고 '),
+            TextSpan(text: '$total', style: const TextStyle(fontSize: 30)),
+            const TextSpan(text: '건'),
           ]),
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: AppColors.textPrimary),
         ),
+        if (d != null) ...[
+          const SizedBox(height: 8),
+          Text(d == 0 ? '지난달과 같아요.' : '지난달보다 ${d.abs()}건 ${d < 0 ? '줄었어요' : '늘었어요'}.',
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xCC1C2033))),
+        ],
       ]),
     );
   }
@@ -951,7 +981,8 @@ class _StageBar extends StatelessWidget {
                     ]),
                     const SizedBox(height: 6),
                     Text.rich(TextSpan(children: [
-                      TextSpan(text: '${counts[s - 1]}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                      // (11/24 사용자 요청) 긴급 건수가 있으면 그 숫자만 빨강
+                      TextSpan(text: '${counts[s - 1]}', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: s == 3 && counts[2] > 0 ? AppStatus.danger : AppColors.textPrimary)),
                       const TextSpan(text: '건', style: TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
                     ])),
                     Text(pct(counts[s - 1]), style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),

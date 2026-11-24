@@ -146,18 +146,13 @@ class _DriveReportScreenState extends State<DriveReportScreen> {
                           ]),
                         ),
                         const SizedBox(width: 10),
-                        const Buddy(stage: 2, size: 52, breathe: false),
+                        const Buddy(stage: 2, size: 66, breathe: false), // (11/24 사용자 요청) 옆 두 줄 글 높이에 맞게
                       ]),
                     ]),
                   ),
                   const SizedBox(height: 22),
-                  // ② 요약 글
-                  if (_s('summary').isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20), // (11/23 사용자 요청) 위 카드 안 글과 같은 시작선
-                      child: Text(keepWords(noDot(_s('summary'))), style: const TextStyle(fontSize: 15.5, height: 1.55, color: AppColors.textSecondary)),
-                    ),
-                  const SizedBox(height: 26),
+                  // ② 요약 글 — (11/24 사용자 요청) 뺌 ('오늘 n분 운행 중 n번 졸음 …')
+                  const SizedBox(height: 4),
                   // ③ 숫자 — 카드 하나 · 세로 구분선
                   WebCard(
                     padding: const EdgeInsets.symmetric(vertical: 20),
@@ -206,7 +201,7 @@ class _DriveReportScreenState extends State<DriveReportScreen> {
             // ⑥ 다른 화면과 같은 남색 알약 버튼 · 같은 좌우 여백
             Padding(
               padding: const EdgeInsets.fromLTRB(_side, 8, _side, 20),
-              child: AuthButton(text: '확인했어요', height: AppSize.button, color: const Color(0xFF2E9E5B), onPressed: () => Navigator.of(context).pop()) /* (11/23) 초록 */,
+              child: AuthButton(text: '확인했어요', height: AppSize.button, onPressed: () => Navigator.of(context).pop()) /* (11/24 사용자 요청) 남색 */,
             ),
           ],
         ),

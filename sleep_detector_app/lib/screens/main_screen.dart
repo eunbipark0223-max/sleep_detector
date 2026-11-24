@@ -37,6 +37,7 @@ import 'guide_screen.dart';
 import 'profile_screen.dart';
 import 'upload_screen.dart';
 import '../widgets/month_report.dart';
+import 'package:flutter/services.dart';
 
 // [사진 1장 테스트] 같은 개발용 메뉴를 보일지 (기본 숨김 — 팀장 11/11, 시연 · 측정 때 --dart-define=SHOW_DEV_TOOLS=true)
 const bool _showDevTools = bool.fromEnvironment('SHOW_DEV_TOOLS');
@@ -253,10 +254,16 @@ class _MainScreenState extends State<MainScreen> {
 
   // 제목줄 (11/16 R안 · readdy) — 홈은 제목 없이 오른쪽 ≡ 만 (위 로고 · 앱 이름 · 인사 없음),
   //   운행 기록 · 규정 도우미는 왼쪽 큰 제목 (애플 큰 제목)
+  bool get _solTab => false; // (11/24 사용자 요청) 남색 그라데이션 바탕 되돌림 — 슈퍼SOL 홈 바탕은 다시 정함
+
   PreferredSizeWidget _homeBar([String? title]) {
+    final sol = _solTab; // (11/24 사용자 요청 · 신한 슈퍼SOL) 운행 기록 · MY = 남색 제목줄 · 흰 글
     return AppBar(
       toolbarHeight: 68,
-      backgroundColor: AppColors.background,
+      backgroundColor: sol ? AppSol.navyTop : Colors.transparent, // (11/24) 바탕 그라데이션이 비치게
+      systemOverlayStyle: sol ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+      scrolledUnderElevation: 0,
+      shape: sol ? const Border() : null, // (11/24) 남색 제목줄 아래 선 없이 바탕 그라데이션과 이어짐
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       titleSpacing: 16, // (11/23 사용자 요청) 홈 카드 · 방패와 같은 시작선
@@ -267,7 +274,7 @@ class _MainScreenState extends State<MainScreen> {
           : Text(
               title,
               // (11/18 디자인 토큰) 홈을 뺀 탭 제목 모두 같은 단계 · 'MY' 는 영어 두 글자가 붙어 보여서 글자 사이만 아주 살짝
-              style: AppType.title1.copyWith(color: AppColors.textPrimary, letterSpacing: title == 'MY' ? 0.8 : null),
+              style: AppType.title1.copyWith(color: sol ? Colors.white : AppColors.textPrimary, letterSpacing: title == 'MY' ? 0.8 : null),
             ),
       // (11/17 사용자 요청) ≡ 버튼 없음 — 메뉴는 아래 탭 [MY] 로. 홈은 오른쪽 위에 [규정 도우미 로봇] [알림 종]
       actions: title == null
@@ -320,9 +327,12 @@ class _MainScreenState extends State<MainScreen> {
     final initial = _plainName.isEmpty ? '나' : _plainName.characters.first;
     // (11/18 피드백) 로그아웃은 맨 아래 (아래 여백 조금) · 투명도 있는 남색 알약
     return Column(children: [
-      Expanded(child: ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 110), // (11/18) 다른 탭과 같은 위쪽 여백 · (11/19) 떠 있는 탭바 높이만큼
-      children: [
+      Expanded(child: DecoratedBox(
+      decoration: const BoxDecoration(color: Colors.transparent), // (11/24) 바탕 그라데이션이 비치게
+      child: ListView(
+      padding: const EdgeInsets.only(bottom: 110), // (11/19) 떠 있는 탭바 높이만큼
+      // (11/24 사용자 요청 · 신한 슈퍼SOL) 남색 그라데이션 바탕이 목록과 함께 움직임 (카드는 그대로)
+      children: [AppSol.header(child: Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 0), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // 내 프로필 — 누르면 내 정보 화면
         _myGroup([
           _myRow(
@@ -354,8 +364,8 @@ class _MainScreenState extends State<MainScreen> {
         _myGroup([
           _myRow(onTap: () => _onMenu('logout'), icon: Icons.logout_rounded, title: '로그아웃', color: AppColors.navy, chevron: false),
         ]),
-      ],
-    )),
+      ])))],
+    ))),
 
     ]);
   }
@@ -416,7 +426,13 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // (11/24 사용자 요청) 바탕 = 위에서 아래로 연한 파랑 그라데이션 (제목줄 · 내용 뒤 모두)
+    return DecoratedBox(
+      decoration: (_index == 3 || _index == _mapTab)
+          ? const BoxDecoration(color: Color(0xFFF9F5F1)) // (11/24 사용자 요청) 규정 도우미 탭은 처음 크림색
+          : const BoxDecoration(gradient: AppSol.pageGradient),
+      child: Scaffold(
+      backgroundColor: Colors.transparent,
       // (11/19 사용자 요청) 홈 · 운행 기록 · MY 는 내용이 떠 있는 탭바 뒤로 자연스럽게 흐름 (탭바 둘레 아이보리 틀 없이)
       //   졸음쉼터(지도) · 규정 도우미(아래 입력칸)는 가리지 않게 그대로
       extendBody: false, // (11/23 리디자인_2) 탭바 고정
@@ -446,7 +462,7 @@ class _MainScreenState extends State<MainScreen> {
           if (i == 0) _loadUnread(); // 홈으로 돌아오면 알림 숫자 다시
         },
       ),
-    );
+    ));
   }
 }
 
@@ -471,14 +487,17 @@ class _TabBar extends StatelessWidget {
   Widget build(BuildContext context) {
     // (11/23 리디자인_2) 화면 아래 고정 흰 막대 + 위 얇은 선 — 고른 탭만 남색 · 나머지 회색 (둥근 알약 · 그림자 없음)
     return Container(
+      // (11/24 사용자 요청) 위쪽 양 끝을 살짝 둥글게 (카드 둥글기와 어울리게) · 선 대신 위로 옅은 그림자
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: AppleGray.separator)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(8)), // (11/24 사용자 요청) 자세히 봐야 보일 만큼만
+        boxShadow: [BoxShadow(color: Color(0x12000000), blurRadius: 16, offset: Offset(0, -2))],
       ),
       child: SafeArea(
         top: false,
-        child: SizedBox(
-          height: 58,
+        child: Container(
+          height: 66, // (11/24 사용자 요청) 탭바 아래 여백 8
+          padding: const EdgeInsets.only(bottom: 8),
           child: Row(children: [
             for (var i = 0; i < _items.length; i++)
               Expanded(

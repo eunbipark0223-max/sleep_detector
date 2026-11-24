@@ -22,18 +22,18 @@ import 'package:flutter/material.dart';
 ///   (이름은 그대로 두어 앱 전체가 한 번에 따뜻한 톤으로 바뀜)
 class AppleGray {
   AppleGray._();
-  static const Color page = Color(0xFFF9F5F1); // (11/23 리디자인_3 · Headspace 토큰) 크림 바탕 #F9F4F2 계열
+  static const Color page = Color(0xFFF0F4FB); // (11/24 사용자 요청) 신한 슈퍼SOL 바탕색 (uibowl 화면에서 뽑음) · 예전 크림 #F9F5F1
   static const Color label = Color(0xFF1C2033); // 제목 · 본문 — (11/19 사용자 요청) 남색 한 방울 섞은 검정
   static const Color secondaryLabel = Color(0xFF63605D); // 설명 · 부제 — Headspace
   static const Color softLabel = Color(0xFF363B50); // 큰 제목 · 안내 문장 — 남색 기운 진회색
   static const Color tertiaryLabel = Color(0xFF8E8A84); // 시각 · 힌트 — 따뜻한 회색
-  static const Color separator = Color(0xFFE2DED9); // 카드 테두리 · 구분선 — Headspace
+  static const Color separator = Color(0xFFE1E6EF); // 카드 테두리 · 구분선 — (11/24) 슈퍼SOL 바탕에 맞춘 차가운 회색 (예전 #E2DED9)
   static const Color opaqueSeparator = Color(0xFFECE7E1); // 목록 줄 사이 얇은 선
-  static const Color fill = Color(0xFFF2EDE7); // 입력칸 · 연한 칸 (따뜻한 연회색)
+  static const Color fill = Color(0xFFE8ECF4); // 입력칸 · 연한 칸 — (11/24) 슈퍼SOL 바탕에 맞춘 차가운 연회색 (예전 #F2EDE7)
   static const Color chevron = Color(0xFFC6C1B9); // 목록 꺾쇠 › — Headspace
   static const Color tabInactive = Color(0xFF9A958E); // 탭바 안 고른 아이콘 · 글자
   static const Color tabBar = Color(0xFFF6F1EC); // 탭바 바탕
-  static const Color tabBarTop = Color(0xFFF9F5F1); // 탭바 위 — 화면 바탕과 같은 크림 (선 없이 이어짐)
+  static const Color tabBarTop = Color(0xFFF0F4FB); // 탭바 위 — 화면 바탕과 같은 색 (11/24 슈퍼SOL 바탕)
   static const Color tabBarBottom = Color(0xFFF1EBE4); // 탭바 아래 — 조금 더 짙은 크림
 }
 
@@ -41,7 +41,8 @@ class AppleGray {
 class AppShadow {
   AppShadow._();
   static const List<BoxShadow> button = [BoxShadow(color: Color(0x33413D45), offset: Offset(0, 2), blurRadius: 0)]; // Headspace 납작 그림자
-  static const List<BoxShadow> card = [BoxShadow(color: Color(0x0F413D45), offset: Offset(0, 2), blurRadius: 0)]; // Headspace 납작 그림자
+  // (11/24 신한 슈퍼SOL · Dembrandt 추출: rgba(0,0,0,.12) 0 8px 20px) 흰 카드가 살짝 떠 있게 — 우리 앱은 더 옅게
+  static const List<BoxShadow> card = [BoxShadow(color: Color(0x0D000000), offset: Offset(0, 8), blurRadius: 20)];
 }
 
 /// 글자 크기 단계 — iOS Dynamic Type 기본(Large) 값 · 굵기
@@ -167,4 +168,43 @@ class AppStatus {
   static const Color offline = Color(0xFF9C9890); // 확인 중 · 꺼짐 — Samsara gray-500
   static Color ink(Color c) => Color.lerp(c, const Color(0xFF1C2033), 0.25)!; // 알약 글자 — 같은 색을 조금 어둡게
   static const List<FontFeature> figures = [FontFeature.tabularFigures()]; // 숫자 폭 고정 (Samsara Mono 숫자 대신)
+}
+
+/// (11/24 사용자 요청 · 신한 슈퍼SOL) 운행 기록 · MY 바탕 — 위는 남색 그라데이션, 아래로 갈수록 차가운 연회색
+///   네모 카드(흰색)는 그대로 · 바탕만 바뀜. header() 는 목록과 함께 스크롤됨 (글자가 남색 위에 머무르지 않게)
+class AppSol {
+  AppSol._();
+  static const Color bg = Color(0xFFF2F4F8); // 슈퍼SOL 연회색 바탕
+  static const Color navyTop = Color(0xFF1F2A5C); // = AppColors.navy
+  static const Color navyMid = Color(0xFF34489A);
+  static const double headH = 260;
+  // (11/24 사용자 요청) 앱 바탕 — 위는 슈퍼SOL #F0F4FB, 아래로 갈수록 살짝 진한 연파랑 (카드는 흰색 그대로)
+  static const LinearGradient pageGradient = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [Color(0xFFE9EEF7), Color(0xFFF8FAFD)], // (11/24 사용자 요청) 뒤집음 · 파란 기운 줄이고 아래는 거의 흰색
+  );
+
+  // (11/24 사용자 요청) 남색 그라데이션은 되돌림 — 지금은 내용만 그대로 (슈퍼SOL 홈 바탕을 정하면 여기서 바꿈)
+  static Widget header({required Widget child}) => child;
+  // ignore: unused_element
+  static Widget _navyHeader({required Widget child}) => Stack(children: [
+        const Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: headH,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [navyTop, navyMid, bg],
+                stops: [0, 0.55, 1],
+              ),
+            ),
+          ),
+        ),
+        child,
+      ]);
 }

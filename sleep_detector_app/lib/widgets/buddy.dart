@@ -249,7 +249,8 @@ class HsCard extends StatelessWidget {
   final double orb; // 캐릭터 크기
   final String? label; // (11/23) 왼쪽 위 작은 글 (달 · 날짜)
   final Widget? labelWidget; // (11/23) 왼쪽 위에 글 대신 넣을 것 (MY 달 고르기)
-  const HsCard({super.key, required this.stage, int? face, required this.child, this.minHeight = 132, this.orb = 172, this.label, this.labelWidget})
+  final double? faceSize; // (11/24) 캐릭터 크기를 직접 (두 줄 글 높이에 맞춤)
+  const HsCard({super.key, required this.stage, int? face, required this.child, this.minHeight = 132, this.orb = 172, this.label, this.labelWidget, this.faceSize})
       : face = face ?? stage;
 
   @override
@@ -259,7 +260,7 @@ class HsCard extends StatelessWidget {
     final s = stage.clamp(0, 3);
     // (11/23 사용자 요청) 카드 공통 — 왼쪽 연한 단계 색 → 오른쪽 흰색 · 구분선 없음
     //   왼쪽 위 작은 글(달 · 날짜) / 아래 큰 글 · 캐릭터는 맨 오른쪽이 아니라 글이 끝나는 바로 옆
-    final size = (orb * 0.36).clamp(48.0, 60.0);
+    final size = faceSize ?? (orb * 0.36).clamp(48.0, 60.0);
     return Container(
       constraints: BoxConstraints(minHeight: minHeight),
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
@@ -270,7 +271,11 @@ class HsCard extends StatelessWidget {
       ),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (labelWidget != null || label != null) ...[
-          labelWidget ?? Text(label!, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppleGray.label)),
+          // (11/24 사용자 요청) 숫자 '1' 의 왼쪽 여백만큼 살짝 당겨 아래 '졸음 경고' 와 같은 시작선
+          Transform.translate(
+            offset: const Offset(-0.8, 0),
+            child: labelWidget ?? Text(label!, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppleGray.label)),
+          ),
           const SizedBox(height: 10),
         ],
         Row(crossAxisAlignment: CrossAxisAlignment.center, children: [

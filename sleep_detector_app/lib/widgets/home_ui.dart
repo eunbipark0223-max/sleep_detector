@@ -132,16 +132,18 @@ class HomeStateCard extends StatelessWidget {
                 ]),
               ),
               // (11/23 사용자 요청) 왼쪽 위 — 지금 단계 (연한 단계 색 알약 · 틀 없는 색 점 · 이름)
+              // (11/24 사용자 요청) '정상' 알약 · '11/24' = 같은 줄 · 같은 높이(22) · 같은 글자 크기(13)
               Positioned(
-                top: -4,
+                top: 0,
                 left: 0,
                 child: Container(
-                  padding: const EdgeInsets.fromLTRB(9, 4, 11, 4),
+                  height: 22,
+                  padding: const EdgeInsets.fromLTRB(8, 0, 10, 0),
                   decoration: BoxDecoration(color: stageCol.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.pill)),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Container(width: 7, height: 7, decoration: BoxDecoration(color: stageCol, shape: BoxShape.circle)),
-                    const SizedBox(width: 6),
-                    Text(names[s], style: AppType.footnote.copyWith(fontWeight: FontWeight.w700, color: s == 1 ? const Color(0xFF9A6B00) : stageCol)),
+                    Container(width: 6, height: 6, decoration: BoxDecoration(color: stageCol, shape: BoxShape.circle)),
+                    const SizedBox(width: 5),
+                    Text(names[s], style: TextStyle(fontSize: 13, height: 1.0, fontWeight: FontWeight.w700, color: s == 1 ? const Color(0xFF9A6B00) : stageCol)),
                   ]),
                 ),
               ),
@@ -149,7 +151,12 @@ class HomeStateCard extends StatelessWidget {
               Positioned(
                 top: 0,
                 right: 10, // (11/23 사용자 요청) 조금 더 왼쪽
-                child: Text(date, style: AppType.footnote.copyWith(fontWeight: FontWeight.w600, color: AppColors.textSecondary, fontFeatures: AppStatus.figures)),
+                child: SizedBox(
+                  height: 22, // 알약과 같은 높이 · 같은 가운데 줄
+                  child: Center(
+                    child: Text(date, style: TextStyle(fontSize: 13, height: 1.0, fontWeight: FontWeight.w700, color: AppColors.textSecondary, fontFeatures: AppStatus.figures)),
+                  ),
+                ),
               ),
             ]),
             if (sub != null) ...[
@@ -216,7 +223,7 @@ class HomeStateCard extends StatelessWidget {
   Widget _readdy(int s, String big) {
     // (11/17 사용자 요청) 운행 전 · 정상이면 '정상' 배지 · '안전 운전 중이에요' 없이 캐릭터 자리 + [운행 시작] 만
     if (idle && s == 0) {
-      return WebCard(
+      return WebCard(outline: true, 
         padding: const EdgeInsets.fromLTRB(22, 24, 22, 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -245,7 +252,7 @@ class HomeStateCard extends StatelessWidget {
       );
     }
     // (11/17 관리자 웹 느낌) 흰 카드 · 단계 알약 배지 · 큰 글 · 오른쪽 캐릭터 그림 자리
-    return WebCard(
+    return WebCard(outline: true, 
       padding: const EdgeInsets.fromLTRB(22, 24, 22, 20), // 운행 전 카드와 같은 여백
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

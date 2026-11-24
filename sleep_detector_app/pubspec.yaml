@@ -97,6 +97,15 @@ flutter:
   # (11/17 C) 앱 글꼴 Pretendard — 애플 글꼴(SF Pro · Apple SD Gothic Neo) 느낌의 무료 글꼴 (SIL OFL, assets/fonts/Pretendard-LICENSE.txt)
   #   theme.dart 의 fontFamily: 'Pretendard' 로 앱 전체에 씀
   fonts:
+    # (11/24 사용자 요청) 신한 슈퍼SOL 느낌 글꼴 — 스포카 한 산스 Neo (SIL OFL, assets/fonts/SpoqaHanSansNeo-LICENSE.txt)
+    - family: SpoqaHanSansNeo
+      fonts:
+        - asset: assets/fonts/SpoqaHanSansNeo-Regular.otf
+          weight: 400
+        - asset: assets/fonts/SpoqaHanSansNeo-Medium.otf
+          weight: 500
+        - asset: assets/fonts/SpoqaHanSansNeo-Bold.otf
+          weight: 700
     - family: Pretendard
       fonts:
         - asset: assets/fonts/Pretendard-Regular.otf

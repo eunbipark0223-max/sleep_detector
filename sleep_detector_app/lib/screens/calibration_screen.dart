@@ -272,7 +272,16 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
           automaticallyImplyLeading: false, // (11/23 사용자 요청) 제목을 아래 칸과 같은 시작선에 (뒤로는 휴대폰 뒤로 가기)
           titleSpacing: 16, // (11/23 사용자 요청) 탭 제목들과 같은 자리 · 같은 글꼴
           centerTitle: false,
-          title: Text('눈 기준 측정', style: AppType.title1.copyWith(color: AppColors.textPrimary)),
+          // (11/24 사용자 요청) '< 눈 기준 측정' — 시작선 · 높이는 다른 탭 제목과 같게 (누르면 뒤로)
+          title: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.of(context).maybePop(),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.arrow_back_ios_new_rounded, size: 22, color: AppColors.textPrimary),
+              const SizedBox(width: 6),
+              Text('눈 기준 측정', style: AppType.title1.copyWith(color: AppColors.textPrimary)),
+            ]),
+          ),
         ),
         bottomNavigationBar: ServerCancelText(cancelled: noCancel), // (11/23) 운행 · 경고 화면과 같은 아래 자리
         body: SafeArea(
@@ -283,7 +292,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
                   header: _CalStrip(shot: _shot, total: widget.photoCount, done: _phase == _Phase.finishing),
                   headerInset: 0,
                   gap: 12,
-                  camRatio: 0.5,
+                  camRatio: 0.53, // (11/24) 운행 화면과 같은 카메라 크기 ·
                   actionsHeight: 76,
                   camera: _Preview(controller: _controller, fill: true),
                   // (11/18 팀장) 거치대 안내가 안 보였음 → 카메라 위쪽에 겹쳐서 늘 보이게 (측정 전)
@@ -312,23 +321,34 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
   // (11/19 사용자 요청 · Headspace) 카메라 아래 그라데이션 카드 — 작은 '운행 전 준비' · 큰 안내 · (측정 중) 진행 막대
   // (11/23 사용자 요청 · 애플 느낌) 흰 카드 가운데 — 캐릭터 먼저 · 그다음 글 / (측정 중) 아래 진행 막대
   Widget _calCard(String title, {Color? color, Widget? extra}) => Container(
-        constraints: const BoxConstraints(minHeight: 150), // (11/23 사용자 요청) 잘 보이게 크게
-        padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+        constraints: const BoxConstraints(minHeight: 116), // (11/24 사용자 요청) 측정 중에도 잘리지 않게 칸에 맞춤 (측정 전과 같은 크기)
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
         decoration: BoxDecoration(
           color: AppColors.card,
           borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(color: AppleGray.separator),
           boxShadow: AppShadow.card,
         ),
+        // (11/24 사용자 요청) 3단계 경고 카드처럼 — 왼쪽 시작선 · 뜻 단위로 한 줄씩(단어 중간에서 안 끊김) · 오른쪽 캐릭터
         child: Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            const Buddy(stage: 0, size: 50, breathe: false),
-            const SizedBox(width: 14),
-            Flexible(
-              child: Text(keepWords(title),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 23, height: 1.35, fontWeight: FontWeight.w800, letterSpacing: -0.5, color: color ?? AppColors.textPrimary)),
+          Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                for (final (i, line) in title.split('\n').indexed) ...[
+                  if (i > 0) const SizedBox(height: 4),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(line,
+                        maxLines: 1,
+                        softWrap: false,
+                        style: TextStyle(fontSize: 22, height: 1.3, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: color ?? AppColors.textPrimary)),
+                  ),
+                ],
+              ]),
             ),
+            const SizedBox(width: 12),
+            const Buddy(stage: 0, size: 56, breathe: false),
           ]),
           if (extra != null) ...[const SizedBox(height: 14), extra],
         ]),
@@ -340,15 +360,15 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
         return [
           _retryMessage.isNotEmpty
               ? _calCard(_retryMessage, color: AppColors.stageInk(2))
-              : _calCard('화면을 정면으로 바라봐 주세요'),
+              : _calCard('화면을 정면으로\n바라봐 주세요'),
         ];
       case _Phase.measuring:
         return [
-          _calCard('그대로 정면을 바라봐 주세요'), // (11/23 사용자 요청) 측정 전과 같은 카드 (진행은 위 단계 칸에)
+          _calCard('그대로 정면을\n바라봐 주세요'), // (11/23 사용자 요청) 측정 전과 같은 카드 (진행은 위 단계 칸에)
         ];
       default:
         return [
-          _calCard('눈 기준 측정이 끝났어요'), // (11/23 사용자 요청) 아래 안내 글 뺌
+          _calCard('눈 기준 측정이\n끝났어요'), // (11/23 사용자 요청) 아래 안내 글 뺌
         ];
     }
   }

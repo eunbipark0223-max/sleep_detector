@@ -201,7 +201,7 @@ class _MapScreenState extends State<MapScreen> {
   //   제목 '가까운 쉼터' · 아래 시트: [거리순 | 시간순] 탭 → 한 줄 설명 → 쉼터 목록 (모두 같은 좌우 여백 20)
   //   쉼터 한 줄: 순번 · 이름 · '거리 9.3km · 12분' · 오른쪽 [길찾기] (연한 남색 알약)
   //   시간 = B 의 도로 거리 로직 (서버 /rest-areas/road-distance → 카카오모빌리티). 못 구하면 거리만
-  static const Color _bg = AppColors.background;
+  static const Color _bg = Color(0xFFF9F5F1); // (11/24 사용자 요청) 가까운 쉼터 바탕은 처음 크림색 그대로
   static const double _side = 16; // (11/23) 제목 · 지도 · 목록 공통 시작선
   int _sort = 0; // 0 거리순 · 1 시간순
   // (11/18 사용자 요청) 위 손잡이(선)를 누르거나 아래로 끌면 목록 시트가 내려감 · 다시 누르거나 위로 끌면 올라옴

@@ -45,12 +45,12 @@ class StageLayout extends StatelessWidget {
     return LayoutBuilder(builder: (context, box) {
       final camH = (box.maxHeight * (camRatio ?? (header == null ? cameraRatio : 0.36))).clamp(180.0, 560.0);
       return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 6, 20, 20), // (11/23 사용자 요청) 상태 줄은 위로 · 맨 아래 버튼은 조금 위로 (세 화면 같은 자리)
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 0), // (11/24 사용자 요청) 상태 줄 더 위로 · 아래 버튼 조금 더 아래로 (모든 운행 화면 같은 자리) // (11/23 사용자 요청) 상태 줄은 위로 · 맨 아래 버튼은 조금 위로 (세 화면 같은 자리)
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // (11/18 피드백) 글은 카메라 둥근 모서리 안쪽에서 시작 (좌우 12 들여씀)
-            if (header != null) ...[Padding(padding: EdgeInsets.symmetric(horizontal: headerInset), child: header!), SizedBox(height: headerInset == 0 ? 12 : 18)],
+            if (header != null) ...[Padding(padding: EdgeInsets.symmetric(horizontal: headerInset), child: header!), SizedBox(height: headerInset == 0 ? 10 : 18)],
             SizedBox(
               height: camH,
               child: Stack(
@@ -167,7 +167,8 @@ class StageMessage extends StatelessWidget {
   final String text;
   final int stage;
   final bool info;
-  const StageMessage(this.text, {super.key, this.stage = 0, this.info = false});
+  final String? sub; // (11/24 사용자 요청) 2단계 — 카드 안 아래 작은 한 줄 (가까운 졸음쉼터)
+  const StageMessage(this.text, {super.key, this.stage = 0, this.info = false, this.sub});
 
   @override
   Widget build(BuildContext context) {
@@ -180,21 +181,19 @@ class StageMessage extends StatelessWidget {
     const title = TextStyle(fontSize: 22, height: 1.3, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: AppleGray.label);
     return Container(
       height: 132, // (11/23 사용자 요청) 0 · 1 · 2 · 3단계 카드 크기 모두 같게
-      padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+      padding: const EdgeInsets.fromLTRB(20, 14, 16, 14), // (11/24) 알약이 카드 맨 위에 붙게
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: (s == 0 || s >= 3) ? c.withValues(alpha: 0.45) : AppleGray.separator),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Colors.white, AppIllust.softTint[s]],
-        ),
+        // (11/24 신한 슈퍼SOL) 흰 카드 · 테두리 없이 부드러운 그림자
+        color: Colors.white,
+        boxShadow: AppShadow.card,
       ),
       child: Row(children: [
         Expanded(
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // (11/24 사용자 요청) 단계 알약은 카드 맨 위 · 큰 글은 남은 칸 가운데 (시작선은 알약과 같게)
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(
-              padding: const EdgeInsets.fromLTRB(9, 5, 11, 5),
+              padding: const EdgeInsets.fromLTRB(9, 2, 11, 2), // (11/24 사용자 요청) 세로 조금 줄임
               decoration: BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.pill)),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Container(width: 7, height: 7, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
@@ -203,15 +202,32 @@ class StageMessage extends StatelessWidget {
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color.lerp(c, AppleGray.label, 0.25))),
               ]),
             ),
-            const SizedBox(height: 8),
-            for (final (i, line) in lines.indexed) ...[
-              if (i > 0) const SizedBox(height: 4), // 줄 사이 한 칸
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(line, maxLines: 1, softWrap: false, style: title),
-              ),
-            ],
+            Expanded(
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                for (final (i, line) in lines.indexed) ...[
+                  if (i > 0) const SizedBox(height: 4), // 줄 사이 한 칸
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(line, maxLines: 1, softWrap: false, style: title),
+                  ),
+                ],
+                if (sub != null) ...[
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    const Icon(Icons.location_on_rounded, size: 16, color: AppColors.navy),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(sub!, maxLines: 1, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                      ),
+                    ),
+                  ]),
+                ],
+              ]),
+            ),
           ]),
         ),
         const SizedBox(width: 12),

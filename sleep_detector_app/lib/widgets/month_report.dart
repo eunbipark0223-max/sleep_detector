@@ -18,6 +18,7 @@ import '../services/drive_log.dart';
 import '../theme.dart';
 import 'buddy.dart';
 import 'web_ui.dart';
+import 'month_picker.dart';
 
 class MonthReport extends StatefulWidget {
   const MonthReport({super.key});
@@ -29,6 +30,7 @@ class MonthReport extends StatefulWidget {
 class _MonthReportState extends State<MonthReport> {
   late final Future<(List<SleepEvent>, List<DriveSpan>)> _data = _load();
   DateTime _sel = DateTime(DateTime.now().year, DateTime.now().month); // (11/19) 고른 달
+  bool _picking = false; // (11/24) 연도 · 달 바퀴를 펼쳤는지
 
   static Future<(List<SleepEvent>, List<DriveSpan>)> _load() async {
     final ev = await ApiService.fetchMyEvents().catchError((_) => <SleepEvent>[]);
@@ -75,41 +77,34 @@ class _MonthReportState extends State<MonthReport> {
         final diff = mine.length - prev;
 
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          _heading('운행 분석'), // (11/23 사용자 요청) '졸음이 잦은 시간대' 와 같은 소제목
-          // ① 그라데이션 카드
+          _heading('운행 분석'),
+          // ① (11/24 사용자 요청 · 보내 준 사진) 운행 기록 카드와 같은 예전 모양 — 왼쪽 위 '11월 ▾' 누르면 아래에 연도 · 달 바퀴
           HsCard(
             stage: 2,
             face: 0,
             minHeight: 140,
             orb: 170,
-            // (11/23 사용자 요청) 달 고르기는 카드 안 왼쪽 위 — 눌러서 년도 · 달을 같이 고름 (보이는 글은 '11월')
-            labelWidget: PopupMenuButton<DateTime>(
-              initialValue: now,
-              onSelected: (m) => setState(() => _sel = m),
-              color: AppColors.card,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.card)),
-              itemBuilder: (_) => [
-                for (final m in months)
-                  PopupMenuItem(
-                    value: m,
-                    child: Text('${m.year}년 ${m.month}월',
-                        style: TextStyle(
-                            fontWeight: m == now ? FontWeight.w700 : FontWeight.w500,
-                            color: m == now ? AppColors.navy : AppColors.textPrimary)),
-                  ),
-              ],
+            faceSize: 70, // (11/24 사용자 요청) 두 줄 글 높이에 맞게
+            labelWidget: GestureDetector(
+              // (11/24 사용자 요청 · 아이폰 사진) 누르면 카드 아래에 흰 바탕 년 · 월 바퀴 (다시 누르면 접힘)
+              onTap: () => setState(() => _picking = !_picking),
+              behavior: HitTestBehavior.opaque,
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Text('${now.month}월', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppleGray.label)),
-                const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: AppleGray.label),
+                AnimatedRotation(
+                  turns: _picking ? 0.5 : 0,
+                  duration: AppMotion.normal,
+                  child: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: AppleGray.label),
+                ),
               ]),
             ),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text.rich(TextSpan(children: [
                 const TextSpan(text: '졸음 경고 '),
-                TextSpan(text: '${mine.length}', style: TextStyle(fontSize: 30, color: AppColors.urgent.withValues(alpha: 0.74))), // (11/19) 빨강 · 살짝 투명
+                TextSpan(text: '${mine.length}', style: const TextStyle(fontSize: 30)),
                 const TextSpan(text: '건'),
               ]), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: AppColors.textPrimary)),
-              const SizedBox(height: 8), // (11/23 두 줄 규칙) 한 칸 띄우고 마침표
+              const SizedBox(height: 8),
               Text(
                 prev == 0 && mine.isEmpty
                     ? '아직 기록이 없어요.'
@@ -120,6 +115,13 @@ class _MonthReportState extends State<MonthReport> {
               ),
             ]),
           ),
+          if (_picking) ...[
+            const SizedBox(height: 10),
+            WebCard(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: MonthWheel(initial: now, onChanged: (m) => setState(() => _sel = m)),
+            ),
+          ],
           const SizedBox(height: 12),
           // ② 숫자 칸 4개 (2 x 2)
           Row(children: [
@@ -205,9 +207,10 @@ class _MonthReportState extends State<MonthReport> {
     ];
   }
 
-  Widget _heading(String text) => Padding(
+  Widget _heading(String text, {bool light = false}) => Padding(
         padding: const EdgeInsets.only(left: 16, bottom: 10), // (11/23 사용자 요청) 카드 안 글과 같은 시작선
-        child: Text(text, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+        child: Text(text,
+            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: light ? Colors.white.withValues(alpha: 0.85) : AppColors.textSecondary)),
       );
 
   // 숫자 칸 — 흰 둥근 칸 · 위 단계 점 + 이름 · 아래 큰 숫자

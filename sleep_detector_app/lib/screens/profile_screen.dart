@@ -354,28 +354,15 @@ class _BodyState extends State<_Body> {
         // 비밀번호 변경은 그대로 따로 한 줄 (구글 계정은 비밀번호가 없어서 숨김)
         if (!isGoogle) ...[
           const SizedBox(height: 24),
-          _Section(title: '로그인 및 보안', rows: [_Row(label: '비밀번호 변경', value: '', onTap: _changePassword)]),
-        ],
-        // (11/23 사용자 요청) '운전 기록' 묶음은 뺌 (운행 기록 · MY 에 있음) — 대신 애플 설정처럼 맨 아래 [로그아웃]
-        if (widget.onLogout != null) ...[
-          const SizedBox(height: 28),
-          Material(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(AppRadius.card),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(AppRadius.card),
-              onTap: widget.onLogout,
-              child: Container(
-                height: AppSize.rowMin + 4,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(AppRadius.card),
-                  border: Border.all(color: AppleGray.separator),
-                ),
-                child: const Text('로그아웃', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.danger)),
-              ),
-            ),
-          ),
+          // (11/24 사용자 요청) [로그아웃] 은 '비밀번호 변경' 바로 아래 같은 카드 줄 — 글자 시작선 · 크기 · 높이 같게 (빨간 글자)
+          _Section(title: '로그인 및 보안', rows: [
+            _Row(label: '비밀번호 변경', value: '', onTap: _changePassword),
+            if (widget.onLogout != null) _Row(label: '로그아웃', value: '', onTap: widget.onLogout, color: AppColors.danger),
+          ]),
+        ] else if (widget.onLogout != null) ...[
+          // 구글 계정 (비밀번호 없음) — 로그아웃만 같은 모양 카드로
+          const SizedBox(height: 24),
+          _Section(title: '로그인 및 보안', rows: [_Row(label: '로그아웃', value: '', onTap: widget.onLogout, color: AppColors.danger)]),
         ],
       ],
     );
@@ -479,7 +466,8 @@ class _Row extends StatelessWidget {
   final String label;
   final String value;
   final VoidCallback? onTap;
-  const _Row({required this.label, required this.value, this.onTap});
+  final Color? color; // (11/24) 로그아웃 = 빨간 글자
+  const _Row({required this.label, required this.value, this.onTap, this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -490,7 +478,7 @@ class _Row extends StatelessWidget {
         padding: EdgeInsets.fromLTRB(20, 12, onTap == null ? 20 : 14, 12),
         child: Row(
           children: [
-            Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, letterSpacing: -0.2, color: AppColors.textPrimary)),
+            Text(label, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, letterSpacing: -0.2, color: color ?? AppColors.textPrimary)),
             const SizedBox(width: 16),
             Expanded(
               child: Text(value,

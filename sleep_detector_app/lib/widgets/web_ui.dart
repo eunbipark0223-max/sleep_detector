@@ -60,14 +60,15 @@ class StageBadge extends StatelessWidget {
   final int stage;
   final String? text;
   final double fontSize;
-  const StageBadge({super.key, required this.stage, this.text, this.fontSize = 12.5});
+  final double vPad; // (11/24) 세로 여백 — 운행 기록 타임라인은 얇게
+  const StageBadge({super.key, required this.stage, this.text, this.fontSize = 12.5, this.vPad = 5});
 
   @override
   Widget build(BuildContext context) {
     final s = stage.clamp(0, 3);
     final name = text ?? stageShortName(s);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: EdgeInsets.symmetric(horizontal: 10, vertical: vPad),
       decoration: BoxDecoration(color: AppColors.stageTint(s), borderRadius: BorderRadius.circular(999)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Container(width: 6, height: 6, decoration: BoxDecoration(color: AppColors.stage(s), shape: BoxShape.circle)),
@@ -111,16 +112,21 @@ class WebCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
   final Color color;
-  const WebCard({super.key, required this.child, this.padding = const EdgeInsets.all(20), this.color = AppColors.card});
+  final bool outline; // (11/24) 홈 카드만 예전처럼 얇은 테두리 — 나머지는 슈퍼SOL 처럼 테두리 없이 그림자만
+  const WebCard({super.key, required this.child, this.padding = const EdgeInsets.all(20), this.color = AppColors.card, this.outline = false});
 
   @override
   Widget build(BuildContext context) => Container(
         width: double.infinity,
         padding: padding,
         // (11/18 사용자 요청) 흰 바탕 위에서 그림자 대신 얇은 회색 테두리로 구분 (애플 · 관리자 웹 표 느낌)
+        // (11/24 사용자 요청) 홈 카드처럼 — 흰색에서 오른쪽 아래로 아주 연한 파랑 · 얇은 테두리 · 옅은 그림자
         decoration: BoxDecoration(
-          color: color,
-          boxShadow: AppShadow.card, // (11/19) Headspace 납작 그림자 (아주 옅게)
+          color: color == AppColors.card ? null : color,
+          gradient: color == AppColors.card
+              ? const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Colors.white, Color(0xFFF5F8FD)])
+              : null,
+          boxShadow: AppShadow.card,
           borderRadius: BorderRadius.circular(AppRadius.card), // (11/18 디자인 토큰) 앱 전체 카드 둥글기 하나
           border: Border.all(color: AppColors.cardBorder),
         ),
