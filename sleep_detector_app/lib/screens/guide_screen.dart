@@ -24,7 +24,7 @@ class GuideScreen extends StatelessWidget {
   const GuideScreen({super.key});
 
   static const List<(String, String)> _steps = [
-    ('휴대폰을 거치해 주세요', '얼굴이 카메라 가운데 보이도록 맞춰 주세요'),
+    ('휴대폰을 거치대에 고정한 뒤 시작해 주세요', '얼굴이 카메라 가운데 보이도록 맞춰 주세요'), // (11/24 사용자 요청)
     ('앞을 보고 운전해 주세요', '화면 대신 음성 안내를 들어 주세요'),
     ('경고가 들리면 따라 주세요', '단계별 안내에 따라 안전한 곳에서 쉬어 주세요'),
   ];

@@ -74,7 +74,7 @@ class StageBadge extends StatelessWidget {
         const SizedBox(width: 6),
         // 자리가 좁으면 넘치지 않고 '…' 로 줄임 (긴 이유 이름 · 좁은 화면)
         Flexible(
-          child: Text(s == 0 ? name : '$s단계 | $name',
+          child: Text(name, // (11/23 사용자 요청) 'n단계' 없이 점 + 이름
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               softWrap: false,
@@ -100,7 +100,7 @@ String stageShortName(int stage) {
     case 2:
       return '휴식 권고';
     case 3:
-      return '위험';
+      return '긴급';
     default:
       return '정상';
   }
@@ -175,7 +175,16 @@ class StatTabs extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.fromLTRB(8, 16, 8, 14),
               // (11/18 피드백) 오늘 · 이번 주 · 긴급 — 칸 가운데 정렬
-              child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+              child: items[i].value.isEmpty
+                  // (11/23 사용자 요청) 숫자 없이 제목만 — 고른 칸은 진하게
+                  ? Text(items[i].label,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppType.subheadline.copyWith(
+                          fontWeight: i == selected ? FontWeight.w700 : FontWeight.w500,
+                          color: i == selected ? AppColors.textPrimary : AppColors.textSecondary))
+                  : Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
                 Text(items[i].label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

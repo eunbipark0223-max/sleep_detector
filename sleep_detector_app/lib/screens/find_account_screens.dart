@@ -14,6 +14,7 @@ import '../theme.dart';
 import '../utils/phone_format.dart';
 import '../widgets/auth_ui.dart';
 import '../widgets/verify_field.dart';
+import '../design_tokens.dart';
 
 class FindEmailScreen extends StatefulWidget {
   /// [비밀번호 찾기] 를 누르고 닫힐 때 돌려주는 값
@@ -95,7 +96,7 @@ class _FindEmailScreenState extends State<FindEmailScreen> {
         Container(
           decoration: BoxDecoration(
             color: AppColors.card,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.card),
             border: Border.all(color: AppColors.cardBorder),
           ),
           child: Column(children: [

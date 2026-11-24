@@ -75,60 +75,47 @@ class _MonthReportState extends State<MonthReport> {
         final diff = mine.length - prev;
 
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 10),
-            child: Row(children: [
-              const Text('운행 분석', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
-              const Spacer(),
-              // (11/19 사용자 요청) 달 고르기 — 눌러서 아래로 펼침
-              PopupMenuButton<DateTime>(
-                initialValue: now,
-                onSelected: (m) => setState(() => _sel = m),
-                color: AppColors.card,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                itemBuilder: (_) => [
-                  for (final m in months)
-                    PopupMenuItem(
-                      value: m,
-                      child: Text(m.year == thisMonth.year ? '${m.month}월' : '${m.year}년 ${m.month}월',
-                          style: TextStyle(
-                              fontWeight: m == now ? FontWeight.w700 : FontWeight.w500,
-                              color: m == now ? AppColors.navy : AppColors.textPrimary)),
-                    ),
-                ],
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
-                  decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(999), boxShadow: AppShadow.card),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Text(now.year == thisMonth.year ? '${now.month}월' : '${now.year}년 ${now.month}월',
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.navy)),
-                    const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: AppColors.navy),
-                  ]),
-                ),
-              ),
-            ]),
-          ),
+          _heading('운행 분석'), // (11/23 사용자 요청) '졸음이 잦은 시간대' 와 같은 소제목
           // ① 그라데이션 카드
           HsCard(
             stage: 2,
             face: 0,
             minHeight: 140,
             orb: 170,
+            // (11/23 사용자 요청) 달 고르기는 카드 안 왼쪽 위 — 눌러서 년도 · 달을 같이 고름 (보이는 글은 '11월')
+            labelWidget: PopupMenuButton<DateTime>(
+              initialValue: now,
+              onSelected: (m) => setState(() => _sel = m),
+              color: AppColors.card,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.card)),
+              itemBuilder: (_) => [
+                for (final m in months)
+                  PopupMenuItem(
+                    value: m,
+                    child: Text('${m.year}년 ${m.month}월',
+                        style: TextStyle(
+                            fontWeight: m == now ? FontWeight.w700 : FontWeight.w500,
+                            color: m == now ? AppColors.navy : AppColors.textPrimary)),
+                  ),
+              ],
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text('${now.month}월', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppleGray.label)),
+                const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: AppleGray.label),
+              ]),
+            ),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${now.month}월', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xB31C2033))),
-              const SizedBox(height: 6),
               Text.rich(TextSpan(children: [
                 const TextSpan(text: '졸음 경고 '),
                 TextSpan(text: '${mine.length}', style: TextStyle(fontSize: 30, color: AppColors.urgent.withValues(alpha: 0.74))), // (11/19) 빨강 · 살짝 투명
                 const TextSpan(text: '건'),
               ]), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: AppColors.textPrimary)),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8), // (11/23 두 줄 규칙) 한 칸 띄우고 마침표
               Text(
                 prev == 0 && mine.isEmpty
-                    ? '아직 기록이 없어요'
+                    ? '아직 기록이 없어요.'
                     : diff == 0
-                        ? '지난달과 같아요'
-                        : '지난달보다 ${diff.abs()}건 ${diff < 0 ? '줄었어요' : '늘었어요'}',
+                        ? '지난달과 같아요.'
+                        : '지난달보다 ${diff.abs()}건 ${diff < 0 ? '줄었어요' : '늘었어요'}.',
                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xCC1C2033)),
               ),
             ]),
@@ -219,13 +206,13 @@ class _MonthReportState extends State<MonthReport> {
   }
 
   Widget _heading(String text) => Padding(
-        padding: const EdgeInsets.only(left: 4, bottom: 10),
+        padding: const EdgeInsets.only(left: 16, bottom: 10), // (11/23 사용자 요청) 카드 안 글과 같은 시작선
         child: Text(text, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
       );
 
   // 숫자 칸 — 흰 둥근 칸 · 위 단계 점 + 이름 · 아래 큰 숫자
   Widget _tile(int? stage, String label, String value, String unit) {
-    final c = stage == null ? AppColors.navy : AppColors.stage(stage);
+    final c = stage == null ? AppStatus.normal : AppColors.stage(stage); // (11/23 사용자 요청) 운행 수는 초록
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(

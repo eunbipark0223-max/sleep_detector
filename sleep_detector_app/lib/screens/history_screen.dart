@@ -169,7 +169,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ..._byDay(shown, now),
                     // (11/19 사용자 요청) 안내는 맨 아래
                     const Padding(
-                      padding: EdgeInsets.only(top: 12, left: 4), // (11/19) 카드와 같은 시작선 · 왼쪽 정렬
+                      padding: EdgeInsets.only(top: 12, left: 18), // (11/23 사용자 요청) 카드 안 글과 같은 시작선 (홈과 똑같이)
                       child: Text('› 를 누르면 AI 분석 보고서를 볼 수 있어요', style: TextStyle(fontSize: 13.5, color: AppColors.textMuted)),
                     ),
                   ]);
@@ -272,7 +272,7 @@ class _CalendarTile extends StatelessWidget {
         Expanded(
           child: Center(
             child: Text('${day.day}',
-                style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w600, color: Color(0xFF1C1C1E), height: 1)),
+                style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w600, color: AppColors.textPrimary, height: 1)),
           ),
         ),
       ]),
@@ -336,7 +336,7 @@ class _Summary extends StatelessWidget {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const _SmallTitle('운행 요약'),
       Container(
-        decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(24)),
+        decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(AppRadius.card)),
         child: Column(children: [
           for (var i = 0; i < days.length; i++) ...[if (i > 0) const _Line(), row(days[i])],
         ]),
@@ -371,7 +371,7 @@ class _OldSummary extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: AppColors.navy,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadius.card),
       ),
       child: Row(
         children: [
@@ -413,7 +413,7 @@ class _DayHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       // (11/19 사용자 요청) '11/19' 는 카드 안 시각과, '3건' 은 카드 안 꺾쇠 끝과 같은 선
-      padding: const EdgeInsets.only(top: 18, bottom: 8, left: 18, right: 14),
+      padding: const EdgeInsets.only(top: 18, bottom: 8, left: 18, right: 14), // (11/23 사용자 요청) 카드 안 글(시각)과 같은 시작선
       child: Semantics(
         header: true,
         label: '$label $count건',
@@ -440,7 +440,7 @@ class _FilterBar extends StatelessWidget {
   // (11/19 Headspace) 둥근 알약 4개 — 고른 것은 남색 바탕 · 흰 글자, 나머지는 흰 바탕 (부드럽게 바뀜)
   @override
   Widget build(BuildContext context) {
-    final labels = ['전체', for (final s in stages) '$s단계'];
+    final labels = ['전체', for (final s in stages) const ['정상', '주의', '휴식 권고', '긴급'][s]]; // (11/23) 단계 이름
     final index = selected == null ? 0 : stages.indexOf(selected!) + 1;
     return Row(children: [
       for (var i = 0; i < labels.length; i++) ...[
@@ -452,7 +452,7 @@ class _FilterBar extends StatelessWidget {
             child: AnimatedContainer(
               duration: AppMotion.normal,
               curve: AppMotion.curve,
-              height: 40,
+              height: 32, // (11/23 사용자 요청) 작게
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: i == index ? AppColors.navy : AppColors.card,
@@ -461,22 +461,13 @@ class _FilterBar extends StatelessWidget {
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 if (i > 0) ...[
-                  // (11/19 사용자 요청) 타임라인 '미세수면' 옆과 같은 링 점
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: AppColors.stage(stages[i - 1]),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.card, width: 1.5),
-                      boxShadow: [BoxShadow(color: AppColors.stage(stages[i - 1]).withValues(alpha: 0.35), spreadRadius: 1.3)],
-                    ),
-                  ),
+                  // (11/23 사용자 요청) 틀 없는 색 점
+                  Container(width: 7, height: 7, decoration: BoxDecoration(color: AppColors.stage(stages[i - 1]), shape: BoxShape.circle)),
                   const SizedBox(width: 6),
                 ],
                 Text(labels[i],
                     style: TextStyle(
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: i == index ? Colors.white : AppColors.textSecondary)),
               ]),
@@ -527,13 +518,15 @@ class _EventCard extends StatelessWidget {
     const lineColor = AppColors.fill;
     return InkWell(
       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => EventDetailScreen(event: event))),
-      child: IntrinsicHeight(
+      child: SizedBox(
+        height: 54, // (11/23 사용자 요청) 시각 · 점 · 알약 모두 줄 가운데
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           // 시각 (점과 같은 높이)
           SizedBox(
             width: 70,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 18, top: 14),
+            child: Container(
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.only(left: 18),
               // 타임라인은 짧게 24시간 '17:39' (오전/오후를 붙이면 두 줄로 넘어감)
               child: Text(_hm(event.createdAt),
                   maxLines: 1,
@@ -545,13 +538,13 @@ class _EventCard extends StatelessWidget {
             width: 22,
             child: Stack(alignment: Alignment.topCenter, children: [
               Positioned(
-                top: first ? 22 : 0,
+                top: first ? 27 : 0,
                 bottom: last ? null : 0,
-                height: last ? 22 : null,
+                height: last ? 27 : null,
                 child: Container(width: 2, color: lineColor),
               ),
               Positioned(
-                top: 16,
+                top: 21,
                 child: Container(
                   width: 12,
                   height: 12,
@@ -568,7 +561,7 @@ class _EventCard extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(0, 12, 12, 14),
+              padding: const EdgeInsets.only(right: 12),
               child: Row(children: [
                 Expanded(
                   child: Text(event.reasonLabel,
@@ -577,7 +570,7 @@ class _EventCard extends StatelessWidget {
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                 ),
                 const SizedBox(width: 8),
-                StageBadge(stage: s),
+                StageBadge(stage: s, fontSize: 11.5), // (11/23) 조금 작게
                 const SizedBox(width: 2),
                 const Icon(Icons.chevron_right_rounded, size: 20, color: AppleGray.chevron),
               ]),
@@ -598,7 +591,7 @@ class _EventCard extends StatelessWidget {
       child: Material(
         color: Colors.white,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(17),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           side: BorderSide(
             color: event.isUrgent ? AppColors.urgent : AppColors.cardBorder,
           ),
@@ -876,31 +869,43 @@ class _HsHero extends StatelessWidget {
   final int? diff; // null = 날짜를 골랐을 때 (비교 없음)
   const _HsHero({required this.month, required this.day, required this.total, required this.diff});
 
+  // (11/23 사용자 요청 · 애플 느낌) 흰 카드 — 왼쪽 캐릭터 · 'n월 졸음 경고' 작은 글 · 큰 숫자 · 지난달 비교 알약
   @override
   Widget build(BuildContext context) {
     final d = diff;
-    return HsCard(
-      stage: 2,
-      face: 0,
-      minHeight: 138,
-      orb: 168,
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(day != null ? '${day!.month}/${day!.day}' : '${month.month}월',
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xB31C2033))),
-        const SizedBox(height: 6),
-        Text.rich(
-          TextSpan(children: [
-            const TextSpan(text: '졸음 경고 '),
-            TextSpan(text: '$total', style: const TextStyle(fontSize: 30)),
-            const TextSpan(text: '건'),
+    final trendColor = d == null || d == 0 ? AppColors.textSecondary : (d > 0 ? AppStatus.danger : AppStatus.normal);
+    return WebCard(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+      child: Row(children: [
+        const Buddy(stage: 2, size: 62, breathe: false),
+        const SizedBox(width: 18),
+        Expanded(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(day != null ? '${day!.month}월 ${day!.day}일 졸음 경고' : '${month.month}월 졸음 경고',
+                style: AppType.subheadline.copyWith(fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+            const SizedBox(height: 2),
+            Text.rich(
+              TextSpan(children: [
+                TextSpan(text: '$total', style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w800, letterSpacing: -1)),
+                const TextSpan(text: ' 건', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+              ]),
+              style: TextStyle(color: AppColors.textPrimary, fontFeatures: AppStatus.figures),
+            ),
+            if (d != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.fromLTRB(8, 4, 10, 4),
+                decoration: BoxDecoration(color: trendColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(AppRadius.pill)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(d == 0 ? Icons.remove_rounded : (d > 0 ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded), size: 14, color: trendColor),
+                  const SizedBox(width: 3),
+                  Text(d == 0 ? '지난달과 같아요' : '지난달보다 ${d.abs()}건 ${d < 0 ? '줄었어요' : '늘었어요'}',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: trendColor)),
+                ]),
+              ),
+            ],
           ]),
-          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: AppColors.textPrimary),
         ),
-        if (d != null) ...[
-          const SizedBox(height: 6),
-          Text(d == 0 ? '지난달과 같아요' : '지난달보다 ${d.abs()}건 ${d < 0 ? '줄었어요' : '늘었어요'}',
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xCC1C2033))),
-        ],
       ]),
     );
   }
@@ -933,16 +938,8 @@ class _StageBar extends StatelessWidget {
                 const SizedBox(height: 10),
                 Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
                     Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
-                      Container(
-                        width: 9,
-                        height: 9,
-                        decoration: BoxDecoration(
-                          color: AppColors.stage(s),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: AppColors.card, width: 1.5),
-                          boxShadow: [BoxShadow(color: AppColors.stage(s).withValues(alpha: 0.35), spreadRadius: 1.2)],
-                        ),
-                      ),
+                      // (11/23 사용자 요청) 틀 없는 색 점
+                      Container(width: 8, height: 8, decoration: BoxDecoration(color: AppColors.stage(s), shape: BoxShape.circle)),
                       const SizedBox(width: 5),
                       Flexible(
                         child: Text(stageShortName(s),

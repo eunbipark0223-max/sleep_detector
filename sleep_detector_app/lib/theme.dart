@@ -48,7 +48,7 @@ class AppColors {
   static const Color cardBorder = AppleGray.separator; // 카드 · 입력창 테두리
 
   /// 단계 바탕 (부엉이가 잘 보이는 연한 단계 색 — 사용자 지정 11/16): 정상 · 주의 · 휴식 권고 · 긴급
-  static const List<Color> _stagePastel = [Color(0xFFB8DBCA), Color(0xFFF3D9A2), Color(0xFFF2BB86), Color(0xFFE9A6A5)];
+  static const List<Color> _stagePastel = [Color(0xFFB8DBCA), Color(0xFFF3D9A2), Color(0xFFF2BB86), Color(0xFFE9A6A5)]; // (11/23 사용자 요청) 운행 화면 바탕 = 단계 색 (초록 · 노랑 · 주황 · 빨강)
   static Color stagePastel(int stage) => _stagePastel[stage.clamp(0, 3)];
 
   // 수업 코드가 쓰는 이름 (수업 화면을 그대로 가져와도 컴파일되게 우리 색에 연결한 별명)

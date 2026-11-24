@@ -72,8 +72,11 @@ class MapScreen extends StatefulWidget {
   /// 도로 거리 묻기. 비워 두면 서버 (/rest-areas/road-distance). 실패하면 직선 거리 그대로.
   final RoadDistanceFetcher? fetchRoad;
 
+  /// (11/23 사용자 요청) 운행 · 경고 화면에서 열 때 — 탭바 쉼터와 따로, 글씨 · 버튼을 크게 (운전 중에 보기 쉽게)
+  final bool driving;
+
   const MapScreen(
-      {super.key, this.loadAreas, this.getPosition, this.kakaoJsKey = _kakaoKeyFromEnv, this.openUrl, this.fetchRoad});
+      {super.key, this.driving = false, this.loadAreas, this.getPosition, this.kakaoJsKey = _kakaoKeyFromEnv, this.openUrl, this.fetchRoad});
 
   static const String _kakaoKeyFromEnv = String.fromEnvironment('KAKAO_JS_KEY');
 
@@ -184,6 +187,11 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _openRoute(RestArea a) async {
     final (app, web) = kakaoRouteUris(a, _me);
     final open = widget.openUrl ?? _defaultOpenUrl;
+    // (11/23 사용자 요청) 카카오맵 앱으로 나가지 않고 앱 안에서 길찾기 → '<' 로 바로 돌아옴
+    if (!mounted) return;
+    Navigator.push(context, MaterialPageRoute(builder: (_) => _RoutePage(title: a.name, url: web.toString())));
+    return;
+    // ignore: dead_code
     if (await open(app) || await open(web)) return;
     if (!mounted) return;
     Navigator.push(context, MaterialPageRoute(builder: (_) => _RoutePage(title: a.name, url: web.toString())));
@@ -194,12 +202,13 @@ class _MapScreenState extends State<MapScreen> {
   //   쉼터 한 줄: 순번 · 이름 · '거리 9.3km · 12분' · 오른쪽 [길찾기] (연한 남색 알약)
   //   시간 = B 의 도로 거리 로직 (서버 /rest-areas/road-distance → 카카오모빌리티). 못 구하면 거리만
   static const Color _bg = AppColors.background;
-  static const double _side = 20; // 탭 · 설명 · 목록 공통 좌우 여백
+  static const double _side = 16; // (11/23) 제목 · 지도 · 목록 공통 시작선
   int _sort = 0; // 0 거리순 · 1 시간순
   // (11/18 사용자 요청) 위 손잡이(선)를 누르거나 아래로 끌면 목록 시트가 내려감 · 다시 누르거나 위로 끌면 올라옴
   bool _sheetOpen = true;
-  static const double _openH = 360;
-  static const double _closedH = 92; // 손잡이 + [거리순 | 시간순] 까지만 보임
+  bool get _big => widget.driving; // 운행 중에 연 화면 — 큰 글씨 · 큰 버튼
+  double get _openH => _big ? 450 : 360;
+  double get _closedH => _big ? 112 : 92; // 손잡이 + [거리순 | 시간순] 까지만 보임
 
   // 화면에 보일 순서 (지도 마커 번호는 _near 순서 그대로라서 원래 번호를 들고 다님)
   List<int> get _order {
@@ -228,7 +237,7 @@ class _MapScreenState extends State<MapScreen> {
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
         toolbarHeight: 68,
-        titleSpacing: _side,
+        titleSpacing: 16, // (11/23) 다른 탭 제목과 같은 시작선
         centerTitle: false,
         // (11/19 사용자 요청) 운행 · 경고 화면에서 열어도 제목 자리가 탭 화면과 같게 — '<' 대신 오른쪽 닫기
         automaticallyImplyLeading: false,
@@ -288,7 +297,7 @@ class _MapScreenState extends State<MapScreen> {
     return Container(
       decoration: const BoxDecoration(
         color: _bg,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
         boxShadow: [BoxShadow(color: Color(0x14000000), blurRadius: 16, offset: Offset(0, -2))],
       ),
       child: Column(
@@ -314,6 +323,7 @@ class _MapScreenState extends State<MapScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: _side),
             child: _Segment(
+              big: _big,
               labels: const ['거리순', '시간순'],
               selected: _sort,
               onSelect: (i) => setState(() => _sort = i),
@@ -327,7 +337,7 @@ class _MapScreenState extends State<MapScreen> {
                   : _sort == 0
                       ? '가까운 쉼터부터 보여 드려요'
                       : '빨리 도착하는 쉼터부터 보여 드려요',
-              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              style: TextStyle(fontSize: _big ? 16 : 13, color: AppColors.textSecondary),
             ),
           ),
           if (_sheetOpen) Expanded(
@@ -359,12 +369,12 @@ class _MapScreenState extends State<MapScreen> {
         borderRadius: BorderRadius.circular(AppRadius.card),
         onTap: () => _focus(i),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+          padding: _big ? const EdgeInsets.fromLTRB(16, 18, 14, 18) : const EdgeInsets.fromLTRB(14, 14, 12, 14),
           child: Row(
             children: [
               AnimatedContainer(
-                width: 28,
-                height: 28,
+                width: _big ? 36 : 28,
+                height: _big ? 36 : 28,
                 alignment: Alignment.center,
                 duration: const Duration(milliseconds: 200),
                 // (11/18 사용자 요청) 누른 쉼터는 숫자 동그라미가 남색으로 채워짐 · 안 누르면 원래 모양 그대로
@@ -372,7 +382,7 @@ class _MapScreenState extends State<MapScreen> {
                     color: selected ? AppColors.navy : AppColors.field, shape: BoxShape.circle),
                 child: Text('$rank',
                     style: TextStyle(
-                        fontSize: 13,
+                        fontSize: _big ? 17 : 13,
                         fontWeight: FontWeight.w700,
                         color: selected ? Colors.white : AppColors.textSecondary)),
               ),
@@ -384,18 +394,18 @@ class _MapScreenState extends State<MapScreen> {
                     Text(a.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                    const SizedBox(height: 3),
+                        style: TextStyle(fontSize: _big ? 20 : 16, fontWeight: _big ? FontWeight.w700 : FontWeight.w600, color: AppColors.textPrimary)),
+                    SizedBox(height: _big ? 5 : 3),
                     // (11/18 사용자 요청) 걸리는 시간을 앞에 굵게 (B 의 도로 거리 로직 — 서버 /rest-areas/road-distance)
                     //   '12분 · 9.3km' · 시간을 못 구하면 '거리 9.3km'
                     near.roadMin == null
-                        ? Text(dist, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary))
+                        ? Text(dist, style: TextStyle(fontSize: _big ? 16 : 13, color: AppColors.textSecondary))
                         : Text.rich(TextSpan(children: [
                             TextSpan(
                                 text: '${near.roadMin}분',
                                 style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.navy)),
                             TextSpan(text: ' · ${near.bestKm.toStringAsFixed(1)}km'),
-                          ]), style: const TextStyle(fontSize: 13.5, color: AppColors.textSecondary)),
+                          ]), style: TextStyle(fontSize: _big ? 17 : 13.5, color: AppColors.textSecondary)),
                   ],
                 ),
               ),
@@ -417,15 +427,15 @@ class _MapScreenState extends State<MapScreen> {
                     customBorder: const StadiumBorder(),
                     onTap: () => _openRoute(a),
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(11, 8, 14, 8),
+                      padding: _big ? const EdgeInsets.fromLTRB(16, 14, 20, 14) : const EdgeInsets.fromLTRB(11, 8, 14, 8),
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         Transform.rotate(
                             angle: 0.6,
-                            child: Icon(Icons.navigation_rounded, size: 15, color: selected ? Colors.white : AppColors.navy)),
-                        const SizedBox(width: 4),
+                            child: Icon(Icons.navigation_rounded, size: _big ? 20 : 15, color: selected ? Colors.white : AppColors.navy)),
+                        SizedBox(width: _big ? 6 : 4),
                         Text('길찾기',
                             style: TextStyle(
-                                fontSize: 13.5, fontWeight: FontWeight.w600, color: selected ? Colors.white : AppColors.textPrimary)),
+                                fontSize: _big ? 17 : 13.5, fontWeight: _big ? FontWeight.w700 : FontWeight.w600, color: selected ? Colors.white : AppColors.textPrimary)),
                       ]),
                     ),
                   ),
@@ -445,12 +455,13 @@ class _Segment extends StatelessWidget {
   final List<String> labels;
   final int selected;
   final ValueChanged<int> onSelect;
-  const _Segment({required this.labels, required this.selected, required this.onSelect});
+  final bool big; // (11/23) 운행 중 — 크게
+  const _Segment({required this.labels, required this.selected, required this.onSelect, this.big = false});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 36,
+      height: big ? 52 : 36,
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(color: AppColors.field, borderRadius: BorderRadius.circular(10)),
       child: LayoutBuilder(builder: (context, c) {
@@ -480,8 +491,8 @@ class _Segment extends StatelessWidget {
                   child: Center(
                     child: Text(labels[i],
                         style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: i == selected ? FontWeight.w600 : FontWeight.w500,
+                            fontSize: big ? 17 : 13.5,
+                            fontWeight: i == selected ? FontWeight.w700 : FontWeight.w500,
                             color: i == selected ? AppColors.textPrimary : AppColors.textSecondary)),
                   ),
                 ),
@@ -563,7 +574,12 @@ class _RoutePageState extends State<_RoutePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('${widget.title} 길찾기')),
+      appBar: AppBar(
+        title: Text('${widget.title} 길찾기'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('앱으로 돌아가기')), // (11/23)
+        ],
+      ),
       body: WebViewWidget(controller: _web),
     );
   }

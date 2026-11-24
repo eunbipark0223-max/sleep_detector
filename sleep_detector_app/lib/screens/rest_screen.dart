@@ -47,6 +47,9 @@ import '../services/voice_service.dart';
 import '../theme.dart';
 import 'regulation_screen.dart';
 import '../widgets/buddy.dart';
+import '../widgets/auth_ui.dart';
+import '../design_tokens.dart';
+import '../widgets/owl_says.dart' show keepWords;
 
 class RestScreen extends StatefulWidget {
   /// 휴식 시작 (POST /drive/rest). 서버 JSON 을 돌려준다.
@@ -154,6 +157,28 @@ class _RestScreenState extends State<RestScreen> {
     }
   }
 
+  // (11/23) [운행 종료] — 한 번 묻고 {'end': true} 를 돌려줌 (운행 화면이 운행 종료 · 리포트를 처리)
+  Future<void> _end() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('운행을 끝낼까요?'),
+        content: const Text('운행을 끝내면 졸음 감지가 멈춰요'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.navy, foregroundColor: Colors.white),
+            child: const Text('운행 종료'),
+          ),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+    _timer?.cancel();
+    Navigator.of(context).pop(<String, dynamic>{'end': true});
+  }
+
   // 소리 내기는 실패해도 화면 흐름을 막지 않는다
   Future<void> _say(String text) async {
     if (text.isEmpty) return;
@@ -205,44 +230,68 @@ class _RestScreenState extends State<RestScreen> {
         final done = _left == Duration.zero;
         final busy = _phase == _Phase.resuming;
         final progress = _totalSec == 0 ? 0.0 : 1 - _left.inSeconds / _totalSec;
-        return _Centered(children: [
-          // (11/11 C 초안) 컵 아이콘 대신 부엉이 — 쉬는 중 = 눈 감고 자는 초록 부엉이, 다 쉬었으면 = 엄지 척 초록 부엉이
-          const Buddy(stage: 2, size: 190), // (11/19) 쉬는 중 = 눈 감고 꾸벅 (주황) // 쉬는 중 = 편하게 자는 초록 부엉이 (11/11 초안 그림)
-          const SizedBox(height: 12),
-          Text(done ? '충분히 쉬었어요' : '쉬는 중이에요', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-          if (_message.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(_message, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-          ],
-          const SizedBox(height: 24),
-          Text(_clock, style: const TextStyle(fontSize: 56, fontWeight: FontWeight.w800, color: AppColors.textPrimary, fontFeatures: [FontFeature.tabularFigures()])),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(value: progress, minHeight: 10, color: AppColors.rest, backgroundColor: AppColors.cardBorder),
-          ),
-          const SizedBox(height: 24),
-          if (_error != null) ...[
-            Text(_error!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: AppColors.urgent)),
-            const SizedBox(height: 12),
-          ],
-          FilledButton(
-            onPressed: (done && !busy) ? _resume : null,
-            child: busy
-                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
-                : const Text('운행 재개'),
-          ),
-          if (!done) ...[
+        // (11/23 사용자 요청 · 애플 타이머) 가는 원형 링 안에 캐릭터 · 남은 시간 / 아래 한 줄 / 맨 아래 큰 버튼
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const Spacer(),
+            Center(
+              child: SizedBox(
+                width: 268,
+                height: 268,
+                child: Stack(alignment: Alignment.center, children: [
+                  SizedBox.expand(
+                    child: CircularProgressIndicator(
+                      value: progress,
+                      strokeWidth: 9,
+                      strokeCap: StrokeCap.round,
+                      color: done ? AppStatus.normal : AppColors.navy,
+                      backgroundColor: AppColors.navy.withValues(alpha: 0.08),
+                    ),
+                  ),
+                  Column(mainAxisSize: MainAxisSize.min, children: [
+                    Buddy(stage: done ? 0 : 2, size: 58, breathe: false),
+                    const SizedBox(height: 10),
+                    Text(_clock,
+                        style: const TextStyle(fontSize: 52, height: 1.05, fontWeight: FontWeight.w700, letterSpacing: -1.5,
+                            color: AppColors.textPrimary, fontFeatures: [FontFeature.tabularFigures()])),
+                    const SizedBox(height: 4),
+                    Text(done ? '휴식 완료' : '남은 시간', style: AppType.subheadline.copyWith(color: AppColors.textSecondary)),
+                  ]),
+                ]),
+              ),
+            ),
+            const SizedBox(height: 28),
+            Text(done ? '충분히 쉬었어요' : '잠시 쉬어 가세요',
+                textAlign: TextAlign.center, style: AppType.title2.copyWith(color: AppColors.textPrimary)),
+            if (_message.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(keepWords(_message), textAlign: TextAlign.center, style: AppType.subheadline.copyWith(color: AppColors.textSecondary)),
+            ],
+            const Spacer(),
+            if (_error != null) ...[
+              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: AppColors.urgent)),
+              const SizedBox(height: 12),
+            ],
+            AuthButton(
+              text: busy ? '재개하는 중' : '운행 재개',
+              onPressed: (done && !busy) ? _resume : null,
+              height: AppSize.button,
+              color: AppStatus.normal, // (11/23) [운행 종료] 와 구분되게 초록
+            ),
             const SizedBox(height: 10),
-            const Text('휴식 시간이 끝나면 [운행 재개]가 켜져요', style: TextStyle(fontSize: 13, color: AppColors.textMuted)),
-          ],
-          // (11/18 팀장) 규정은 경고 화면 대신 쉬는 동안 여기서
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: () => showRegulationSheet(context, RestRegulations.list),
-            child: const Text('관련 규정 보기 ›', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-          ),
-        ]);
+            // (11/23 사용자 요청) 쉬다가 운행을 끝낼 수도 있게
+            AuthButton(text: '운행 종료', onPressed: busy ? null : _end, height: AppSize.button), // (11/23 사용자 요청) 늘 남색 · 흰 글
+            const SizedBox(height: 10),
+            if (!done)
+              Text('휴식이 끝나면 [운행 재개]를 누를 수 있어요',
+                  textAlign: TextAlign.center, style: AppType.footnote.copyWith(color: AppColors.textMuted)),
+            TextButton(
+              onPressed: () => showRegulationSheet(context, RestRegulations.list),
+              child: const Text('관련 규정 보기 ›', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            ),
+          ]),
+        );
     }
   }
 }

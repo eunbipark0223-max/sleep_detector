@@ -21,10 +21,11 @@ import 'dart:convert';
 class SleepEvent {
   static const List<String> stageLabels = ['정상', '주의', '휴식 권고', '긴급'];
   static const Map<String, String> reasonLabels = {
-    'microsleep': '미세수면',
-    'perclos': '피로 누적',
-    'rest_overdue': '휴게 미준수',
-    'no_response': '음성 응답 없음',
+    // (11/23 시나리오) 앱(기사님)에서 부르는 이름
+    'microsleep': '순간 졸음',
+    'perclos': '졸음 잦음',
+    'rest_overdue': '휴식 안 함',
+    'no_response': '퀴즈 응답 없음',
     'pre_warning': '첫 졸음',
   };
 
@@ -68,7 +69,9 @@ class SleepEvent {
   String get stageLabel => reason == 'pre_warning' ? '예비 경고' : stageLabels[stage.clamp(0, 3)];
 
   /// 경고 종류 이름. 모르는 값이면 서버가 준 글자 그대로.
-  String get reasonLabel => reasonLabels[reason] ?? reason;
+  // (11/23 사용자 요청) '미세수면' · '피로 누적' 이 애매해서 단계 이름으로 통일 — '음성 응답 없음' 만 그대로
+  // (11/23 시나리오) 이유 이름 = 순간 졸음 · 졸음 잦음 · 퀴즈 응답 없음 · 휴식 안 함 (모르는 이유면 단계 이름)
+  String get reasonLabel => reasonLabels[reason] ?? const ['정상', '주의', '휴식 권고', '긴급'][stage.clamp(0, 3)];
 
   /// 목록에 보여 줄 발생 시각 (예: 10/27 16:30)
   String get createdLabel {

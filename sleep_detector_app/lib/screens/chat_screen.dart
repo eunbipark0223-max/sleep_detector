@@ -36,6 +36,7 @@ import '../theme.dart';
 import '../widgets/press.dart';
 import '../widgets/owl_says.dart' show keepWords;
 import '../widgets/buddy.dart';
+import 'guide_screen.dart';
 
 const String _baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://10.0.2.2:8000');
 const Duration _timeout = Duration(seconds: 40); // RAG + Gemini 라 조금 길게
@@ -195,7 +196,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           // (11/18 사용자 요청) 빠른 질문은 처음부터 입력창 바로 위 한 줄 — 옆으로 밀어서 다 볼 수 있게
-          if (_suggestions.isNotEmpty && !_isSending) _suggestionRow(),
+          if (!_isSending) _suggestionRow(), // (11/23) 사용 가이드 알약은 늘 보이게
           _inputBar(),
         ],
       ),
@@ -243,12 +244,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // 빠른 질문 알약 — 흰 바탕 · 옅은 회색 테두리 · 남색 글자
   // (11/18 피드백 · 애플 토큰) 테두리 · 남색 없이 연한 회색 칸(systemGray6) + 검정 글자 · 작게 (입력칸과 같은 톤)
-  Widget _quickPill(String q) => Press(child: Material(
+  Widget _quickPill(String q, {VoidCallback? onTap}) => Press(child: Material(
         color: AppleGray.fill,
         shape: const StadiumBorder(),
         child: InkWell(
           customBorder: const StadiumBorder(),
-          onTap: () => _send(q),
+          onTap: onTap ?? () => _send(q),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
             child: Text(q, style: AppType.footnote.copyWith(fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
@@ -265,6 +266,12 @@ class _ChatScreenState extends State<ChatScreen> {
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
         physics: const BouncingScrollPhysics(), // 애플처럼 끝에서 살짝 튕김
         children: [
+          // (11/23 사용자 요청) 맨 앞 '사용 가이드는?' — 누르면 사용 가이드 화면 (질문으로 보내지 않음 · 늘 보임)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: _quickPill('어떻게 쓰나요?', // (11/23 사용자 요청)
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const GuideScreen()))),
+          ),
           for (final q in _suggestions) Padding(padding: const EdgeInsets.only(right: 8), child: _quickPill(q)),
         ],
       ),

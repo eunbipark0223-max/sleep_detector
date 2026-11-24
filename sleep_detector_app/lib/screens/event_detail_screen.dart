@@ -152,32 +152,35 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
           // ① 그라데이션 카드 — 날짜 · 시각 / 큰 이유 / 단계 알약
-          HsCard(
-            stage: s,
-            minHeight: 150,
-            orb: 168,
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('$_date · $_time', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xB31C2033))),
-              // 몇 번째 운행 · 몇 시부터 몇 시까지
-              FutureBuilder<String?>(
-                future: _drive,
-                builder: (_, snap) => snap.data == null
-                    ? const SizedBox.shrink()
-                    : Padding(
-                        padding: const EdgeInsets.only(top: 3),
-                        child: Text(snap.data!, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Color(0x991C2033))),
-                      ),
+          // (11/23 사용자 요청) 홈 운행 카드와 같은 모양 — 흰색 → 연한 단계 색 · 왼쪽 위 알약 · 큰 글 · 아래 날짜 · 운행 · 캐릭터
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppRadius.card),
+              border: Border.all(color: AppleGray.separator),
+              gradient: LinearGradient(colors: [Colors.white, AppIllust.softTint[s]]),
+            ),
+            child: Row(children: [
+              Expanded(
+                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  StageBadge(stage: s),
+                  const SizedBox(height: 10),
+                  Text(e.reasonLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: AppColors.textPrimary)),
+                  const SizedBox(height: 6),
+                  Text('$_date · $_time', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                  FutureBuilder<String?>(
+                    future: _drive,
+                    builder: (_, snap) => snap.data == null
+                        ? const SizedBox.shrink()
+                        : Padding(padding: const EdgeInsets.only(top: 4), child: _DriveLine(snap.data!)),
+                  ),
+                ]),
               ),
-              const SizedBox(height: 6),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(e.reasonLabel,
-                    maxLines: 1,
-                    style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -0.7, color: AppColors.textPrimary)),
-              ),
-              const SizedBox(height: 12),
-              StageBadge(stage: s),
+              const SizedBox(width: 12),
+              Buddy(stage: s, size: 60, breathe: false, alert: true),
             ]),
           ),
           const SizedBox(height: 14),
@@ -261,7 +264,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           // ⑤ 기사님의 대처
           if (quiz.isNotEmpty || wake != null || (rest != null && rest['started'] != null)) ...[
             const SizedBox(height: 24),
-            _heading(Icons.directions_car_filled_rounded, '기사님의 대처'),
+            _heading(Icons.directions_car_filled_rounded, '대응 기록'), // (11/23 사용자 요청) 기업용 표현
             WebCard(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Column(children: [
@@ -375,5 +378,30 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         ],
       ),
     );
+  }
+}
+
+/// (11/23) '운행 10 · 16:47 ~ 16:50' → [운행 ⑩] 16:47 ~ 16:50 (번호는 남색 동그라미 흰 글)
+class _DriveLine extends StatelessWidget {
+  final String text;
+  const _DriveLine(this.text);
+  @override
+  Widget build(BuildContext context) {
+    const st = TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Color(0x991C2033));
+    final m = RegExp(r'운행\s*(\d+)\s*[·]?\s*(.*)').firstMatch(text);
+    if (m == null) return Text(text, style: st);
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      const Text('운행 ', style: st),
+      Container(
+        width: 18,
+        height: 18,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(shape: BoxShape.circle, color: AppColors.navy),
+        child: Text(m.group(1)!,
+            strutStyle: const StrutStyle(fontSize: 11, height: 1, forceStrutHeight: true),
+            style: const TextStyle(fontSize: 11, height: 1, fontWeight: FontWeight.w700, color: Colors.white)),
+      ),
+      if (m.group(2)!.isNotEmpty) Text('  ${m.group(2)}', style: st),
+    ]);
   }
 }

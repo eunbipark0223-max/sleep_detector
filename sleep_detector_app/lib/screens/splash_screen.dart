@@ -18,7 +18,7 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
 import 'main_screen.dart';
-import '../widgets/buddy.dart';
+import '../widgets/system_status.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -81,9 +81,11 @@ class _SplashScreenState extends State<SplashScreen> {
             child: const Center(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 // (11/17) 그림은 아직 안 넣음 — 자리만 표시
-                Buddy(stage: 0, size: 200),
-                SizedBox(height: 20),
-                Text('졸음가드', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                ShieldMark(size: 132), // (11/23 사용자 요청) 시작 화면 = 방패 이모지
+                SizedBox(height: 22),
+                Text('졸음가드', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -0.8, color: AppColors.navy)),
+                SizedBox(height: 6),
+                Text('운전자 졸음 안전관리 솔루션', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.textMuted)),
               ]),
             ),
           ),

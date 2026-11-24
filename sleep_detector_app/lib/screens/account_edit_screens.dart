@@ -13,6 +13,7 @@ import '../services/auth_service.dart';
 import '../theme.dart';
 import '../widgets/auth_ui.dart';
 import '../widgets/verify_field.dart';
+import '../design_tokens.dart';
 
 class EditFieldScreen extends StatefulWidget {
   final String title; // '이름 변경'
@@ -112,7 +113,7 @@ class _EditFieldScreenState extends State<EditFieldScreen> {
             Container(
               decoration: BoxDecoration(
                 color: AppColors.card,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(AppRadius.card),
                 border: Border.all(color: bad ? AuthUi.error : AppColors.cardBorder, width: bad ? 1.4 : 1),
               ),
               padding: const EdgeInsets.only(left: 16, right: 4),

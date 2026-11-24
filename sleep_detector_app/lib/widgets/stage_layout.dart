@@ -34,19 +34,23 @@ class StageLayout extends StatelessWidget {
     this.header,
     this.camRatio,
     this.actionsHeight = 196,
+    this.headerInset = 12,
+    this.gap = 26,
   });
+  final double headerInset; // (11/23) 머리 칸 좌우 들여쓰기 — 상태 줄은 0 (카메라와 같은 폭)
+  final double gap; // (11/23) 카메라와 카드 사이
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, box) {
       final camH = (box.maxHeight * (camRatio ?? (header == null ? cameraRatio : 0.36))).clamp(180.0, 560.0);
       return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 22, 20, 8), // (11/19 사용자 요청) 너무 위에 붙어 있어 전체를 아래로 · 버튼은 맨 아래
+        padding: const EdgeInsets.fromLTRB(20, 6, 20, 20), // (11/23 사용자 요청) 상태 줄은 위로 · 맨 아래 버튼은 조금 위로 (세 화면 같은 자리)
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // (11/18 피드백) 글은 카메라 둥근 모서리 안쪽에서 시작 (좌우 12 들여씀)
-            if (header != null) ...[Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: header!), const SizedBox(height: 18)],
+            if (header != null) ...[Padding(padding: EdgeInsets.symmetric(horizontal: headerInset), child: header!), SizedBox(height: headerInset == 0 ? 12 : 18)],
             SizedBox(
               height: camH,
               child: Stack(
@@ -58,7 +62,7 @@ class StageLayout extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 26), // (11/19 사용자 요청) 카메라와 카드 사이 여백 넉넉히
+            SizedBox(height: gap), // (11/19 사용자 요청) 카메라와 카드 사이 여백 넉넉히
             Expanded(
               child: SingleChildScrollView(
                 physics: const ClampingScrollPhysics(), // 스크롤바는 안 보임 (사용자 요청 7)
@@ -168,49 +172,50 @@ class StageMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = stage.clamp(0, 3);
-    final lines = text
-        .replaceAll('.', '\n')
-        .split('\n')
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .take(2)
-        .toList();
+    final lines = titleLines(text).take(2).toList();
+    // (11/23 사용자 요청) 운행 화면 카드도 처음 홈 카드처럼 — 단색 카드는 캐릭터가 안 보여서
+    //   흰색 → 아주 연한 단계 색 · 얇은 테두리 / 왼쪽 위 상태 알약 · 큰 글 / 오른쪽 캐릭터
+    final c = AppIllust.stageSolid[s]; // (11/23 사용자 요청) 0단계는 초록 (3단계 빨강처럼)
+    const names = ['정상', '주의', '휴식 권고', '긴급'];
     const title = TextStyle(fontSize: 22, height: 1.3, fontWeight: FontWeight.w700, letterSpacing: -0.6, color: AppleGray.label);
-    return HsCard(
-      stage: s,
-      minHeight: info ? 140 : 116,
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        for (final line in lines)
-          // 한 문장은 꼭 한 줄 — 폭이 모자라면 글자만 조금 줄어듦
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(line, maxLines: 1, softWrap: false, style: title),
-          ),
-        if (info) ...[
-          // (11/19 사용자 요청) 운전 시간 먼저 · 단계 알약 다음 — 두 알약 모양 · 안쪽 시작선을 똑같이 맞춤
-          ValueListenableBuilder<int?>(
-            valueListenable: DriveClock.minutes,
-            builder: (_, m, _) => m == null
-                ? const SizedBox.shrink()
-                : Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: _CardChip(
-                      lead: const Icon(Icons.schedule_rounded, size: 14, color: Color(0xB31C2033)),
-                      text: '${DriveClock.label(m)} 운전 중',
-                      bg: Colors.white.withValues(alpha: 0.55),
-                      color: const Color(0xD91C2033),
-                    ),
-                  ),
-          ),
-          const SizedBox(height: 8),
-          _CardChip(
-            lead: Container(width: 8, height: 8, decoration: BoxDecoration(color: AppColors.stage(s), shape: BoxShape.circle)),
-            text: s >= 1 ? '$s단계 | ${StageBadge.labels[s]}' : '안전 운전 중',
-            bg: s >= 1 ? AppColors.stageTint(s) : Colors.white.withValues(alpha: 0.55),
-            color: s >= 1 ? AppColors.stageInk(s) : const Color(0xD91C2033),
-          ),
-        ],
+    return Container(
+      height: 132, // (11/23 사용자 요청) 0 · 1 · 2 · 3단계 카드 크기 모두 같게
+      padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: (s == 0 || s >= 3) ? c.withValues(alpha: 0.45) : AppleGray.separator),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.white, AppIllust.softTint[s]],
+        ),
+      ),
+      child: Row(children: [
+        Expanded(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(9, 5, 11, 5),
+              decoration: BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.pill)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Container(width: 7, height: 7, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+                const SizedBox(width: 5),
+                Text(names[s], // (11/23 사용자 요청) '2단계' 없이 점 + 이름
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color.lerp(c, AppleGray.label, 0.25))),
+              ]),
+            ),
+            const SizedBox(height: 8),
+            for (final (i, line) in lines.indexed) ...[
+              if (i > 0) const SizedBox(height: 4), // 줄 사이 한 칸
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(line, maxLines: 1, softWrap: false, style: title),
+              ),
+            ],
+          ]),
+        ),
+        const SizedBox(width: 12),
+        Buddy(stage: s, size: 64, breathe: s > 0, alert: true),
       ]),
     );
   }
@@ -236,15 +241,16 @@ class _CardChip extends StatelessWidget {
 }
 
 /// 운행 · 경고 화면 큰 버튼 (readdy) — kind: 'white'(흰 반투명 + 남색 글) · 'navy'(남색 꽉 참)
-ButtonStyle stageButton(String kind, {double height = 64}) => FilledButton.styleFrom(
-      backgroundColor: kind == 'navy' ? AppColors.navy : Colors.white.withValues(alpha: 0.7),
+ButtonStyle stageButton(String kind, {double height = AppSize.button}) => FilledButton.styleFrom(
+      backgroundColor: kind == 'navy' ? AppColors.navy : Colors.white,
       foregroundColor: kind == 'navy' ? Colors.white : AppColors.navy,
       disabledBackgroundColor: Colors.white.withValues(alpha: 0.4),
       disabledForegroundColor: AppColors.navy.withValues(alpha: 0.4),
-      minimumSize: Size.fromHeight(height),
+      minimumSize: const Size.fromHeight(AppSize.button), // (11/23) 높이는 앱 전체 하나
       elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)), // (11/18) 카메라 칸과 같은 둥글기
-      textStyle: const TextStyle(fontSize: 19, fontWeight: FontWeight.w600),
+      side: kind == 'navy' ? null : const BorderSide(color: AppleGray.separator), // (v2) 흰 버튼은 얇은 테두리
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)), // (11/23 Headspace 토큰) 알약 버튼
+      textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700), // (11/23) AuthButton 과 같은 글자
     );
 
 /// 단계 배지 '● 주의' — 제목 줄 오른쪽 (모든 단계 같은 자리). 빨강 바탕(3단계) 위에서는 흰 배지
@@ -280,4 +286,13 @@ class StageBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+/// (11/23 사용자 요청) 두 줄 제목 규칙 — 문장마다 한 줄 · 줄이 둘 이상이면 마지막 줄 끝에 마침표
+///   관리자에게 알렸어요
+///   지금 바로 정차하세요.
+List<String> titleLines(String text) {
+  final l = text.replaceAll('.', '\n').split('\n').map((t) => t.trim()).where((t) => t.isNotEmpty).toList();
+  if (l.length > 1) l[l.length - 1] = '${l.last}.';
+  return l;
 }

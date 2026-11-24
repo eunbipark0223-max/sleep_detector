@@ -35,6 +35,7 @@ import 'event_detail_screen.dart';
 import '../widgets/buddy.dart';
 import '../services/drive_log.dart';
 import 'history_screen.dart' show HistoryEventRow;
+import '../widgets/system_status.dart';
 
 // (사진 1장 테스트 · 개발용 숨김은 main_screen 의 ≡ 메뉴로 옮김 — SHOW_DEV_TOOLS, 11/11)
 
@@ -56,6 +57,7 @@ class HomeScreen extends StatefulWidget {
 
   /// 최근 경고 [전체 보기] — 운행 기록 탭으로 (main_screen 이 넘겨 줌, 디자인 시안 11/12)
   final VoidCallback? onOpenRecords;
+  final ValueChanged<int>? onOpenTab; // (11/23 리디자인_3) 바로가기 타일 → 아래 탭 번호로 이동
 
   const HomeScreen({
     super.key,
@@ -65,6 +67,7 @@ class HomeScreen extends StatefulWidget {
     this.loadDriveState,
     this.resumeBuilder,
     this.onOpenRecords,
+    this.onOpenTab,
   });
 
   @override
@@ -116,14 +119,41 @@ class _HomeScreenState extends State<HomeScreen> {
     return true;
   }
 
+  // (11/23 기업용 리디자인) 시스템 상태 — 휴대폰 권한(카메라 · 마이크 · 위치) · 관제 서버 연결
+  List<bool>? _perms;
+  bool? _online;
+  Future<void> _checkPerms() async {
+    try {
+      final r = [
+        await Permission.camera.isGranted,
+        await Permission.microphone.isGranted,
+        await Permission.locationWhenInUse.isGranted,
+      ];
+      if (mounted) setState(() => _perms = r);
+    } catch (_) {
+      if (mounted) setState(() => _perms = [true, true, true]);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _checkPerms();
+  }
+
   late Future<List<SleepEvent>?> _recent = _fetch();
   late Future<DriveState?> _driveState = _fetchDriveState();
   late Future<List<DriveSpan>> _spans = DriveLog.load(); // (11/19) 폰에 적어 둔 운행 시작 · 종료
 
   // 앱을 껐다 켰을 때 서버가 기억하는 운행 상태. 못 받으면 (서버 연결 오류 등) null — 배너만 안 뜨고 홈은 그대로
   Future<DriveState?> _fetchDriveState() {
-    final future = (widget.loadDriveState ?? _defaultLoadDriveState)()
-        .catchError((_) => null);
+    final future = (widget.loadDriveState ?? _defaultLoadDriveState)().then<DriveState?>((v) {
+      if (mounted) setState(() => _online = true);
+      return v;
+    }).catchError((_) {
+      if (mounted) setState(() => _online = false);
+      return null;
+    });
     return future;
   }
 
@@ -147,6 +177,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _driveState = _fetchDriveState();
       _spans = DriveLog.load();
     });
+    _checkPerms();
   }
 
   /// 내 경고 기록으로 지금 단계를 가늠한다 (서버 규칙과 같은 모양, 홈에는 따로 부를 '지금 단계' API 가 없다)
@@ -262,7 +293,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ).createShader(r),
         child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 110), // (11/19) 떠 있는 탭바 높이만큼
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 28), // (11/23 리디자인_2) 탭바가 고정이라 여백만
         children: [
           // 지금 상태 카드 (11/16 R안 · readdy 흰 카드) + 운행 요약 숫자 + 버튼
           FutureBuilder<DriveState?>(
@@ -294,7 +325,22 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16), // (11/23 사용자 요청) 운행 카드 아래로 시스템 알약 · 여백 넉넉하게
+          // (11/23 기업용 리디자인) 맨 위 = 시스템 상태 (Samsara Driver 홈처럼 '장치가 제대로 도는지' 먼저)
+          FutureBuilder<DriveState?>(
+            future: _driveState,
+            builder: (context, d) => SystemStatusCard(
+              driving: d.data?.active ?? false,
+              checks: [
+                SystemCheck(Icons.videocam_outlined, '카메라', _perms?[0], badText: '권한 필요'),
+                SystemCheck(Icons.mic_none_rounded, '음성 안내', _perms?[1], badText: '권한 필요'),
+                SystemCheck(Icons.location_on_outlined, '위치', _perms?[2], badText: '권한 필요'),
+                SystemCheck(Icons.cloud_outlined, '관제 서버', _online, badText: '끊김'),
+              ],
+            ),
+          ),
+          // (11/23 사용자 요청) '운행 기록' 제목은 빼고 카드를 위로
+          const SizedBox(height: 20),
           // (11/17 관리자 웹 홈) 숫자 칸 3개 (오늘 경고 · 이번 주 · 긴급) — 누른 칸의 경고 목록이 바로 아래에
           FutureBuilder<List<SleepEvent>?>(
             future: _recent,
@@ -323,8 +369,8 @@ class _HomeScreenState extends State<HomeScreen> {
               bool fromDay(SleepEvent e) => !e.createdAt.toLocal().isBefore(dayStart);
               bool fromWeek(SleepEvent e) => !e.createdAt.toLocal().isBefore(weekStart);
               final todayN = events.where(fromDay).length;
-              final weekN = events.where(fromWeek).length;
-              final urgentN = events.where((e) => e.stage >= 3).length;
+              var weekN = events.where(fromWeek).length;
+              var urgentN = events.where((e) => e.stage >= 3).length;
               return FutureBuilder<List<DriveSpan>>(
                 future: _spans,
                 builder: (context, spanSnap) {
@@ -332,18 +378,68 @@ class _HomeScreenState extends State<HomeScreen> {
                   final all = groupDrives(events, spanSnap.data ?? const []);
                   bool inToday(DriveGroup g) => !g.last.isBefore(dayStart);
                   bool inWeek(DriveGroup g) => !g.last.isBefore(weekStart);
+                  // (11/23 사용자 요청) 모두 최신이 맨 위 (시작 시각 기준으로 확실히 정렬)
+                  int latest(DriveGroup a, DriveGroup b) => b.last.compareTo(a.last);
                   final lists = [
-                    all.where(inToday).toList().reversed.toList(), // 오늘 — (11/19 사용자 요청) 최신 운행이 맨 위
-                    all.where(inWeek).toList().reversed.toList(), // 이번 주 — 최근 운행이 위
-                    all.where((g) => g.hasUrgent).toList().reversed.toList(), // 긴급 — 3단계가 있었던 운행
+                    all.where(inToday).toList()..sort(latest), // 오늘
+                    all.where(inWeek).toList()..sort(latest), // 이번 주 → 아래에서 요일별로 묶음
+                    all.where((g) => g.hasUrgent).toList()..sort(latest), // 긴급 — 3단계가 있었던 운행 · 최신순
                   ];
-                  final shown = lists[_tab];
-                  const empties = ['오늘은 운행 기록이 없어요', '이번 주는 운행 기록이 없어요', '긴급 경고가 있었던 운행이 없어요'];
-                  final visible = _expanded ? shown.length : shown.length.clamp(0, _driveCount);
+                  // (11/23 사용자 요청) 칸 = 오늘 경고 · 총 운행 시간(표) · 휴식(언제 · 몇 번째 운행 · 몇 시)
+                  final today = lists[0];
+                  // 끝 기록이 없는 예전 운행은 마지막 경고 시각까지만 (지금 운행 중인 맨 위 운행만 지금까지)
+                  var totalMin = 0;
+                  final liveG = today.where((g) => g.end == null).fold<DriveGroup?>(null, (p, g) => p == null || g.start.isAfter(p.start) ? g : p);
+                  for (final g in today) {
+                    totalMin += _DriveTimeTable.minutesOf(g, live: identical(g, liveG));
+                  }
+                  final totalLabel = '${totalMin ~/ 60}:${(totalMin % 60).toString().padLeft(2, '0')}';
+                  final rests = <(String, String, int, int?)>[]; // 시작 · 재개 · 분 · 운행 번호
+                  for (final e in events.where(fromDay)) {
+                    final r = e.report['rest'];
+                    if (r is! Map) continue;
+                    final g = all.where((g) => g.events.any((x) => x.id == e.id)).firstOrNull;
+                    rests.add(('${r['started'] ?? ''}', '${r['resumed'] ?? ''}', (r['minutes'] is num) ? (r['minutes'] as num).toInt() : 0, g?.number));
+                  }
+                  rests.sort((a, b) => b.$1.compareTo(a.$1));
+                  final shown = today;
+                  final rows = <Widget>[
+                    if (_tab == 1) ...[
+                      if (today.isNotEmpty) _DriveTimeTable(groups: today, totalLabel: totalLabel),
+                    ] else if (_tab == 2)
+                      for (final (i, r) in rests.indexed) _RestRow(rest: r, header: i == 0)
+                    else
+                      for (final g in shown) _DriveCard(group: g),
+                  ];
+                  weekN = totalMin; // 아래 칸 글에 씀
+                  urgentN = rests.length;
+                  final visible = _expanded ? rows.length : rows.length.clamp(0, _driveCount);
+                  // (11/23 사용자 요청) 안내는 카드 밖 아래 — 카드 안 글과 같은 시작선
+                  return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    _recordCard(context, rows, visible, shown, now, todayN, weekN, urgentN),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 12, left: 16),
+                      child: Text('› 를 누르면 AI 분석 보고서를 볼 수 있어요', style: TextStyle(fontSize: 13.5, color: AppColors.textMuted)),
+                    ),
+                  ]);
+                },
+              );
+            },
+          ),
+        ],
+      ),
+      ),
+      ),
+    );
+  }
+
+  Widget _recordCard(BuildContext context, List<Widget> rows, int visible, List<DriveGroup> shown, DateTime now, int todayN, int weekN, int urgentN) {
+    const empties = ['오늘은 운행 기록이 없어요', '오늘은 운행 기록이 없어요', '오늘은 쉰 기록이 없어요'];
                   return WebCard(
                     padding: EdgeInsets.zero,
                     child: Column(
                       children: [
+                        // (11/23 사용자 요청) 보내 준 사진 — 오늘 · 이번 주 · 긴급 숫자 칸 + 고른 칸 밑줄
                         StatTabs(
                           selected: _tab,
                           onSelect: (i) => setState(() {
@@ -351,9 +447,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             _expanded = false;
                           }),
                           items: [
-                            StatItem('${now.month}/${now.day}', '$todayN', '건'), // (11/19 사용자 요청) '오늘' 대신 날짜만
-                            StatItem('이번 주', '$weekN', '건'),
-                            StatItem('긴급', '$urgentN', '건', alert: urgentN > 0),
+                            // (11/23 사용자 요청) 숫자 없이 제목만
+                            StatItem('${now.month}/${now.day}', '', ''),
+                            const StatItem('총 운행 시간', '', ''),
+                            const StatItem('휴식', '', ''),
                           ],
                         ),
                         // (11/18 사용자 요청) 칸을 바꾸면 목록이 옆으로 부드럽게 미끄러짐 · 목록을 옆으로 밀어도 바뀜
@@ -369,18 +466,18 @@ class _HomeScreenState extends State<HomeScreen> {
                                   child: Center(
                                       child: Text(empties[_tab], style: const TextStyle(fontSize: 14, color: AppColors.textMuted))),
                                 ),
-                              for (var i = 0; i < visible; i++) _DriveCard(group: shown[i]), // (11/19) 줄 사이 선 없음
+                              for (var i = 0; i < visible; i++) rows[i], // (11/19) 줄 사이 선 없음
                               // [n개 운행 전체 보기] ↔ [접기] — 그 자리에서 펼치고 접음
-                              if (shown.length > _driveCount) ...[
+                              if (_tab == 0 && rows.length > _driveCount) ...[
                                 const _CenterLine(),
                                 TextButton(
                                   onPressed: () => setState(() => _expanded = !_expanded),
                                   style: TextButton.styleFrom(
-                                    foregroundColor: AppColors.navy,
+                                    foregroundColor: AppColors.textPrimary, // (11/23) 검정(블랙 네이비) 글씨
                                     minimumSize: const Size.fromHeight(44),
                                   ),
                                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                    Text(_expanded ? '접기' : '운행 ${shown.length}번 전체 보기',
+                                    Text(_expanded ? '접기' : (_tab == 1 ? '${rows.length}일 전체 보기' : '운행 ${rows.length}번 전체 보기'),
                                         style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                                     const SizedBox(width: 2),
                                     Icon(_expanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded, size: 20),
@@ -393,20 +490,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   );
-                },
-              );
-            },
-          ),
-          // (11/19 사용자 요청) 마지막 카드 아래 안내
-          const Padding(
-            padding: EdgeInsets.only(top: 12, left: 4), // (11/19) 위 카드와 같은 시작선 · 왼쪽 정렬
-            child: Text('› 를 누르면 분석 보고서를 볼 수 있어요', style: TextStyle(fontSize: 13.5, color: AppColors.textMuted)),
-          ),
-        ],
-      ),
-      ),
-      ),
-    );
   }
 }
 
@@ -429,12 +512,13 @@ class _DriveCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = group;
     return InkWell(
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => _DriveDetailScreen(group: g))),
+      // (11/23 UX) 경고가 하나뿐인 운행은 바로 AI 보고서 — 누르는 단계 줄이기
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => g.events.length == 1 ? EventDetailScreen(event: g.events.first) : _DriveDetailScreen(group: g))),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 22, 4, 14), // (11/19) 칸 안에서 살짝 아래로
-        // (11/19 사용자 요청) 운행 줄 높이 모두 같게 — 시간이 길든 짧든 72 로 고정
+        padding: const EdgeInsets.fromLTRB(14, 10, 4, 10), // (11/23) state 느낌 — 낮고 단정하게
         child: SizedBox(
-          height: 72,
+          height: 64,
           child: Row(children: [
             // 왼쪽 — '운행_1' · 아래 시간 (가운데 정렬)
             SizedBox(
@@ -455,10 +539,10 @@ class _DriveCard extends StatelessWidget {
                 ),
               ]),
             ),
-            const VerticalDivider(width: 17, thickness: 1, indent: 2, endIndent: 2, color: AppColors.line),
-            // 오른쪽 — (11/19 사용자 요청) 운행 기록 타임라인과 같은 단계 링 점 + 아래 큰 숫자
-            for (final st in const [1, 2, 3]) Expanded(child: _StageCount(stage: st, count: g.count(st))),
-            const Icon(Icons.chevron_right_rounded, size: 16, color: AppleGray.chevron),
+            const VerticalDivider(width: 17, thickness: 1, indent: 10, endIndent: 10, color: AppleGray.opaqueSeparator),
+            // 오른쪽 — 단계 3칸 격자 (칸 사이 세로선)
+            Expanded(child: _StageGrid(g.count)),
+            const Icon(Icons.chevron_right_rounded, size: 18, color: AppleGray.chevron),
           ]),
         ),
       ),
@@ -476,7 +560,7 @@ class _CircleNum extends StatelessWidget {
         width: size,
         height: size,
         alignment: Alignment.center,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.navy.withValues(alpha: 0.1)),
+        decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.navy.withValues(alpha: 0.1)), // (11/23 사용자 요청) 연한 남색 동그라미 · 남색 숫자
         child: Text('$n',
             textAlign: TextAlign.center,
             strutStyle: StrutStyle(fontSize: size * 0.62, height: 1, forceStrutHeight: true),
@@ -484,7 +568,7 @@ class _CircleNum extends StatelessWidget {
       );
 }
 
-/// 단계 하나 — 위 단계 링 점 (운행 기록 '미세수면' 옆 점과 같은 모양) · 아래 큰 숫자 'n건' (0건은 흐리게)
+/// 단계 하나 — (11/23 state 느낌) 위 작은 점 · 이름 / 아래 숫자 (0 은 흐리게)
 class _StageCount extends StatelessWidget {
   final int stage;
   final int count;
@@ -494,39 +578,159 @@ class _StageCount extends StatelessWidget {
   Widget build(BuildContext context) {
     final zero = count == 0;
     final c = AppColors.stage(stage);
-    const names = ['', '주의', '휴식 권고', '위험'];
-    return Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      // (11/19 사용자 요청) 링 점 옆에 단계 이름
+    const names = ['', '주의', '휴식 권고', '긴급'];
+    return Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.center, children: [
       FittedBox(
         fit: BoxFit.scaleDown,
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-      Container(
-        width: 11,
-        height: 11,
-        decoration: BoxDecoration(
-          color: zero ? c.withValues(alpha: 0.45) : c,
-          shape: BoxShape.circle,
-          border: Border.all(color: AppColors.card, width: 2),
-          boxShadow: [BoxShadow(color: c.withValues(alpha: zero ? 0.18 : 0.35), blurRadius: 0, spreadRadius: 1.5)],
-        ),
-      ),
+          Container(width: 7, height: 7, decoration: BoxDecoration(color: zero ? c.withValues(alpha: 0.4) : c, shape: BoxShape.circle)),
           const SizedBox(width: 5),
           Text(names[stage],
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: zero ? AppleGray.chevron : AppColors.textSecondary)),
+              style: AppType.caption.copyWith(fontWeight: FontWeight.w600, color: zero ? AppleGray.tertiaryLabel : AppColors.textSecondary)), // (11/23 사용자 요청) 글자 색 뺌
         ]),
       ),
-      const SizedBox(height: 9),
+      const SizedBox(height: 6),
       Text.rich(
         TextSpan(children: [
           TextSpan(
               text: '$count',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: zero ? AppleGray.chevron : AppColors.textPrimary)),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, fontFeatures: AppStatus.figures,
+                  color: zero ? AppleGray.chevron : (stage >= 3 ? AppStatus.danger : AppColors.textPrimary))),
           TextSpan(
               text: '건',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: zero ? AppleGray.chevron : AppColors.textSecondary)),
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: zero ? AppleGray.chevron : AppColors.textSecondary)),
         ]),
       ),
     ]);
+  }
+}
+
+/// 단계 3칸 — 칸 사이 세로 구분선 (홈 시스템 state 와 같은 격자)
+class _StageGrid extends StatelessWidget {
+  final int Function(int stage) count;
+  const _StageGrid(this.count);
+  @override
+  Widget build(BuildContext context) => Row(children: [
+        for (final st in const [1, 2, 3]) ...[
+          if (st > 1) const VerticalDivider(width: 1, thickness: 1, indent: 10, endIndent: 10, color: AppleGray.opaqueSeparator),
+          Expanded(child: _StageCount(stage: st, count: count(st))),
+        ],
+      ]);
+}
+
+const _weekNames = ['월', '화', '수', '목', '금', '토', '일'];
+String _dayLabel(DateTime d) => '${d.month}/${d.day} (${_weekNames[d.weekday - 1]})';
+
+/// 운행들을 날짜별로 — 최신 날짜가 위 · 날 안에서는 최신 운행이 위
+List<(DateTime, List<DriveGroup>)> _byDay(List<DriveGroup> groups) {
+  final map = <DateTime, List<DriveGroup>>{};
+  for (final g in groups) {
+    final t = g.last;
+    map.putIfAbsent(DateTime(t.year, t.month, t.day), () => []).add(g);
+  }
+  final days = map.keys.toList()..sort((a, b) => b.compareTo(a));
+  return [for (final d in days) (d, map[d]!..sort((a, b) => b.last.compareTo(a.last)))];
+}
+
+/// (11/23 사용자 요청) 이번 주 — 하루 한 줄 (날짜 · 요일 · 운행 횟수 / 단계별 합) · › 누르면 그날 리포트
+class _DayCard extends StatelessWidget {
+  final DateTime day;
+  final List<DriveGroup> groups;
+  const _DayCard({required this.day, required this.groups});
+
+  int _sum(int st) => groups.fold(0, (n, g) => n + g.count(st));
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => _DayReportScreen(day: day, groups: groups))),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
+        child: SizedBox(
+          height: 64,
+          child: Row(children: [
+            SizedBox(
+              width: 72,
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Text(_dayLabel(day),
+                    style: AppType.subheadline.copyWith(height: 1.2, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                const SizedBox(height: 4),
+                Text('운행 ${groups.length}번', style: AppType.caption.copyWith(color: AppColors.textMuted)),
+              ]),
+            ),
+            const VerticalDivider(width: 17, thickness: 1, indent: 10, endIndent: 10, color: AppleGray.opaqueSeparator),
+            Expanded(child: _StageGrid(_sum)),
+            const Icon(Icons.chevron_right_rounded, size: 18, color: AppleGray.chevron),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// (11/23 사용자 요청) 하루 리포트 — 그날 단계별 합 · 운행 목록 · 경고 타임라인 (최신이 위)
+class _DayReportScreen extends StatelessWidget {
+  final DateTime day;
+  final List<DriveGroup> groups;
+  const _DayReportScreen({required this.day, required this.groups});
+
+  @override
+  Widget build(BuildContext context) {
+    final events = [for (final g in groups) ...g.events]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    int sum(int st) => groups.fold(0, (n, g) => n + g.count(st));
+    Widget heading(String t) => Padding(
+          padding: const EdgeInsets.only(top: 26, bottom: 12, left: 16), // (11/23 사용자 요청) 카드 안 글과 같은 시작선
+          child: Text(t, style: AppType.title3.copyWith(color: AppColors.textPrimary)),
+        );
+    return Scaffold(
+      appBar: AppBar(titleSpacing: 0, centerTitle: false, title: Text('${day.month}월 ${day.day}일 (${_weekNames[day.weekday - 1]}) 리포트')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+        children: [
+          // 요약 — 운행 횟수 + 단계별 합 (state 격자)
+          WebCard(
+            padding: const EdgeInsets.fromLTRB(16, 14, 8, 6), // (11/23) 위아래 여백 같게
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                const Icon(Icons.calendar_today_rounded, size: 16, color: AppColors.navy),
+                const SizedBox(width: 6),
+                Text('운행 ${groups.length}번 · 경고 ${events.length}건',
+                    style: AppType.subheadline.copyWith(fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              ]),
+              const SizedBox(height: 10),
+              Container(height: 1, color: AppleGray.opaqueSeparator),
+              SizedBox(height: 66, child: _StageGrid(sum)), // (11/23) 넘침 고침
+            ]),
+          ),
+          heading('운행'),
+          WebCard(
+            padding: EdgeInsets.zero,
+            child: Column(children: [for (final g in groups) _DriveCard(group: g)]),
+          ),
+          heading('경고 타임라인'),
+          WebCard(
+            padding: EdgeInsets.zero,
+            child: events.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 28),
+                    child: Center(child: Text('경고 없이 운행했어요', style: TextStyle(fontSize: 14, color: AppColors.textMuted))),
+                  )
+                : Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Column(children: [
+                      for (var i = 0; i < events.length; i++)
+                        HistoryEventRow(event: events[i], first: i == 0, last: i == events.length - 1),
+                    ]),
+                  ),
+          ),
+          // (11/23 사용자 요청) 마지막 칸 밑 안내 — 카드 안 글 시작선
+          const Padding(
+            padding: EdgeInsets.only(top: 12, left: 16),
+            child: Text('› 를 누르면 AI 분석 보고서를 볼 수 있어요', style: TextStyle(fontSize: 13.5, color: AppColors.textMuted)),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -541,7 +745,13 @@ class _DriveDetailScreen extends StatelessWidget {
     final events = [...g.events]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     return Scaffold(
       appBar: AppBar(
-        title: Row(mainAxisSize: MainAxisSize.min, children: [const Text('운행'), const SizedBox(width: 6), _CircleNum(g.number, size: 20)]),
+        titleSpacing: 0, // (11/23 사용자 요청) '<' 바로 옆 왼쪽
+        centerTitle: false,
+        title: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Text('운행', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.4, color: AppColors.textPrimary)),
+          const SizedBox(width: 6),
+          _CircleNum(g.number, size: 22),
+        ]),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
@@ -553,7 +763,7 @@ class _DriveDetailScreen extends StatelessWidget {
           ),
           WebCard(
             padding: const EdgeInsets.symmetric(vertical: 14),
-            child: Row(children: [for (final st in const [1, 2, 3]) Expanded(child: _StageCount(stage: st, count: g.count(st)))]),
+            child: SizedBox(height: 64, child: _StageGrid(g.count)),
           ),
           const SizedBox(height: 14),
           WebCard(
@@ -618,16 +828,16 @@ class _ResumeInCard extends StatelessWidget {
         AuthButton(
           text: '이어서 운행',
           onPressed: onResume,
-          height: 48,
+          height: AppSize.button,
           contentWidth: 160,
           leading: const Icon(Icons.redo_rounded, size: 22, color: Colors.white),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         AuthButton(
           text: '새로운 운행 시작',
           primary: false,
           onPressed: onNew,
-          height: 48,
+          height: AppSize.button,
           contentWidth: 160,
           leading: const Icon(Icons.play_arrow_rounded, size: 22, color: AppColors.textPrimary),
         ),
@@ -664,7 +874,7 @@ class _OldResumeInCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         border: Border.all(
           color: state.stage >= 1 ? color : AppColors.cardBorder,
           width: 2,
@@ -702,7 +912,7 @@ class _OldResumeInCard extends StatelessWidget {
               foregroundColor: Colors.white,
               minimumSize: const Size.fromHeight(52),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
+                borderRadius: BorderRadius.circular(AppRadius.card),
               ),
             ),
           ),
@@ -737,7 +947,7 @@ class _EventTile extends StatelessWidget {
               width: 46,
               height: 46,
               alignment: Alignment.center,
-              decoration: BoxDecoration(color: AppIllust.thumb(event.stage.clamp(1, 3)), borderRadius: BorderRadius.circular(14)),
+              decoration: BoxDecoration(color: AppIllust.thumb(event.stage.clamp(1, 3)), borderRadius: BorderRadius.circular(AppRadius.card)),
               child: Buddy(stage: event.stage.clamp(1, 3), size: 32, breathe: false),
             ),
             const SizedBox(width: 14),
@@ -778,7 +988,7 @@ class _EventTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppRadius.card),
           border: Border.all(
             color: event.isUrgent ? AppColors.urgent : AppColors.cardBorder,
           ),
@@ -820,6 +1030,109 @@ class _EventTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// (11/23 사용자 요청) 총 운행 시간 — 표 (운행 · 시간 · 운행 시간 모두 가운데 정렬) / 맨 아래 합계
+class _DriveTimeTable extends StatelessWidget {
+  final List<DriveGroup> groups;
+  final String totalLabel;
+  const _DriveTimeTable({required this.groups, required this.totalLabel});
+
+  // 운행 한 번 시간 — 끝 기록이 있으면 끝까지 · 지금 운행 중이면 지금까지 · 끝 기록이 없는 예전 운행은 마지막 경고까지 (한 번에 최대 10시간)
+  static int minutesOf(DriveGroup g, {bool live = false}) {
+    final end = g.end ?? (live && DateTime.now().difference(g.start).inHours < 12 ? DateTime.now() : g.last);
+    return end.difference(g.start).inMinutes.clamp(0, 600);
+  }
+
+  static String _dur(DriveGroup g, {bool live = false}) {
+    final m = minutesOf(g, live: live);
+    return m < 1 ? '1분 미만' : (m >= 60 ? '${m ~/ 60}시간 ${m % 60}분' : '$m분');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const head = TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textMuted);
+    const num = [FontFeature.tabularFigures()];
+    Widget cell(Widget w) => Expanded(child: Center(child: w));
+    final liveI = groups.indexWhere((x) => x.end == null);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Column(children: [
+        SizedBox(
+          height: 32,
+          child: Row(children: [cell(const Text('운행', style: head)), cell(const Text('시간', style: head)), cell(const Text('운행 시간', style: head))]),
+        ),
+        for (final (i, g) in groups.indexed) ...[
+          const Divider(height: 1, thickness: 1, color: AppColors.line),
+          SizedBox(
+            height: 46,
+            child: Row(children: [
+              cell(Row(mainAxisSize: MainAxisSize.min, children: [
+                const Text('운행', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                const SizedBox(width: 5),
+                _CircleNum(g.number),
+              ])),
+              cell(FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(_DriveCard.timeRange(g), style: const TextStyle(fontSize: 14, color: AppColors.textSecondary, fontFeatures: num)),
+              )),
+              cell(Text(_dur(g, live: i == liveI), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w400, color: AppColors.textPrimary, fontFeatures: num))), // (11/23) 합계만 굵게
+            ]),
+          ),
+        ],
+        const Divider(height: 1, thickness: 1.5, color: AppColors.cardBorder),
+        SizedBox(
+          height: 48,
+          child: Row(children: [
+            cell(const Text('합계', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary))),
+            const Expanded(child: SizedBox()),
+            cell(Text(totalLabel, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.navy, fontFeatures: num))),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+/// (11/23 사용자 요청) 휴식 표 — 휴식 시간 · 운행 · 쉰 시간 (모두 가운데 정렬) · 틀 없는 갈색 커피잔
+class _RestRow extends StatelessWidget {
+  final (String, String, int, int?) rest;
+  final bool header;
+  const _RestRow({required this.rest, this.header = false});
+
+  @override
+  Widget build(BuildContext context) {
+    const head = TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textMuted);
+    Widget cell(Widget w) => Expanded(child: Center(child: w));
+    final (start, end, min, no) = rest;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Column(children: [
+        if (header)
+          SizedBox(
+            height: 40,
+            child: Row(children: [cell(const Text('휴식 시간', style: head)), cell(const Text('운행', style: head)), cell(const Text('쉰 시간', style: head))]),
+          ),
+        const Divider(height: 1, thickness: 1, color: AppColors.line),
+        SizedBox(
+          height: 52,
+          child: Row(children: [
+            cell(Row(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.coffee_outlined, size: 18, color: AppColors.textMuted), // (11/24 사용자 요청) 선 그림 · 안내 글과 같은 색
+              const SizedBox(width: 6),
+              Flexible(child: FittedBox( // (11/24) 칸이 좁으면 글자를 줄임 (넘침 고침)
+                fit: BoxFit.scaleDown,
+                child: Text(end.isEmpty ? '$start 부터' : '$start ~ $end',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: AppColors.textPrimary, fontFeatures: [FontFeature.tabularFigures()])), // (11/24) 굵게 안 함
+              )),
+            ])),
+            cell(Text(no == null ? '—' : '$no번째 운행', textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary))),
+            cell(Text(min < 1 ? '1분 미만' : '$min분', textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: AppColors.textPrimary))), // (11/24) 굵게 안 함
+          ]),
+        ),
+      ]),
     );
   }
 }

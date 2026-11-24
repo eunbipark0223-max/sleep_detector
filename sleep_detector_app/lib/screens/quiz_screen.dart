@@ -31,6 +31,7 @@ import '../services/voice_service.dart';
 import '../design_tokens.dart';
 import '../theme.dart';
 import '../widgets/buddy.dart';
+import '../widgets/owl_says.dart' show keepWords;
 
 class QuizScreen extends StatefulWidget {
   final VoiceQuiz quiz;
@@ -173,7 +174,7 @@ class _QuizScreenState extends State<QuizScreen> {
                         decoration: BoxDecoration(color: AppColors.stage(_stage), shape: BoxShape.circle),
                       ),
                       const SizedBox(width: 7),
-                      Text('$_stage단계 | ${const ['정상', '주의', '휴식 권고', '긴급'][_stage.clamp(0, 3)]} · $_typeLabel',
+                      Text('${const ['정상', '주의', '휴식 권고', '긴급'][_stage.clamp(0, 3)]} · $_typeLabel',
                           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.stageInk(_stage))),
                     ]),
                   ),
@@ -182,20 +183,22 @@ class _QuizScreenState extends State<QuizScreen> {
                 Container(
                   padding: const EdgeInsets.fromLTRB(20, 22, 20, 26),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(28),
+                    // (11/23 리디자인_3) 흰색 → 아주 연한 노랑 · 얇은 테두리 · 둥글기 16
+                    borderRadius: BorderRadius.circular(AppRadius.card),
+                    border: Border.all(color: AppleGray.separator),
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [for (final c in AppIllust.cardGradient[2]) c.withValues(alpha: 0.78)],
+                      colors: [Colors.white, AppIllust.softTint[2]],
                     ),
                   ),
                   child: Column(children: [
-                    Buddy(stage: 0, size: 44, breathe: false),
+                    Buddy(stage: 2, size: 44, breathe: false), // (11/23 사용자 요청) 2단계 주황
                     const SizedBox(height: 10),
                     const Text('크게 말하세요',
                         style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xB31C2033))),
                     const SizedBox(height: 12),
-                    Text(question,
+                    Text(keepWords(question), // (11/23) '속도 / 를' 처럼 단어 중간에서 끊기지 않게
                         textAlign: TextAlign.center,
                         maxLines: 3,
                         style: const TextStyle(fontSize: 38, height: 1.3, fontWeight: FontWeight.w800, letterSpacing: -1.0, color: AppColors.textPrimary)),
