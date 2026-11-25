@@ -8,6 +8,7 @@
 #   -   정답 → 단계 그대로  /  1번 실패 → 응답에 next_quiz (같은 유형 새 문제)
 #   -   2번 실패 → 단계 +1 (최대 3) · 관리자 알림 · reason = no_response 경고 1줄 저장
 #   - POST /quiz/no-response-photo — (11/26 팀장) 2번째 퀴즈가 끝난 순간 앱이 찍은 사진을 그 no_response 경고에 붙임
+#       (11/26 시연 폰에서 2번 확인 — 새 사진 저장 · 관리자 웹 '2번째 퀴즈가 끝난 뒤 사진')
 #   - 채점 결과는 그 경고의 report.driving_quiz 에 덧붙임
 #   - 응답: success · passed · next_quiz · stage_up · stage · status · message (기획안 9-6) · no_response_event_id (2번 실패일 때만)
 #
