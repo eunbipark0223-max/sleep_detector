@@ -1745,6 +1745,23 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         h('div', { class: 'info-row' }, icon('car', 18), e.user_vehicle_no ? h('div', null, h('b', null, e.user_vehicle_no)) : unsetText()),      // 차량번호 (11/17): 위치와 연락처 사이
         h('div', { class: 'info-row' }, icon('phone', 18), digits ? copyable(e.user_phone, '번호') : unsetText()));
     }
+    // (11/26 팀장) AI 보고서 '기사님이 한 일' — 퀴즈 결과 · [깨어 있어요] · [정차했어요] · 휴식을 일어난 순서대로 한 줄씩
+    function driverActions(e, r) {
+      const lines = [];
+      const hm = (t) => { const [hh, mm] = String(t || '').split(':'); return mm ? Number(hh) + '시 ' + mm + '분' : String(t || ''); };   // '01:45' → '1시 45분'
+      const quiz = Array.isArray(r.driving_quiz) ? r.driving_quiz : [];
+      const failed2 = '음성 퀴즈에 2번 답하지 못해 위험 | 3단계로 올라갔습니다.';
+      if (quiz.some((q) => q.passed)) lines.push('음성 퀴즈에 답해 깨어 있음을 확인했습니다.');
+      else if (quiz.length >= 2) lines.push(failed2);
+      if (e.reason === 'no_response') lines.push(failed2);
+      const w = r.wake;
+      if (w) lines.push(w.pressed ? '[깨어 있어요] 버튼을 눌러 깨어 있음을 ' + (w.sec != null ? Math.round(w.sec) + '초 만에 ' : '') + '알렸습니다.'
+                                  : '[깨어 있어요] 버튼을 누르지 않아 여전히 깨어 있지 않습니다. → 즉시 연락 조치가 필요합니다.');
+      const rest = r.rest;
+      if (r.stopped) lines.push('[정차했어요]를 눌러 ' + hm(r.stopped.at) + '에 정차했습니다.'
+        + (rest && rest.resumed ? ' → ' + rest.minutes + '분 휴식 후 → ' + hm(rest.resumed) + '부터 다시 운행을 시작했습니다.' : ' → 지금 휴식 중입니다.'));
+      return lines.length ? lines.map((t) => h('div', null, t)) : '';
+    }
     function renderEventDrawer() {
       const e = events.find((x) => x.id === routeId);
       if (!e) { sheetMissing('경고를 찾을 수 없어요'); return; }
@@ -1766,7 +1783,8 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         reportRow('왜 이 판단인가요?', personal(r.stage_reason, e.user_name)),
         reportRow('참고한 법규', r.regulation),
         reportRow(who + '께 전달한 안내', e.guidance),
-        reportRow('휴식 기록', restText),
+        reportRow(who + '이 한 일', driverActions(e, r)),
+        reportRow('휴식 기록', restText),   // (11/26 팀장) 휴식 기록 칸은 그대로, '기사님이 한 일' 에도 정차 · 운행 재개를 같이 적음
       ];
       const ai = rows.some(Boolean) ? h('div', { class: 'sheet-sec' }, h('div', { class: 'ai-card' }, h('h4', null, 'AI 분석 결과'), h('div', { class: 'r-grid' }, rows))) : null;
 
