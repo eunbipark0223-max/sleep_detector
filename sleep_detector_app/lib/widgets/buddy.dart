@@ -68,7 +68,12 @@ class _BuddyState extends State<Buddy> with TickerProviderStateMixin {
     if (c == null) return CustomPaint(size: box, painter: _OrbPainter(s, 0, widget.alert));
     return AnimatedBuilder(
       animation: c,
-      builder: (_, _) => CustomPaint(size: box, painter: _OrbPainter(s, Curves.easeInOut.transform(c.value), widget.alert)),
+      builder: (_, _) {
+        final t = Curves.easeInOut.transform(c.value);
+        final paint = CustomPaint(size: box, painter: _OrbPainter(s, t, widget.alert));
+        // (11/25 사용자 요청) 3단계 — 놀라서 위아래로 아주 조금 콩콩
+        return s == 3 ? Transform.translate(offset: Offset(0, (t - 0.5) * widget.size * 0.07), child: paint) : paint;
+      },
     );
   }
 }

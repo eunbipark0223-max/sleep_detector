@@ -26,6 +26,7 @@ import '../widgets/web_ui.dart';
 import 'event_detail_screen.dart';
 import '../widgets/buddy.dart';
 import '../widgets/month_picker.dart';
+import 'privacy_screen.dart' show AppFooter;
 
 class HistoryScreen extends StatefulWidget {
   /// 경고 목록을 가져오는 함수. 비워 두면 기본(_defaultLoad). null 을 돌려주면 '아직 서버와 연결되지 않음'.
@@ -62,7 +63,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
   // (11/17 관리자 웹 '졸음 경고' 화면) 달력에서 보는 달 · 누른 날짜 (null = 그 달 전체)
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
   DateTime? _day;
-  bool _picking = false; // (11/24) 달력 제목을 눌러 연도 · 달 바퀴를 펼쳤는지
 
   @override
   Widget build(BuildContext context) {
@@ -130,7 +130,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   return _scroll([
                     const SizedBox(height: 12),
                     // (11/19 사용자 요청 · Headspace) 맨 위 노랑 그라데이션 카드 — 그 달(또는 고른 날) 경고 수 · 지난달 비교
-                    _HsHero(month: _month, day: _day, total: picked.length, diff: _day == null ? month.length - prevCount : null),
+                    _HsHero(month: _month, day: _day, total: picked.length, diff: _day == null ? month.length - prevCount : null,
+                        onPick: () => showWheelPopup(context, initial: _month, onChanged: (m) => setState(() {
+                              _month = DateTime(m.year, m.month);
+                              _day = null;
+                            }))),
                     const SizedBox(height: 12),
                     // 단계 비율 — 둥근 가로 막대 + 1 · 2 · 3단계 숫자 (도넛 대신)
                     _StageBar(events: picked),
@@ -158,8 +162,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       }),
                       onDay: (d) => setState(() => _day = (_day != null && _day == d) ? null : d),
                       // (11/24 사용자 요청 · 아이폰 사진) 제목 누르면 달력 자리에서 흰 바탕 년 · 월 · 일 바퀴 (다시 누르면 접힘)
-                      picking: _picking,
-                      onPick: () => setState(() => _picking = !_picking),
+                      // (11/24 사용자 요청) 제목 누르면 가운데에 바퀴 창 · 바깥 누르면 닫힘
+                      onPick: () => showWheelPopup(context, initial: _month, onChanged: (m) => setState(() {
+                        _month = DateTime(m.year, m.month);
+                        _day = null;
+                      })),
                       onWheel: (d) => setState(() {
                         _month = DateTime(d.year, d.month);
                         _day = null;
@@ -182,6 +189,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       padding: EdgeInsets.only(top: 12, left: 6), // (11/24 사용자 요청) 카드 시작선에서 아주 조금 안쪽 (홈과 똑같이)
                       child: Text('› 를 누르면 AI 분석 보고서를 볼 수 있어요', style: TextStyle(fontSize: 13.5, color: AppColors.textMuted)),
                     ),
+                    // (11/25 사용자 요청) 홈 · 내 정보와 같은 맨 아래 묶음
+                    const SizedBox(height: 40),
+                    const AppFooter(),
                   ]);
                 },
               ),
@@ -843,7 +853,9 @@ class _MonthCalendar extends StatelessWidget {
     final future = day.isAfter(DateTime(now.year, now.month, now.day));
     final isSelected = selected != null && selected == day;
     final isToday = day.year == now.year && day.month == now.month && day.day == now.day;
-    final dots = (stages?.toList() ?? <int>[])..sort((a, b) => b.compareTo(a)); // (11/18) 위험한 순: 빨강 → 주황 → 노랑
+    // (11/24 사용자 요청) 기록 점은 날짜를 누르기 전엔 안 보임 — 누른 날에만
+    // (11/24 사용자 요청) 오늘은 누르지 않아도 점 · 다른 날은 누른 날에만
+    final dots = (isSelected || isToday) ? ((stages?.toList() ?? <int>[])..sort((a, b) => b.compareTo(a))) : <int>[];
     return GestureDetector(
       onTap: future ? null : () => onDay(day),
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -910,7 +922,8 @@ class _HsHero extends StatelessWidget {
   final DateTime? day;
   final int total;
   final int? diff; // null = 날짜를 골랐을 때 (비교 없음)
-  const _HsHero({required this.month, required this.day, required this.total, required this.diff});
+  final VoidCallback? onPick; // (11/24) '11월 ▾' 누르면 가운데 바퀴 창
+  const _HsHero({required this.month, required this.day, required this.total, required this.diff, this.onPick});
 
   // (11/24 사용자 요청 · 보내 준 사진) 예전 모양으로 — 연한 노랑 그라데이션 · 왼쪽 위 '11월' · '졸음 경고 n건' · 오른쪽 주황 캐릭터
   @override
@@ -922,7 +935,15 @@ class _HsHero extends StatelessWidget {
       minHeight: 138,
       orb: 168,
       faceSize: 70, // (11/24 사용자 요청) 두 줄 글 높이에 맞게
-      label: day != null ? '${day!.month}/${day!.day}' : '${month.month}월',
+      labelWidget: GestureDetector(
+        onTap: onPick,
+        behavior: HitTestBehavior.opaque,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(day != null ? '${day!.month}/${day!.day}' : '${month.month}월',
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppleGray.label)),
+          const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: AppleGray.label),
+        ]),
+      ),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text.rich(
           TextSpan(children: [
@@ -934,7 +955,7 @@ class _HsHero extends StatelessWidget {
         ),
         if (d != null) ...[
           const SizedBox(height: 8),
-          Text(d == 0 ? '지난달과 같아요.' : '지난달보다 ${d.abs()}건 ${d < 0 ? '줄었어요' : '늘었어요'}.',
+          Text(d == 0 ? '지난달과 같아요' : '지난달보다 ${d.abs()}건 ${d < 0 ? '줄었어요' : '늘었어요'}.',
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xCC1C2033))),
         ],
       ]),

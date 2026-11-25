@@ -46,6 +46,7 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   camera: ^0.12.1           # 전면 카메라 영상(drive_screen) · 사진 5장(calibration_screen)
+  camera_android: ^0.10.13 # (11/24) 안드로이드 카메라를 Camera2 방식으로 — CameraX 는 앱이 화면 밖으로 나가면 스스로 꺼져서, 앱 밖 졸음 감지를 위해 바꿈
   wakelock_plus: ^1.8.1     # 운행 중 화면 꺼짐 방지
   flutter_tts: ^4.2.5       # 음성 경고 · 기사 음성 보고 · 음성 퀴즈 질문 (voice_service)
   speech_to_text: ^7.5.0    # 운전 중 음성 퀴즈 답 듣기 (voice_service)

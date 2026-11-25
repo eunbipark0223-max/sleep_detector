@@ -33,6 +33,9 @@ import '../utils/phone_format.dart';
 import '../widgets/contact_dialog.dart';
 import 'account_edit_screens.dart';
 import 'login_screen.dart';
+import '../widgets/web_ui.dart';
+import 'calibration_screen.dart';
+import 'privacy_screen.dart';
 
 /// 고른 사진 한 장 (바이트 + 파일 이름 — 서버는 이름의 확장자를 검사한다)
 class PickedPhoto {
@@ -212,17 +215,7 @@ class _BodyState extends State<_Body> {
   }
 
   Future<void> _delete() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('사진 삭제'),
-        content: const Text('프로필 사진을 삭제할까요?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('삭제', style: TextStyle(color: AppColors.danger))),
-        ],
-      ),
-    );
+    final ok = await showAppConfirm(context, title: '사진 삭제', body: '프로필 사진을 삭제할까요?', ok: '삭제', danger: true); // (11/24) 확인 창 모양 하나로
     if (ok != true) return;
     setState(() => _busy = true);
     try {
@@ -334,6 +327,9 @@ class _BodyState extends State<_Body> {
             _Row(label: '차량번호', value: _contactValue('vehicle_no'), onTap: () => _edit('vehicle_no')),
           ],
         ),
+        // (11/25 사용자 요청) 눈 기준 다시 재기 — 처음 운행 때 한 번 잰 기준을 여기서 다시
+        const SizedBox(height: 24),
+        _Section(title: '운행 설정', rows: [_Row(label: '눈 기준 측정', value: '재측정', onTap: _recalibrate)]),
         // 비밀번호 변경은 그대로 따로 한 줄 (구글 계정은 비밀번호가 없어서 숨김)
         if (!isGoogle) ...[
           const SizedBox(height: 24),
@@ -347,10 +343,25 @@ class _BodyState extends State<_Body> {
           const SizedBox(height: 24),
           _Section(title: '로그인 및 보안', rows: [_Row(label: '로그아웃', value: '', onTap: widget.onLogout, color: AppColors.danger)]),
         ],
+        // (11/25 사용자 요청 · 슈퍼SOL 맨 아래처럼) 방패 + 졸음가드 · 설명 · 개인정보 처리방침 · 사용 가이드
+        const SizedBox(height: 40),
+        const AppFooter(),
       ],
     );
   }
+
+  // (11/25) 눈 기준 다시 재기 — 측정 화면을 열고 끝나면 새 기준을 저장
+  Future<void> _recalibrate() async {
+    final t = await Navigator.of(context).push<double>(
+      MaterialPageRoute(builder: (_) => const CalibrationScreen(doneLabel: '저장하기')),
+    );
+    if (t == null || !mounted) return;
+    await AuthService.saveEyeThreshold(t);
+    if (!mounted) return;
+    _toast('눈 기준을 새로 저장했어요');
+  }
 }
+
 
 /// 프로필 사진(없으면 이름 첫 글자) + 오른쪽 아래 카메라 표시. 누르면 사진 바꾸기 메뉴
 class _Avatar extends StatelessWidget {
@@ -422,7 +433,7 @@ class _Section extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 20, bottom: 8), // (11/19) 칸 안 글과 같은 시작선
+          padding: const EdgeInsets.only(left: 0, bottom: 8), // (11/24 사용자 요청) 아래 네모(카드) 왼쪽 끝선과 같은 시작선
           child: Text(title, style: AppType.footnote.copyWith(fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
         ),
         Container(

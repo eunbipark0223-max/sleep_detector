@@ -21,6 +21,7 @@ import 'package:flutter/services.dart';
 
 import 'screens/splash_screen.dart';
 import 'theme.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,6 +29,7 @@ Future<void> main() async {
 
   // 🔴 화면 세로 모드 완전 고정
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  WakelockPlus.enable(); // (11/24 사용자 요청) 앱이 켜져 있는 동안 화면이 어두워지거나 꺼지지 않게
 
   // (11/17) 맨 위 상태 표시줄 — 회색 띠 없이 화면 색이 그대로 보이게 (투명 + 어두운 아이콘)
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(

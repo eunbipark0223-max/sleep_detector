@@ -200,7 +200,7 @@ class _MapScreenState extends State<MapScreen> {
   //   제목 '가까운 쉼터' · 아래 시트: [거리순 | 시간순] 탭 → 한 줄 설명 → 쉼터 목록 (모두 같은 좌우 여백 20)
   //   쉼터 한 줄: 순번 · 이름 · '거리 9.3km · 12분' · 오른쪽 [길찾기] (연한 남색 알약)
   //   시간 = B 의 도로 거리 로직 (서버 /rest-areas/road-distance → 카카오모빌리티). 못 구하면 거리만
-  static const Color _bg = Color(0xFFF9F5F1); // (11/24 사용자 요청) 가까운 쉼터 바탕은 처음 크림색 그대로
+  static const Color _bg = Color(0xFFF9F5F1); // (11/24 사용자 요청) 가까운 쉼터는 처음 크림색으로 되돌림
   static const double _side = 16; // (11/23) 제목 · 지도 · 목록 공통 시작선
   int _sort = 0; // 0 거리순 · 1 시간순
   // (11/18 사용자 요청) 위 손잡이(선)를 누르거나 아래로 끌면 목록 시트가 내려감 · 다시 누르거나 위로 끌면 올라옴
@@ -248,7 +248,7 @@ class _MapScreenState extends State<MapScreen> {
               child: IconButton(
                 tooltip: '닫기',
                 onPressed: () => Navigator.of(context).pop(),
-                style: IconButton.styleFrom(backgroundColor: AppleGray.fill),
+                style: IconButton.styleFrom(backgroundColor: const Color(0x0F1F2A5C)),
                 icon: const Icon(Icons.close_rounded, size: 22, color: AppColors.textPrimary),
               ),
             ),
@@ -378,7 +378,7 @@ class _MapScreenState extends State<MapScreen> {
                 duration: const Duration(milliseconds: 200),
                 // (11/18 사용자 요청) 누른 쉼터는 숫자 동그라미가 남색으로 채워짐 · 안 누르면 원래 모양 그대로
                 decoration: BoxDecoration(
-                    color: selected ? AppColors.navy : AppColors.field, shape: BoxShape.circle),
+                    color: selected ? AppColors.navy : const Color(0x0F1F2A5C), shape: BoxShape.circle),
                 child: Text('$rank',
                     style: TextStyle(
                         fontSize: _big ? 17 : 13,
@@ -416,7 +416,7 @@ class _MapScreenState extends State<MapScreen> {
                   duration: AppMotion.normal, // (11/18 피드백) 세그먼트처럼 부드럽게 색이 바뀜
                   curve: AppMotion.curve,
                   decoration: ShapeDecoration(
-                    color: selected ? AppColors.navy : AppColors.navy.withValues(alpha: 0.08), // 누르면 숫자 동그라미처럼 남색
+                    color: selected ? AppColors.navy : const Color(0x0F1F2A5C), // (11/24) 운행 기록 맨 위 바탕 파랑 // 누르면 숫자 동그라미처럼 남색
                     shape: const StadiumBorder(),
                   ),
                   child: Material(
@@ -462,7 +462,7 @@ class _Segment extends StatelessWidget {
     return Container(
       height: big ? 52 : 36,
       padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(color: AppColors.field, borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(color: const Color(0x0F1F2A5C), borderRadius: BorderRadius.circular(10)), // (11/24) 운행 기록 맨 위 바탕 파랑
       child: LayoutBuilder(builder: (context, c) {
         final w = c.maxWidth / labels.length;
         return Stack(children: [
@@ -509,7 +509,7 @@ class _NoKeyView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFFE9ECF4),
+      color: const Color(0x0F1F2A5C), // (11/24) 운행 기록 맨 위 바탕 파랑
       alignment: Alignment.center,
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 60),
       child: const Column(

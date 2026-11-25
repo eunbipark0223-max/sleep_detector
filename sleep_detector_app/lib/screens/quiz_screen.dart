@@ -2,6 +2,7 @@
 // screens/quiz_screen.dart — 운전 중 음성 퀴즈 화면 (부품 A — 10/29 확정)
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P1
+// 수업 원본: (없음, 🔴 신규)
 //
 // [이 파일이 하는 일]
 //   - 서버가 준 퀴즈 1문제를 소리로 읽고(VoiceService.speak) → 말로 대답을 듣고(listen) → 서버에 보내(submitAnswer)
@@ -52,6 +53,7 @@ class _QuizScreenState extends State<QuizScreen> {
   late VoiceQuiz _quiz = widget.quiz;
   late int _stage = widget.stage;
   String _guide = '';
+  String _heard = '';
   String _message = '';
 
   @override
@@ -59,6 +61,7 @@ class _QuizScreenState extends State<QuizScreen> {
     super.initState();
     if (widget.previewGuide != null || widget.previewHeard != null) {
       _guide = widget.previewGuide ?? '';
+      _heard = widget.previewHeard ?? '';
       return;
     }
     _run();
@@ -68,6 +71,7 @@ class _QuizScreenState extends State<QuizScreen> {
     while (mounted) {
       setState(() {
         _guide = '';
+        _heard = '';
         _message = '';
       });
       await VoiceService.speak(_quiz.speak);
@@ -76,6 +80,9 @@ class _QuizScreenState extends State<QuizScreen> {
         type: _quiz.type,
         display: _quiz.display,
         listenSec: _quiz.listenSec,
+        onPartial: (t) {
+          if (mounted) setState(() => _heard = t);
+        },
         onGuide: (g) {
           if (mounted) setState(() => _guide = g);
         },
@@ -179,11 +186,13 @@ class _QuizScreenState extends State<QuizScreen> {
                   decoration: BoxDecoration(
                     // (11/23 리디자인_3) 흰색 → 아주 연한 노랑 · 얇은 테두리 · 둥글기 16
                     borderRadius: BorderRadius.circular(AppRadius.card),
-                    // (11/24) 흰 카드 · 테두리 없이 부드러운 그림자
+                    // (11/24 신한 슈퍼SOL) 흰 카드 · 테두리 없이 부드러운 그림자
                     color: Colors.white,
                     boxShadow: AppShadow.card,
                   ),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 10), // (11/24 사용자 요청) 캐릭터 · 문장 조금 오른쪽으로
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
                       const Buddy(stage: 2, size: 30, breathe: false), // (11/23 사용자 요청) 2단계 주황
                       const SizedBox(width: 10),
@@ -206,6 +215,7 @@ class _QuizScreenState extends State<QuizScreen> {
                       ),
                     ],
                   ]),
+                  ),
                 ),
                 const Spacer(),
                 // 마이크 (듣는 중이면 물결)
@@ -214,14 +224,14 @@ class _QuizScreenState extends State<QuizScreen> {
                 // (11/24 사용자 요청) 남색 점 + '듣는 중' — 카드 안 '크게 말하세요' 와 같은 시작선 · '들은 글자' 칸은 뺌 (결과는 이 줄에)
                 SizedBox(
                   height: 30,
-                  child: (listening || _message.isNotEmpty)
+                  child: listening
                       ? Padding(
-                          padding: const EdgeInsets.only(left: 20),
+                          padding: EdgeInsets.zero, // (11/25 사용자 요청) 아래 '들은 문장' 네모와 같은 시작선
                           child: Row(children: [
                             Container(width: 9, height: 9, decoration: const BoxDecoration(color: AppColors.navy, shape: BoxShape.circle)),
                             const SizedBox(width: 8),
                             Flexible(
-                              child: Text(listening ? (again ? '다시 한번 말씀해 주세요' : '듣는 중') : _message,
+                              child: Text(again ? '다시 한번 말씀해 주세요' : '듣는 중',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: AppType.headline.copyWith(color: AppColors.textPrimary)),
@@ -231,6 +241,26 @@ class _QuizScreenState extends State<QuizScreen> {
                       : null,
                 ),
                 const Spacer(),
+                // 들은 글자 · 결과 (11/24 사용자 요청으로 다시 넣음)
+                // (11/24 사용자 요청) 조금 위로 · 크게
+                Container(
+                  constraints: const BoxConstraints(minHeight: 110),
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(AppRadius.card), boxShadow: AppShadow.card),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_message.isNotEmpty ? '결과' : '들은 문장', // (11/24 사용자 요청) '들은 글자' → '들은 문장'
+                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                      const SizedBox(height: 8),
+                      Text(
+                        _message.isNotEmpty ? _message : (_heard.isEmpty ? '…' : _heard),
+                        style: const TextStyle(fontSize: 24, height: 1.35, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 28), // (11/24) 아래 여백 — 칸을 조금 위로
               ],
             ),
           ),

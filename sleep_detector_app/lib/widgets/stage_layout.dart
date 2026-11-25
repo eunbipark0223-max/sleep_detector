@@ -173,7 +173,7 @@ class StageMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = stage.clamp(0, 3);
-    final lines = titleLines(text).take(2).toList();
+    final lines = titleLines(text).take(2).map((l) => l.replaceAll(RegExp(r'[.。]\s*$'), '')).toList(); // (11/24) 마침표 없음
     // (11/23 사용자 요청) 운행 화면 카드도 처음 홈 카드처럼 — 단색 카드는 캐릭터가 안 보여서
     //   흰색 → 아주 연한 단계 색 · 얇은 테두리 / 왼쪽 위 상태 알약 · 큰 글 / 오른쪽 캐릭터
     final c = AppIllust.stageSolid[s]; // (11/23 사용자 요청) 0단계는 초록 (3단계 빨강처럼)
@@ -188,10 +188,8 @@ class StageMessage extends StatelessWidget {
         color: Colors.white,
         boxShadow: AppShadow.card,
       ),
-      child: Row(children: [
-        Expanded(
-          // (11/24 사용자 요청) 단계 알약은 카드 맨 위 · 큰 글은 남은 칸 가운데 (시작선은 알약과 같게)
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // (11/25 사용자 요청) 캐릭터를 큰 글 두 줄 바로 옆에 — 캐릭터 세로 길이 = 두 줄 높이, 두 줄과 같은 가운데
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(
               padding: const EdgeInsets.fromLTRB(9, 2, 11, 2), // (11/24 사용자 요청) 세로 조금 줄임
               decoration: BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.pill)),
@@ -204,14 +202,23 @@ class StageMessage extends StatelessWidget {
             ),
             Expanded(
               child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                for (final (i, line) in lines.indexed) ...[
-                  if (i > 0) const SizedBox(height: 4), // 줄 사이 한 칸
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(line, maxLines: 1, softWrap: false, style: title),
+                Row(children: [
+                  Flexible(
+                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      for (final (i, line) in lines.indexed) ...[
+                        if (i > 0) const SizedBox(height: 4), // 줄 사이 한 칸
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(line, maxLines: 1, softWrap: false, style: title),
+                        ),
+                      ],
+                    ]),
                   ),
-                ],
+                  const SizedBox(width: 12),
+                  // 두 줄 높이 = 22 × 1.3 × 2 + 줄 사이 4 ≈ 61
+                  Buddy(stage: s, size: 61, breathe: s > 0, alert: true),
+                ]),
                 if (sub != null) ...[
                   const SizedBox(height: 6),
                   Row(children: [
@@ -229,13 +236,16 @@ class StageMessage extends StatelessWidget {
               ]),
             ),
           ]),
-        ),
-        const SizedBox(width: 12),
-        Buddy(stage: s, size: 64, breathe: s > 0, alert: true),
-      ]),
     );
   }
 }
+
+/// (11/25 사용자 요청) 2 · 3단계 [쉼터 안내 | 정차했어요] — 남는 자리를 써서 더 크게
+ButtonStyle stageButtonBig(String kind) => stageButton(kind).copyWith(
+      minimumSize: const WidgetStatePropertyAll(Size.fromHeight(68)),
+      textStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+      iconSize: const WidgetStatePropertyAll(24),
+    );
 
 /// 운행 · 경고 화면 큰 버튼 (readdy) — kind: 'white'(흰 반투명 + 남색 글) · 'navy'(남색 꽉 참)
 ButtonStyle stageButton(String kind, {double height = AppSize.button}) => FilledButton.styleFrom(

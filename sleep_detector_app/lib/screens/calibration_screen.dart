@@ -70,8 +70,12 @@ class CalibrationScreen extends StatefulWidget {
   /// '측정 완료' 안내를 보여 주는 시간
   final Duration finishDelay;
 
+  /// (11/25) 측정이 끝난 뒤 버튼 글자 — 운행 전엔 '운행 시작', 내 정보에서 다시 잴 땐 '저장하기'
+  final String doneLabel;
+
   const CalibrationScreen({
     super.key,
+    this.doneLabel = '운행 시작',
     this.capture,
     this.calibrateApp,
     this.sendServer,
@@ -273,7 +277,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
           // (11/24 사용자 요청) '< 눈 기준 측정' — 시작선 · 높이는 다른 탭 제목과 같게 (누르면 뒤로)
           title: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () => Navigator.of(context).maybePop(),
+            onTap: () => Navigator.of(context).pop(), // (11/25 사용자 요청) 언제 눌러도 홈으로 (운행은 시작하지 않음)
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               const Icon(Icons.arrow_back_ios_new_rounded, size: 22, color: AppColors.textPrimary),
               const SizedBox(width: 6),
@@ -377,9 +381,9 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
       : _phase == _Phase.finishing
           ? [
               AuthButton(
-                text: '운행 시작',
+                text: widget.doneLabel,
                 height: AppSize.button,
-                leading: const Icon(Icons.play_arrow_rounded, size: 22, color: Colors.white),
+                leading: Icon(widget.doneLabel == '운행 시작' ? Icons.play_arrow_rounded : Icons.check_rounded, size: 22, color: Colors.white),
                 onPressed: () => Navigator.of(context).pop<double>(_value ?? AppConfig.eyeClosedProb),
               ),
             ]

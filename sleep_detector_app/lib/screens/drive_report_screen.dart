@@ -138,14 +138,14 @@ class _DriveReportScreenState extends State<DriveReportScreen> {
                             FittedBox(
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerLeft,
-                              child: Text('$_callName.',
+                              child: Text(_callName, // (11/25) 문장 끝 마침표 없앰
                                   maxLines: 1,
                                   style: const TextStyle(fontSize: 24, height: 1.25, fontWeight: FontWeight.w700, letterSpacing: -0.7, color: AppColors.textPrimary)),
                             ),
                           ]),
                         ),
                         const SizedBox(width: 10),
-                        const Buddy(stage: 2, size: 66, breathe: false), // (11/24 사용자 요청) 옆 두 줄 글 높이에 맞게
+                        const Buddy(stage: 2, size: 70, breathe: false), // (11/24 사용자 요청) 옆 두 줄 글 높이에 맞게 · 운행 기록 · MY 카드와 같은 크기
                       ]),
                     ]),
                   ),
