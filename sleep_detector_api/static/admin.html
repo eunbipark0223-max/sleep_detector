@@ -1511,7 +1511,8 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     function startBlink() { if (blinkTimer) return; blinkOn = true; updateTitle(); blinkTimer = setInterval(() => { blinkOn = !blinkOn; updateTitle(); }, 1000); }
     // 새 긴급 경고 알림 띠 (11/16): 새 긴급이 막 왔을 때만 뜬다. 이미 알고 있는 긴급은 홈의 '긴급 경고' 카드 · 종 배지로 보이므로 띠는 두지 않는다. 전부 조치완료되면 깜빡임도 끝.
     //   alerting = 새 긴급이 막 와서 알림음 · 깜빡임 중 (띠에 "새 긴급 경고 …" 와 [바로 보기] [닫기]). [닫기] · [바로 보기] 는 알림음 · 깜빡임과 띠를 끈다
-    let alerting = false, alertTitle = '', alertMsg = '', alertAudible = true, bannerKey = '';
+    //   alertEventId = [바로 보기] 를 누르면 열 경고 (11/26) — 막 온 긴급 중 가장 급한 것
+    let alerting = false, alertTitle = '', alertMsg = '', alertAudible = true, bannerKey = '', alertEventId = null;
     function renderUrgentBanner(open) {
       const box = $('urgentBanner');
       if (!open.length) {                                              // 모두 처리됨 → 알림 띠 · 깜빡임 끝
@@ -1556,6 +1557,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       alertAudible = beep();
       alertTitle = '새 긴급 경고 ' + fresh.length + '건';
       alertMsg = names + ' · ' + kinds;
+      alertEventId = [...fresh].sort(byPriority)[0].id;
       alerting = true;
       sayLive(alertTitle + ', ' + alertMsg);
       startBlink();
@@ -2340,9 +2342,9 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       else if (!wideNav.matches && document.body.classList.contains('nav-open')) setNav(false);
     });
 
-    // 종 = 알림 목록 열기 (보러 갔으니 알림음 · 깜빡임은 끈다). 알림 배너 [바로 보기] 는 긴급 경고가 모여 있는 홈으로
+    // 종 = 알림 목록 열기 (보러 갔으니 알림음 · 깜빡임은 끈다). 알림 배너 [바로 보기] 는 그 경고의 상세(보고서) 패널을 바로 연다 (11/26 팀장 — 전에는 홈으로)
     $('bellBtn').addEventListener('click', () => { silenceAlert(); setNotif($('notifMenu').hidden); });
-    $('ubView').addEventListener('click', () => { silenceAlert(); go('dashboard'); });
+    $('ubView').addEventListener('click', () => { silenceAlert(); go(alertEventId ? 'event/' + alertEventId : 'dashboard'); });
     $('ubClose').addEventListener('click', () => { silenceAlert(); $('bellBtn').focus(); });
     $('soundSwitch').addEventListener('click', () => {
       soundOn = !soundOn;

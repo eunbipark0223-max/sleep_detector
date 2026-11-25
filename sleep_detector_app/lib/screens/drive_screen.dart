@@ -115,6 +115,8 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
 
   // 30초마다 서버에 "운전 중이에요" 알리기 (ping) → 지금 단계 · 휴게 알림 받기
   Timer? _pingTimer;
+  Timer? _releaseTimer; // (11/26) 3단계 동안만 2초마다 관리자 해제 확인
+  bool _releaseBusy = false;
   String _restMessage = ''; // 휴게 배너 글 (비어 있으면 배너 없음)
   Future<String?>? _restVoice; // 휴게 배너 — 가까운 졸음쉼터 안내 문장 (못 찾으면 null)
   String? _restLine; // (11/23 시나리오) 2단계 — 화면에 쉼터 한 줄
@@ -240,6 +242,32 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     }
     _liveStage.value = stage;
     if (changed && stage >= 1) _flash();
+    _watchRelease();
+  }
+
+  // (11/26 팀장) 관리자 [조치완료] 를 바로 알아채기 — 전에는 다음 ping(최대 30초)까지 3단계로 남음
+  //   ping 은 연속 운전 시간 · 휴게 알림까지 다루므로 그대로 두고, 3단계 동안만 GET /drive/state (읽기만) 를 2초마다
+  void _watchRelease() {
+    if (_stage < 3) {
+      _releaseTimer?.cancel();
+      _releaseTimer = null;
+      return;
+    }
+    _releaseTimer ??= Timer.periodic(const Duration(seconds: 2), (_) => _checkRelease());
+  }
+
+  Future<void> _checkRelease() async {
+    if (!mounted || _releaseBusy || _sending) return; // 졸음 의심을 보내는 중이면 그 답이 우선 (ping 과 같음)
+    _releaseBusy = true;
+    try {
+      final state = await ApiService.fetchDriveState();
+      if (!mounted || _sending || _stage < 3) return;
+      if (state.stage < 3) _setStage(state.stage); // 내려간 것만 반영 (올리는 것은 /detect · 퀴즈 · ping 이 함)
+    } catch (_) {
+      // 실패하면 다음 2초 · ping 에 맡김 (연결 끊김 안내는 ping 이 함)
+    } finally {
+      _releaseBusy = false;
+    }
   }
 
   // (11/15) 단계가 바뀌면 카메라 테두리를 3초 깜빡인다 (0.4초마다 켜고 끔)
@@ -493,6 +521,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     // (11/24 사용자 요청) 앱이 켜져 있는 동안은 늘 화면 켜 두기 — 운행이 끝나도 끄지 않음
     WakelockPlus.enable();
     _pingTimer?.cancel(); // ping 끄기
+    _releaseTimer?.cancel();
     _stillAsleep?.cancel();
     _flashTimer?.cancel();
     _retryingNote.dispose();
