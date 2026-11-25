@@ -82,6 +82,7 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 _calib_photos = {}       # user_id → [임시 사진 경로, ...]
 # [정차했어요] 때 휴식완료로 바꿀 2단계 경고 번호
 _rest_event = {}         # user_id → event_id
+_stop_event = {}         # (11/26) user_id → [정차했어요] 를 누를 때 열려 있던 2 · 3단계 경고 (AI 보고서 '기사님이 한 일')
 _lock = threading.Lock()
 # 서버를 켠 뒤 /detect 판정 방식별 건수 (GET /health — method 가 cnn 이 아니면 폴백이 난 것)
 _method_counts = {"cnn": 0, "ear": 0, "mlkit": 0}
@@ -178,6 +179,24 @@ def _open_stage2_event(session: Session, user_id: int) -> Optional[SleepEvent]:
         .where(SleepEvent.user_id == user_id, SleepEvent.stage == 2, SleepEvent.status.in_(["미확인", "확인"]))
         .order_by(SleepEvent.id.desc())
     )
+
+
+def _open_alert_event(session: Session, user_id: int) -> Optional[SleepEvent]:
+    """(11/26 팀장) [정차했어요] 를 누를 때 열려 있는 가장 최근의 2 · 3단계 경고 — 그 보고서에 '정차함' 을 남긴다."""
+    return session.scalar(
+        select(SleepEvent)
+        .where(SleepEvent.user_id == user_id, SleepEvent.stage >= 2, SleepEvent.status.in_(["미확인", "확인"]))
+        .order_by(SleepEvent.id.desc())
+    )
+
+
+def _add_report(event: SleepEvent, key: str, value) -> None:
+    try:
+        report = json.loads(event.report) if event.report else {}
+    except (TypeError, ValueError):
+        report = {}
+    report[key] = value
+    event.report = json.dumps(report, ensure_ascii=False)
 
 
 def method_counts() -> dict:
@@ -431,6 +450,15 @@ def drive_rest_handler(session: Session = Depends(get_session), user: User = Dep
     if elapsed is None:
         sleep_state.start_rest(user.id)
         elapsed = 0.0
+        stop_ev = _open_alert_event(session, user.id)
+        if stop_ev is not None:   # (11/26 팀장) AI 보고서 '기사님이 한 일' — [정차했어요] 를 눌러 정차함
+            _add_report(stop_ev, "stopped", {"at": datetime.now().strftime("%H:%M")})
+            session.commit()
+        with _lock:
+            if stop_ev is not None:
+                _stop_event[user.id] = stop_ev.id
+            else:
+                _stop_event.pop(user.id, None)
         event = _open_stage2_event(session, user.id)
         with _lock:
             if event:
@@ -474,6 +502,16 @@ def drive_resume_handler(session: Session = Depends(get_session), user: User = D
                           "minutes": int(elapsed)}
         event.report = json.dumps(report, ensure_ascii=False)
         event.status = "휴식완료"
+        session.commit()
+    # (11/26) 3단계 등 정차를 남긴 경고가 휴식완료 경고와 다르면 그쪽에도 휴식 기록 (단계 · 상태는 그대로)
+    with _lock:
+        stop_id = _stop_event.pop(user.id, None)
+    stop_ev = session.get(SleepEvent, stop_id) if stop_id and stop_id != (event.id if event else None) else None
+    if stop_ev is not None:
+        now = datetime.now()
+        started = datetime.fromtimestamp(now.timestamp() - elapsed * 60)
+        _add_report(stop_ev, "rest", {"started": started.strftime("%H:%M"), "resumed": now.strftime("%H:%M"),
+                                      "minutes": int(elapsed)})
         session.commit()
 
     message = {0: "운행을 재개합니다", 1: "주의 단계로 다시 출발합니다",
