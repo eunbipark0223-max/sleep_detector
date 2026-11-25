@@ -235,7 +235,7 @@ class HomeStateCard extends StatelessWidget {
                   child: Text.rich(
                     TextSpan(children: [
                       TextSpan(text: '안녕하세요\n', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: AppColors.navy)),
-                      TextSpan(text: '졸음을 지켜 주는 부엉이에요!', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: AppColors.textSecondary)),
+                      TextSpan(text: '오늘도 졸음은 제가 지켜 드릴게요!', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: AppColors.textSecondary)),
                     ]),
                     style: TextStyle(height: 1.45, letterSpacing: -0.3, color: AppColors.textPrimary),
                   ),

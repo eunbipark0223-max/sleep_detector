@@ -170,6 +170,19 @@ app.add_middleware(
 )
 
 os.makedirs(config.UPLOAD_EVENT_DIR, exist_ok=True)
+
+
+# (11/25 팀장) 관리자 웹 화면(HTML)은 브라우저가 저장해 두지 않고 매번 새로 받게 — 예전 화면 · 예전 로고가 계속 보이던 문제
+#   그림 · js 는 그대로 저장해도 됨 (바꿀 때는 HTML 에서 주소 끝 ?v= 를 올림)
+@app.middleware("http")
+async def no_cache_admin_html(request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/static/") and path.endswith(".html"):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
+
+
 app.mount("/static", StaticFiles(directory=os.path.join(config.BASE_DIR, "static")), name="static")
 # 졸음 사진(uploads/events/)은 얼굴 사진이라 폴더를 공개하지 않는다 → GET /events/{id}/photo (로그인 + 본인 또는 관리자, routers/event.py)
 
