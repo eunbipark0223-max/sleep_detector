@@ -44,6 +44,7 @@ import '../services/rest_area_service.dart' show NearRestArea;
 import '../services/voice_service.dart';
 import '../stage_texts.dart';
 import '../theme.dart';
+import '../utils/camera_image_utils.dart';
 import '../widgets/stage_layout.dart';
 import 'drive_report_screen.dart';
 import 'rest_screen.dart';
@@ -503,6 +504,11 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       // 프레임이 올 때마다 A님 눈 감시 도구에 넘긴다 (바쁘면 A님 코드가 알아서 버림)
       await controller.startImageStream((image) {
         _lastFrameAt = DateTime.now(); // 사진이 들어왔다고 지킴이에게 알림
+        final snap = _snap;
+        if (snap != null) {
+          _snap = null;
+          snap.complete(CameraImageUtils.toJpg(image, rotation: front.sensorOrientation));
+        }
         _eye.processFrame(image, front);
       });
     } catch (e) {
@@ -538,6 +544,16 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     _controller?.dispose(); // 카메라 끄기
     _eye.close(); // 눈 감시 도구 끄기
     super.dispose();
+  }
+
+  // (11/26 팀장) 다음 카메라 프레임 1장 → JPG (2번째 퀴즈가 끝난 순간의 사진). 카메라가 꺼져 2초 안에 못 받으면 null
+  Completer<Uint8List?>? _snap;
+  Future<Uint8List?> _takePhoto() {
+    final snap = _snap ??= Completer<Uint8List?>();
+    return snap.future.timeout(const Duration(seconds: 2), onTimeout: () {
+      if (identical(_snap, snap)) _snap = null;
+      return null;
+    });
   }
 
   // 졸음 의심 (눈을 오래 감음 / 최근 30초 중 많이 감음) → 서버에 보내서 확인받기
@@ -717,7 +733,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
         _quizOpen = true;
         setState(() => _quizDone = false);
         // (11/26 팀장) 퀴즈 동안에도 졸음 판정을 계속한다 — 졸면 서버가 3단계로 올리고, 아래에서 퀴즈를 닫고 3단계 화면 (그때 newStage 는 null)
-        final quizRoute = MaterialPageRoute<int>(builder: (_) => QuizScreen(quiz: quiz, stage: 2));
+        final quizRoute = MaterialPageRoute<int>(builder: (_) => QuizScreen(quiz: quiz, stage: 2, takePhoto: _takePhoto));
         _quizRoute = quizRoute;
         final newStage = await Navigator.of(context).push<int>(quizRoute);
         _quizRoute = null;

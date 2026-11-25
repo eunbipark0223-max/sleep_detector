@@ -87,6 +87,9 @@ class SleepEventResponse(BaseModel):
         data.stage_label = STAGE_LABELS.get(event.stage, "")
         # 파일 주소가 아니라 사진을 내주는 API 주소 (GET /events/{id}/photo — 로그인 토큰 + 본인 또는 관리자만). 폴더는 공개하지 않는다 (11/10)
         data.photo_url = f"/events/{event.id}/photo" if event.photo_path else None
+        # (11/26) 퀴즈 뒤 사진으로 바뀌면 주소도 바뀌게 — 관리자 웹이 먼저 받아 둔 사진을 계속 보여 주지 않도록
+        if data.photo_url and (data.report or {}).get("photo_at") == "after_quiz":
+            data.photo_url += "?v=after_quiz"
         return data
 
 

@@ -7,8 +7,9 @@
 #   - POST /quiz/answer — VoiceQuizAnswer 를 받아 voice_quiz_service 로 채점
 #   -   정답 → 단계 그대로  /  1번 실패 → 응답에 next_quiz (같은 유형 새 문제)
 #   -   2번 실패 → 단계 +1 (최대 3) · 관리자 알림 · reason = no_response 경고 1줄 저장
+#   - POST /quiz/no-response-photo — (11/26 팀장) 2번째 퀴즈가 끝난 순간 앱이 찍은 사진을 그 no_response 경고에 붙임
 #   - 채점 결과는 그 경고의 report.driving_quiz 에 덧붙임
-#   - 응답: success · passed · next_quiz · stage_up · stage · status · message (기획안 9-6)
+#   - 응답: success · passed · next_quiz · stage_up · stage · status · message (기획안 9-6) · no_response_event_id (2번 실패일 때만)
 #
 # [주의]
 #   - 없는 quiz_id 면 404 → 앱은 퀴즈만 끝냄
@@ -24,9 +25,10 @@
 #   - 실패 횟수는 퀴즈의 attempt(1 · 2번째)로 센다 — 경고마다 새로 시작 (지난 경고의 실패가 이어지지 않게)
 
 import json
+import os
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -86,6 +88,7 @@ def quiz_answer_handler(
     })
 
     stage = int(sleep_state.get_stage(user.id))
+    no_response = None
     next_quiz, stage_up, message = None, False, MSG_PASS.get(stage, MSG_PASS_DEFAULT)
 
     if not passed and attempt < config.VOICE_QUIZ_MAX_TRIES:     # 1번 실패 → 같은 유형 새 문제
@@ -95,7 +98,8 @@ def quiz_answer_handler(
         new_stage = int(sleep_state.set_stage(user.id, stage + 1))
         stage_up, stage = new_stage > stage, new_stage
         message = MSG_NO_RESPONSE
-        # (11/23 팀장) 퀴즈를 내게 만든 2단계 경고의 사진을 같이 보여 줌 — 새로 찍지 않고 같은 파일을 가리키기만
+        # (11/26 팀장) 사진은 2번째 퀴즈가 끝난 순간 앱이 찍어 /quiz/no-response-photo 로 따로 보냄 (3단계 응답이 늦지 않게)
+        #   그 사진이 오기 전 · 못 왔을 때는 아래처럼 (11/23 팀장) 퀴즈를 내게 만든 2단계 경고의 사진 — 같은 파일을 가리키기만
         #   30일 자동 삭제(photo_cleanup)는 파일이 이미 없어도 photo_path 만 비우므로 두 경고가 같은 파일을 써도 괜찮음
         src = session.get(SleepEvent, event_id) if event_id else None
         src_photo = src.photo_path if src is not None and src.user_id == user.id else None
@@ -105,15 +109,45 @@ def quiz_answer_handler(
                 .where(SleepEvent.user_id == user.id, SleepEvent.photo_path.is_not(None),
                        SleepEvent.created_at >= datetime.now() - timedelta(minutes=15))
                 .order_by(SleepEvent.created_at.desc()).limit(1))
-        session.add(SleepEvent(
+        no_response = SleepEvent(
             user_id=user.id, stage=stage, reason="no_response", method="mlkit", status="미확인", photo_path=src_photo,
             summary=f"운전 중 음성 퀴즈에 {config.VOICE_QUIZ_MAX_TRIES}번 답하지 못했습니다.",
             guidance=MSG_NO_RESPONSE,
             report=json.dumps({"situation": "운전 중 음성 퀴즈 응답 없음", "stage_reason": "퀴즈 2번 실패로 한 단계 올림",
                                "recommended_action": "즉시 기사에게 연락해 상태 확인", "from_event_id": event_id},
                               ensure_ascii=False),
-        ))
+        )
+        session.add(no_response)
     session.commit()
 
     return {"success": True, "passed": passed, "next_quiz": next_quiz, "stage_up": stage_up,
-            "stage": stage, "status": _label(stage), "message": message}
+            "stage": stage, "status": _label(stage), "message": message,
+            "no_response_event_id": no_response.id if no_response is not None else None}
+
+
+@router.post("/quiz/no-response-photo")
+async def no_response_photo_handler(
+    event_id: int = Form(...),
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    """(11/26 팀장) 2번째 퀴즈가 끝난 순간의 사진 1장 → 그 '퀴즈 응답 없음' 경고의 사진으로 바꾼다 (경고마다 한 번만, 본인 것만)."""
+    from routers.detect import _save_upload   # 사진 확인 · 저장은 /detect 와 같은 코드
+    event = session.get(SleepEvent, event_id)
+    if event is None or event.user_id != user.id or event.reason != "no_response":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "없는 경고입니다")
+    if json.loads(event.report or "{}").get("photo_at") == "after_quiz":
+        raise HTTPException(status.HTTP_409_CONFLICT, "이미 사진이 있습니다")
+    path = await _save_upload(file, config.UPLOAD_EVENT_DIR, f"u{user.id}q")
+    try:
+        session.refresh(event)                # 사진을 받는 사이 [깨어 있어요] 기록이 들어왔을 수 있음
+        report = json.loads(event.report or "{}")
+        report["photo_at"] = "after_quiz"
+        event.report = json.dumps(report, ensure_ascii=False)
+        event.photo_path = f"uploads/events/{os.path.basename(path)}"   # 2단계 경고의 사진 파일은 그 경고 것이라 지우지 않음
+        session.commit()
+    except Exception:
+        os.remove(path)
+        raise
+    return {"success": True, "event_id": event.id}

@@ -356,7 +356,7 @@ def add_event(user_id: int, stage: int, reason: str, report: dict, *, summary=""
 def event_out(e: dict, admin: bool = False) -> dict:
     out = dict(e)
     out.pop("photo_path")
-    out["photo_url"] = f"/events/{e['id']}/photo" if e["photo_path"] else None    # 진짜 서버와 같음: 로그인 필요한 API 주소 (폴더는 공개 안 함)
+    out["photo_url"] = f"/events/{e['id']}/photo" + ("?v=after_quiz" if e["report"].get("photo_at") == "after_quiz" else "") if e["photo_path"] else None    # 진짜 서버와 같음: 로그인 필요한 API 주소 (폴더는 공개 안 함)
     out["stage_label"] = STAGE_LABELS[e["stage"]]
     if admin:
         user = USERS.get(e["user_id"], {})
@@ -1257,11 +1257,30 @@ def quiz_answer(body: VoiceQuizAnswer, user: dict = Depends(current_user)):
     ai = make_ai_text(new_stage, "microsleep", len(recent_sleeps(st)), st["last_closed_sec"], 0.0, drive_min_of(st), None, None)
     ai["report"]["situation"] = "운전 중 음성 퀴즈에 2번 답하지 못함"
     ai["report"]["driving_quiz"] = [dict(x) for x in failed]
-    add_event(user["id"], new_stage, "no_response", ai["report"], summary="운전 중 음성 퀴즈에 2번 답하지 못했습니다.", guidance=ai["guidance"],
+    no_resp = add_event(user["id"], new_stage, "no_response", ai["report"], summary="운전 중 음성 퀴즈에 2번 답하지 못했습니다.", guidance=ai["guidance"],
               lat=origin["latitude"] if origin else None, lng=origin["longitude"] if origin else None)
     st["quiz_fail"] = 0
     return {**result, "stage_up": new_stage > stage, "stage": new_stage, "status": STAGE_LABELS[new_stage],
-            "message": "응답이 없어 관리자에게 알렸어요. 안전한 곳에 정차해 주세요."}
+            "message": "응답이 없어 관리자에게 알렸어요. 안전한 곳에 정차해 주세요.", "no_response_event_id": no_resp["id"]}
+
+
+@app.post("/quiz/no-response-photo")
+async def no_response_photo(event_id: int = Form(...), file: UploadFile = File(...), user: dict = Depends(current_user)):
+    """진짜 서버 routers/quiz.py 와 같음 (11/26): 2번째 퀴즈가 끝난 순간의 사진 → 그 퀴즈 응답 없음 경고의 사진."""
+    event = next((e for e in EVENTS if e["id"] == event_id), None)
+    if not event or event["user_id"] != user["id"] or event["reason"] != "no_response":
+        raise HTTPException(status_code=404, detail="없는 경고입니다")
+    if event["report"].get("photo_at") == "after_quiz":
+        raise HTTPException(status_code=409, detail="이미 사진이 있습니다")
+    photo = await file.read()
+    if not photo or len(photo) > MAX_PHOTO_BYTES:
+        raise HTTPException(status_code=400, detail="사진이 비었거나 너무 큽니다")
+    name = f"{uuid.uuid4().hex}.jpg"
+    with open(os.path.join(EVENT_DIR, name), "wb") as f:
+        f.write(photo)
+    event["photo_path"] = f"uploads/events/{name}"
+    event["report"]["photo_at"] = "after_quiz"
+    return {"success": True, "event_id": event_id}
 
 
 # ═══════════════════════════════════════════════════════════════
