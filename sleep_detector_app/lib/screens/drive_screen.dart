@@ -132,7 +132,6 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this); // 앱이 뒤로 가거나 화면이 잠기는 것을 알기 위해 (11/12)
-    _bgChannel.invokeMethod('start').ignore(); // (11/24 사용자 요청) 앱을 나가도 졸음 감지 — '운행 중' 알림 서비스
     _loadName();
 
     // 눈 감시 도구를 만들고, 알림이 오면 받을 함수를 연결한다
@@ -184,7 +183,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     if (state != null) {
       _setStage(state.stage);
       DriveClock.minutes.value = state.driveMin; // (11/18) 맨 위 '○분 운전 중'
-      // 2 · 3단계이거나 쉬던 중이면 경고 화면을 이어 연다 (3단계는 30초 반복 음성도 다시, 쉬던 중이면 남은 시간으로 휴식 화면)
+      // 2 · 3단계이거나 쉬던 중이면 경고 화면을 이어 연다 (3단계는 10초 반복 음성도 다시, 쉬던 중이면 남은 시간으로 휴식 화면)
       if (state.resting || state.stage >= 2) _showWarning(_restoredResponse(state), resumeRest: state.resting);
     }
     _ping();
@@ -507,7 +506,6 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     _checkingNote.dispose();
     _faceBoxNote.dispose();
     _controller?.dispose(); // 카메라 끄기
-    _bgChannel.invokeMethod('stop').ignore(); // (11/24) '운행 중' 알림 · 포그라운드 서비스 끔
     _eye.close(); // 눈 감시 도구 끄기
     super.dispose();
   }
@@ -516,8 +514,9 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   Future<void> _onSuspect(String reason, double closedSec, double perclos,
       double eyeOpenProb, Uint8List? frame) async {
     if (!mounted || _pauseDetect.value) return;
-    if (_inBackground || shelterOpen.value) {
-      _backgroundAlarm(); // (11/24 사용자 요청) 앱 밖 · 가까운 쉼터 · 카카오맵 길찾기 — 단계에 맞는 경고음만 (서버 · 단계 올림 없음)
+    // (11/25 팀장) 앱 밖 감지('운행 중' 알림 서비스)는 뺌 — 쉼터 화면을 보는 동안만 경고음
+    if (shelterOpen.value) {
+      _backgroundAlarm(); // (11/24 사용자 요청) 가까운 쉼터 · 카카오맵 길찾기 — 단계에 맞는 경고음만 (서버 · 단계 올림 없음)
       return;
     }
     if (_sending) return;
@@ -837,12 +836,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   }
 
   // 프레임마다 오는 눈 뜸 확률 · PERCLOS (0단계 화면 표시용)
-  int _bgFrames = 0;
   void _onFrameResult(double? eyeOpenProb, double perclos, double? ear) {
-    if (_inBackground) {
-      _bgFrames++;
-      if (_bgFrames % 30 == 1) debugPrint('[bg] frames=$_bgFrames face=${eyeOpenProb != null}');
-    }
     if (!mounted) return;
     _updateFaceBox();
     if (eyeOpenProb != null) {
@@ -870,24 +864,21 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   // 운행 중 앱이 뒤로 가거나(다른 앱 · 홈 버튼) 화면이 잠기면 카메라가 멈춰 졸음을 못 본다 → 한 번 말해 준다 (11/12 팀장)
   //   안드로이드는 화면 밖 앱의 카메라를 막아서 계속 지켜볼 수는 없음 (발표 한계). 돌아오면 카메라 지킴이가 다시 켬
   bool _pausedSpoken = false;
-  bool _inBackground = false; // (11/24) 앱 밖에 있음 — 졸음 의심이면 경고음만
   DateTime _bgAlarmAt = DateTime(2000);
-  static const MethodChannel _bgChannel = MethodChannel('sleep_guard/bg');
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
-      _inBackground = true;
-      if (!_pausedSpoken) {
+      // (11/25 팀장) 쉼터 화면에서 카카오맵 등으로 넘어갈 때는 말하지 않음 (쉬러 가는 중이라 안내가 방해)
+      if (!_pausedSpoken && !shelterOpen.value) {
         _pausedSpoken = true;
-        VoiceService.speak('졸음 가드 앱으로 돌아와 주세요'); // (11/24 사용자 요청) 감지는 계속되니 이 말만
+        VoiceService.speak('졸음 감지가 멈췄어요. 졸음 가드 앱으로 돌아와 주세요'); // (11/25 팀장) 앱 밖 감지는 뺐으므로 예전 안내로
       }
     } else if (state == AppLifecycleState.resumed) {
-      _inBackground = false;
       _pausedSpoken = false;
     }
   }
 
-  // (11/24 사용자 요청) 앱 밖에서 졸음 의심 — 서버로 보내거나 단계를 올리지 않고, 지금 단계에 맞는 경고음만
+  // (11/24 사용자 요청) 쉼터 화면을 보는 중 졸음 의심 — 서버로 보내거나 단계를 올리지 않고, 지금 단계에 맞는 경고음만
   //   (1단계 이하 1번 · 2단계 2번 · 3단계 3번 울림 · 10초에 한 번만)
   Future<void> _backgroundAlarm() async {
     final now = DateTime.now();

@@ -129,6 +129,48 @@ def _remove(path):
         pass
 
 
+# (11/25 팀장) 고개 숙임 경고에도 관리자 웹 사진 — 앱은 숙임을 처음 사진과 보내고, 서버가 취소하면(얼굴 없음 · 눈 뜸)
+#   숙인 채 계속이면 사진 없이 다시 보낸다 → 그 경고는 사진이 없었음. 취소된 사진을 잠깐(HELD_PHOTO_SEC) 들고 있다가
+#   사진 없이 온 경고가 확정되면 그 사진을 붙인다. 시간이 지나거나 다음 취소 사진이 오면 바로 지움 (개인정보)
+HELD_PHOTO_SEC = 60
+_held_photos: dict[int, tuple[str, float]] = {}     # user_id → (임시 사진 경로, 취소 시각)
+
+
+def _sweep_held():
+    """시간이 지난 들고 있던 사진을 모두 지움 (다른 기사 것 포함 — 다시 보내지 않은 사진이 남지 않게)"""
+    now = time.time()
+    with _lock:
+        old = [uid for uid, (_, at) in _held_photos.items() if now - at > HELD_PHOTO_SEC]
+        paths = [_held_photos.pop(uid)[0] for uid in old]
+    for p in paths:
+        _remove(p)
+
+
+def _hold_photo(user_id: int, path):
+    if not path:
+        return
+    _sweep_held()
+    with _lock:
+        old = _held_photos.pop(user_id, None)
+        _held_photos[user_id] = (path, time.time())
+    if old:
+        _remove(old[0])
+
+
+def _take_held_photo(user_id: int):
+    """HELD_PHOTO_SEC 안에 취소된 사진이 있으면 꺼내 준다 (한 번만). 오래된 것은 지움."""
+    _sweep_held()
+    with _lock:
+        held = _held_photos.pop(user_id, None)
+    if not held:
+        return None
+    path, at = held
+    if time.time() - at > HELD_PHOTO_SEC or not os.path.exists(path):
+        _remove(path)
+        return None
+    return path
+
+
 def _open_stage2_event(session: Session, user_id: int) -> Optional[SleepEvent]:
     """[정차했어요] 때 휴식완료로 바꿀 경고 — 가장 최근의 아직 처리 안 된 2단계 경고."""
     return session.scalar(
@@ -556,7 +598,7 @@ async def detect_handler(
           f"(기준 {base['ear_threshold']}) cnn={base['eye_closed_prob']} method={base['method']} "
           f"{'확정' if eye.get('is_sleep') else '취소'} 단계 {sleep_state.get_stage(user.id)} 눈판정 {t_eye - t_start:.1f}초")
     if not eye.get("is_sleep"):             # 취소 → AI 를 부르지 않고 바로 응답, 사진은 지움 (개인정보)
-        _remove(tmp_path)
+        _hold_photo(user.id, tmp_path)      # (11/25) 단, 숙인 채 사진 없이 다시 오면 붙이려고 HELD_PHOTO_SEC 동안만 들고 있음
         stage = int(sleep_state.get_stage(user.id))
         return {**base, "is_sleep": False, "reason": "", "stage": stage, "status": _label(stage),
                 "summary": "", "guidance": "", "driver_voice": "",
@@ -617,6 +659,11 @@ async def detect_handler(
           f"{' (관리자 해제됨)' if released else ''}")
 
     # ⑦ 저장 — 확정 사진만 uploads/events/ 로, DB 1줄 (사진 없이 온 경고는 photo_path 없음 → 관리자 웹 '사진 없음')
+    #   (11/25) 사진 없이 온 경고(숙인 채 재전송)면 방금 취소된 숙임 사진을 붙인다 (_take_held_photo, 60초 안)
+    held_photo = False
+    if tmp_path is None:
+        tmp_path = _take_held_photo(user.id)
+        held_photo = tmp_path is not None
     photo_path = None
     if tmp_path is not None:
         os.makedirs(config.UPLOAD_EVENT_DIR, exist_ok=True)
@@ -627,6 +674,7 @@ async def detect_handler(
         **agent["report"],
         "eye": {"closed_sec": closed, "perclos": pc, "eye_open_prob": open_prob, "ear": eye.get("ear"),
                 "photo": tmp_path is not None,
+                **({"photo_note": "처음 의심 때 사진 (고개 숙임)"} if held_photo else {}),
                 **({"trigger": "half", "half_ear": half["ear"], "half_baseline": half["baseline"]} if half else {})},
         "driving_quiz": [],
         "facts": facts,

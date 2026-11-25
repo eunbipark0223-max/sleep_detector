@@ -24,8 +24,10 @@
 #   - 실패 횟수는 퀴즈의 attempt(1 · 2번째)로 센다 — 경고마다 새로 시작 (지난 경고의 실패가 이어지지 않게)
 
 import json
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import config
@@ -97,6 +99,12 @@ def quiz_answer_handler(
         #   30일 자동 삭제(photo_cleanup)는 파일이 이미 없어도 photo_path 만 비우므로 두 경고가 같은 파일을 써도 괜찮음
         src = session.get(SleepEvent, event_id) if event_id else None
         src_photo = src.photo_path if src is not None and src.user_id == user.id else None
+        if not src_photo:   # (11/25 팀장) 그 경고에 사진이 없으면 같은 기사의 최근 15분 안 경고 사진 (관리자 웹에 늘 사진)
+            src_photo = session.scalar(
+                select(SleepEvent.photo_path)
+                .where(SleepEvent.user_id == user.id, SleepEvent.photo_path.is_not(None),
+                       SleepEvent.created_at >= datetime.now() - timedelta(minutes=15))
+                .order_by(SleepEvent.created_at.desc()).limit(1))
         session.add(SleepEvent(
             user_id=user.id, stage=stage, reason="no_response", method="mlkit", status="미확인", photo_path=src_photo,
             summary=f"운전 중 음성 퀴즈에 {config.VOICE_QUIZ_MAX_TRIES}번 답하지 못했습니다.",

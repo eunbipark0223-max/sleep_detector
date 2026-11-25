@@ -9,10 +9,10 @@
 //   - 소리 순서: 🔔 알람 → 서버 한 문장 driverVoice ('OOO님, 쉼터에서 쉬어 가세요' / '… 지금 바로 정차하세요', 없으면 stage_texts.dart 고정 문구) (11/17)
 //   - 운전 중 음성 퀴즈 (부품 A): D 의 quiz_screen 을 띄우고, 돌려받은 단계로 색 갱신 (2번 실패면 한 단계 위 + 알람)
 //   - 같은 단계에서 또 졸면 알람 · 음성 보고 없이 낼 퀴즈만 (silent, 기획안 6-6)
-//   - 3단계: 관리자 조치완료 전까지 30초마다 알람 + 'OOO님, 지금 바로 정차하세요' ('관리자에게 알렸어요' 는 화면 큰 글씨, 11/17)
-//     [깨어 있어요] 를 누르면 30초 반복을 멈추고 [쉼터 안내 | 정차했어요] 로 바뀜 (11/25 C) — 화면 잠금 · 감지는 조치완료까지 그대로
+//   - 3단계: 관리자 조치완료 전까지 10초마다 알람 + 'OOO님, 지금 바로 정차하세요' ('관리자에게 알렸어요' 는 화면 큰 글씨, 11/17)
+//     [깨어 있어요] 를 누르면 10초 반복을 멈추고 [쉼터 안내 | 정차했어요] 로 바뀜 (11/25 C) — 화면 잠금 · 감지는 조치완료까지 그대로
 //   - 졸음쉼터 안내 (B 의 rest_area_service): 자동으로 읽지 않음 (11/17) — 2단계 화면에 '📍 가까운 ○○ 졸음쉼터, ○○방향, 약 ○킬로미터' 한 줄
-//     + [가까운 졸음쉼터 듣기] → 다시 읽고 지도 화면 (새 창 없음, 3단계는 길안내를 먼저 권하지 않음, 30초 반복은 짧게 그대로)
+//     + [가까운 졸음쉼터 듣기] → 다시 읽고 지도 화면 (새 창 없음, 3단계는 길안내를 먼저 권하지 않음, 10초 반복은 짧게 그대로)
 //   - 2단계 [정차했어요] → 확인 창 (음성 · 1분 뒤 저절로 취소) → rest_screen → [운행 재개] 뒤 운행 화면으로 복귀
 //
 // [주의]
@@ -432,7 +432,7 @@ class _WarningScreenState extends State<WarningScreen> {
   static int _seq = 0;
   final int _id = ++_seq;
   late int _stage; // 지금 화면의 단계 (정차 후 돌려받은 단계로 바뀜)
-  Timer? _repeat; // 3단계 30초 반복 음성
+  Timer? _repeat; // 3단계 10초 반복 음성
   String _restMessage = ''; // 휴식 뒤 서버가 준 안내 (예: 주의 단계로 다시 출발합니다). 있으면 이전 단계의 요약 · 안내 · 음성 보고 대신 보여 준다
   bool _voiceDone = false; // 알람 · 음성 · 퀴즈가 다 끝났는지 (버튼은 그 뒤에 켜짐 — 2단계는 퀴즈 필수, 11/18)
   bool _flowStopped = false; // [정차했어요] 를 눌러 음성 · 퀴즈 순서를 그만둠 (휴식 화면 위로 퀴즈가 뜨지 않게)
@@ -493,7 +493,7 @@ class _WarningScreenState extends State<WarningScreen> {
     final s = widget.liveStage!.value;
     if (!mounted || s == _stage) return;
     if (s < 3) {
-      _repeat?.cancel(); // 3단계가 풀리면 30초 반복 멈춤
+      _repeat?.cancel(); // 3단계가 풀리면 10초 반복 멈춤
       _repeat = null;
     }
     if (s == 0) {
@@ -512,10 +512,10 @@ class _WarningScreenState extends State<WarningScreen> {
     }
   }
 
-  // 3단계 30초 반복 시작 (이미 돌고 있으면 그대로) — 알람 + 고정 문구 (기획안 8-7)
+  // 3단계 10초 반복 시작 (이미 돌고 있으면 그대로) — 알람 + 고정 문구 (기획안 8-7)
   void _startRepeat() {
-    if (_wakePressed) return; // (11/24 사용자 요청) [깨어 있어요] 를 누른 뒤에는 30초 반복을 다시 켜지 않음
-    _repeat ??= Timer.periodic(const Duration(seconds: 30), (_) async {
+    if (_wakePressed) return; // (11/24 사용자 요청) [깨어 있어요] 를 누른 뒤에는 10초 반복을 다시 켜지 않음
+    _repeat ??= Timer.periodic(const Duration(seconds: 10), (_) async { // (11/25 팀장) 30초 → 10초
       if (_wakePressed) return; // (11/24) 누른 뒤에는 울리지 않음
       await VoiceService.alarm();
       if (!mounted || _repeat == null || _wakePressed) return;
@@ -523,7 +523,7 @@ class _WarningScreenState extends State<WarningScreen> {
     });
   }
 
-  // 🔔 알람 → 고정 문구(1·2단계) → 기사 음성 보고 → (3단계) 30초마다 반복
+  // 🔔 알람 → 고정 문구(1·2단계) → 기사 음성 보고 → (3단계) 10초마다 반복
   //   silent 면 알람 · 문구 · 음성 보고를 건너뛰고 퀴즈부터 (같은 단계에서 또 졸았을 때)
   //   [정차했어요] 를 누르면 _flowStopped → 뒤 순서를 하지 않는다
   Future<void> _speakWarning() async {
@@ -575,7 +575,7 @@ class _WarningScreenState extends State<WarningScreen> {
     // 알람 · 음성 · 퀴즈가 다 끝났으니 이제부터 졸음 판정 (퀴즈가 없었으면 음성 보고가 끝난 뒤부터)
     widget.pauseDetect?.value = false;
     setState(() => _voiceDone = true);
-    // 3단계 30초 반복은 퀴즈가 끝난 뒤에 시작
+    // 3단계 10초 반복은 퀴즈가 끝난 뒤에 시작
     if (_stage == 3) _startRepeat();
   }
 
@@ -606,7 +606,7 @@ class _WarningScreenState extends State<WarningScreen> {
     }
   }
 
-  // 10초 동안 안 누름 → 관리자 웹 '응답 없음' (3단계 긴급은 이미 가 있음). 30초 반복은 계속
+  // 10초 동안 안 누름 → 관리자 웹 '응답 없음' (3단계 긴급은 이미 가 있음). 10초 반복은 계속
   void _onWakeTimeout() {
     if (_wakePressed) return;
     setState(() {

@@ -210,17 +210,18 @@ class StageMessage extends StatelessWidget {
                         FittedBox(
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerLeft,
-                          child: Text(line, maxLines: 1, softWrap: false, style: title),
+                          child: Text(line, maxLines: 1, softWrap: false, style: sub != null ? title.copyWith(fontSize: 20) : title), // (11/25) 쉼터 한 줄이 있으면 20
                         ),
                       ],
                     ]),
                   ),
                   const SizedBox(width: 12),
                   // 두 줄 높이 = 22 × 1.3 × 2 + 줄 사이 4 ≈ 61
-                  Buddy(stage: s, size: 61, breathe: s > 0, alert: true),
+                  //   (11/25 팀장) 2단계 쉼터 한 줄이 있으면 카드(132)를 2 ~ 3px 넘쳐 디버그 앱에 빨간 'OVERFLOWED' 글자 → 캐릭터 52 · 줄 사이 4
+                  Buddy(stage: s, size: sub != null ? 52 : 61, breathe: s > 0, alert: true),
                 ]),
                 if (sub != null) ...[
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Row(children: [
                     const Icon(Icons.location_on_rounded, size: 16, color: AppColors.navy),
                     const SizedBox(width: 4),

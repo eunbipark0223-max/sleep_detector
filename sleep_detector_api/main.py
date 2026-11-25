@@ -123,6 +123,13 @@ async def lifespan(app: FastAPI):   # ← app: FastAPI 매개변수 필수!
 
     for d in (config.UPLOAD_TMP_DIR, config.UPLOAD_EVENT_DIR):
         os.makedirs(d, exist_ok=True)
+    # (11/25) 임시 사진 폴더는 요청 하나 동안만 쓰는 곳 — 서버가 꺼졌을 때 남은 사진(얼굴)은 켤 때 지움
+    for name in os.listdir(config.UPLOAD_TMP_DIR):
+        if name != ".gitkeep":
+            try:
+                os.remove(os.path.join(config.UPLOAD_TMP_DIR, name))
+            except OSError:
+                pass
 
     print(f"ℹ️  DEMO_MODE={config.DEMO_MODE}  USE_REAL_AI={config.USE_REAL_AI}  USE_CNN={config.USE_CNN}  "
           f"GEMINI_MODEL={config.GEMINI_MODEL}")
