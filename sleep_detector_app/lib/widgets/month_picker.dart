@@ -249,3 +249,35 @@ Future<DateTime?> showDateWheel(BuildContext context, {required DateTime initial
     dc.dispose();
   });
 }
+
+
+/// (11/24 사용자 요청 · 보내 준 아이폰 사진) 날짜 고르기 — 누르면 화면 가운데에 흰 바퀴 창이 떠오르고,
+///   돌리면 바로 onChanged · 창 바깥 아무 곳이나 누르면 닫힘 (아래에서 올라오는 창 아님)
+Future<void> showWheelPopup(BuildContext context, {required DateTime initial, required ValueChanged<DateTime> onChanged, bool withDay = false}) {
+  return showGeneralDialog(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: '닫기',
+    barrierColor: Colors.black.withValues(alpha: 0.06),
+    transitionDuration: const Duration(milliseconds: 180),
+    pageBuilder: (ctx, _, _) => Center(
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: 320,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(AppRadius.card),
+            boxShadow: const [BoxShadow(color: Color(0x26000000), blurRadius: 30, offset: Offset(0, 10))],
+          ),
+          child: MonthWheel(initial: initial, onChanged: onChanged, withDay: withDay),
+        ),
+      ),
+    ),
+    transitionBuilder: (ctx, anim, _, child) => FadeTransition(
+      opacity: anim,
+      child: ScaleTransition(scale: Tween(begin: 0.96, end: 1.0).animate(anim), child: child),
+    ),
+  );
+}

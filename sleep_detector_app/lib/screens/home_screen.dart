@@ -36,6 +36,8 @@ import '../widgets/buddy.dart';
 import '../services/drive_log.dart';
 import 'history_screen.dart' show HistoryEventRow;
 import '../widgets/system_status.dart';
+import '../widgets/month_picker.dart';
+import 'privacy_screen.dart' show AppFooter;
 
 // (사진 1장 테스트 · 개발용 숨김은 main_screen 의 ≡ 메뉴로 옮김 — SHOW_DEV_TOOLS, 11/11)
 
@@ -75,6 +77,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  DateTime? _homeDay; // (11/24) 기록 칸에서 고른 날 (null = 오늘)
   int _tab = 0; // 0 오늘 경고 · 1 이번 주 · 2 긴급
   static const int _driveCount = 3; // (11/19) 처음에 보이는 운행 카드 수
   bool _scrolled = false; // (11/19) 아래로 내렸는지 — 내렸을 때만 위쪽을 흐리게
@@ -218,18 +221,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 측정 화면이 돌려주는 값: 기준 값(double) / null = 시작 전에 뒤로 가기 (운행을 시작하지 않는다)
   // 기준 값은 DriveScreen(threshold: t) 로 넘긴다 (측정을 건너뛰었으면 기본 기준이 들어 있다)
-  Future<void> _startDrive() async {
+  Future<void> _startDrive({bool skipCalibration = false}) async {
     // 카메라 · 마이크 · 위치 권한이 아직 없으면 시안의 안내창 → [계속] → 휴대폰 권한 창 (11/12 팀장)
     //   이미 다 허용했으면 안내창 없이 바로 측정 화면. 안내창을 닫으면 운행을 시작하지 않음
     if (!await _askPermissions()) return;
     if (!mounted) return;
-    final t = await Navigator.of(context).push<double>(
-      MaterialPageRoute(
-        builder: (_) =>
-            (widget.calibrationBuilder ?? () => const CalibrationScreen())(),
-      ),
-    );
-    if (t == null || !mounted) return;
+    // (11/25 사용자 요청) [새로운 운행 시작] 은 눈 기준 측정을 건너뜀 — 전에 저장한 내 눈 기준 (없으면 기본 기준)
+    // (11/25 사용자 요청) 눈 기준 측정은 처음 운행 때 한 번만 — 저장된 내 눈 기준이 있으면 건너뜀 (다시 재기는 내 정보에서)
+    final saved = await AuthService.getEyeThreshold();
+    if (!mounted) return;
+    final double? t;
+    if (skipCalibration || saved != null) {
+      t = saved;
+    } else {
+      t = await Navigator.of(context).push<double>(
+        MaterialPageRoute(
+          builder: (_) =>
+              (widget.calibrationBuilder ?? () => const CalibrationScreen())(),
+        ),
+      );
+      if (t == null || !mounted) return;
+    }
     // 서버에 새 운행 시작을 알린다 — 연속 운전 시간 · 퀴즈 실패 수 · 반쯤 감은 눈 기록을 새로 세고, 0 · 1단계는 정상으로 (2 · 3단계는 서버가 유지).
     //   (11/12 팀장) 지금까지 앱이 /drive/start 를 한 번도 안 불러서 지난 운행의 1단계 · 기록이 이어졌음. 실패해도 운행은 시작 (ping 이 대신 시작함)
     if (widget.driveBuilder == null) {
@@ -240,13 +252,15 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     await DriveLog.start(); // (11/19) 운행 한 번의 시작 — 홈 리포트 '운행 1 · 운행 2' 를 나누는 기준
     if (!mounted) return;
-    AuthService.saveEyeThreshold(
-      t,
-    ).ignore(); // 앱을 껐다 켜고 [이어서 운행]으로 들어올 때 같은 기준을 쓰도록 폰에 저장
+    if (t != null) {
+      AuthService.saveEyeThreshold(
+        t,
+      ).ignore(); // 앱을 껐다 켜고 [이어서 운행]으로 들어올 때 같은 기준을 쓰도록 폰에 저장
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) =>
-            (widget.driveBuilder ?? (t) => DriveScreen(threshold: t))(t),
+            (widget.driveBuilder != null && t != null) ? widget.driveBuilder!(t) : DriveScreen(threshold: t),
       ),
     );
     if (mounted) _reload(); // 운행 중 새로 생긴 경고가 '최근 경고'에 바로 보이게
@@ -318,7 +332,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? _ResumeInCard(
                           state: st!,
                           onResume: () => _resumeDrive(st),
-                          onNew: _startDrive,
+                          onNew: () => _startDrive(skipCalibration: true), // (11/25) 새 운행은 눈 측정 없이
                         )
                       : null,
                 );
@@ -363,10 +377,11 @@ class _HomeScreenState extends State<HomeScreen> {
               if (events == null)
                 return const HomeEmptyCard(title: '최근 경고 불러오기는 준비 중이에요');
               // (11/17 사용자 요청) 경고가 하나도 없어도 숫자 칸(오늘 · 이번 주 · 긴급 0건)은 그대로 보여 준다
-              final now = DateTime.now();
+              final now = _homeDay ?? DateTime.now(); // (11/24 사용자 요청) 고른 날 (없으면 오늘)
               final dayStart = DateTime(now.year, now.month, now.day);
+              final dayEnd = dayStart.add(const Duration(days: 1));
               final weekStart = dayStart.subtract(Duration(days: now.weekday % 7)); // 일요일부터
-              bool fromDay(SleepEvent e) => !e.createdAt.toLocal().isBefore(dayStart);
+              bool fromDay(SleepEvent e) => !e.createdAt.toLocal().isBefore(dayStart) && e.createdAt.toLocal().isBefore(dayEnd);
               bool fromWeek(SleepEvent e) => !e.createdAt.toLocal().isBefore(weekStart);
               final todayN = events.where(fromDay).length;
               var weekN = events.where(fromWeek).length;
@@ -376,7 +391,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 builder: (context, spanSnap) {
                   // (11/19 사용자 요청) 경고를 '운행 한 번'(운행 시작 ~ 운행 종료) 씩 묶어서 보여 줌
                   final all = groupDrives(events, spanSnap.data ?? const []);
-                  bool inToday(DriveGroup g) => !g.last.isBefore(dayStart);
+                  bool inToday(DriveGroup g) => !g.last.isBefore(dayStart) && g.start.isBefore(dayEnd);
                   bool inWeek(DriveGroup g) => !g.last.isBefore(weekStart);
                   // (11/23 사용자 요청) 모두 최신이 맨 위 (시작 시각 기준으로 확실히 정렬)
                   int latest(DriveGroup a, DriveGroup b) => b.last.compareTo(a.last);
@@ -421,6 +436,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       padding: EdgeInsets.only(top: 12, left: 6), // (11/24 사용자 요청) 카드 시작선에서 아주 조금 안쪽
                       child: Text('› 를 누르면 AI 분석 보고서를 볼 수 있어요', style: TextStyle(fontSize: 13.5, color: AppColors.textMuted)),
                     ),
+                    // (11/25 사용자 요청 · 슈퍼SOL 맨 아래처럼) 방패 + 졸음가드 · 개인정보 처리방침 · 사용 가이드
+                    const SizedBox(height: 40),
+                    const AppFooter(),
                   ]);
                 },
               );
@@ -442,13 +460,20 @@ class _HomeScreenState extends State<HomeScreen> {
                         // (11/23 사용자 요청) 보내 준 사진 — 오늘 · 이번 주 · 긴급 숫자 칸 + 고른 칸 밑줄
                         StatTabs(
                           selected: _tab,
-                          onSelect: (i) => setState(() {
-                            _tab = i;
-                            _expanded = false;
-                          }),
+                          onSelect: (i) {
+                            // (11/24 사용자 요청) 날짜 칸을 한 번 더 누르면 가운데 바퀴 창 (년 · 월 · 일) · 바깥 누르면 닫힘
+                            if (i == 0 && _tab == 0) {
+                              showWheelPopup(context, initial: now, withDay: true, onChanged: (d) => setState(() => _homeDay = d));
+                              return;
+                            }
+                            setState(() {
+                              _tab = i;
+                              _expanded = false;
+                            });
+                          },
                           items: [
-                            // (11/23 사용자 요청) 숫자 없이 제목만
-                            StatItem('${now.month}/${now.day}', '', ''),
+                            // (11/23 사용자 요청) 숫자 없이 제목만 · (11/24) ▾ = 날짜 고르기
+                            StatItem('${now.month}/${now.day}', '', '', dropdown: true),
                             const StatItem('총 운행 시간', '', ''),
                             const StatItem('휴식', '', ''),
                           ],
@@ -861,9 +886,9 @@ class _OldResumeInCard extends StatelessWidget {
           ? '충분히 쉬었어요\n[운행 재개]를 눌러 주세요'
           : '쉬는 중이에요 (약 $min분 남음)';
     }
-    if (state.stage >= 3) return '관리자가 조치하기 전까지 3단계가 이어져요.';
-    if (state.stage == 2) return '쉬어야 2단계가 풀려요.';
-    return '운행 중이던 상태 그대로 이어서 운행해요.';
+    if (state.stage >= 3) return '관리자가 조치하기 전까지 3단계가 이어져요';
+    if (state.stage == 2) return '쉬어야 2단계가 풀려요';
+    return '운행 중이던 상태 그대로 이어서 운행해요';
   }
 
   // (11/16 팀장) 남색 카드 안의 흰 상자 — 바꾸기 전 배너 모양 그대로 (흰 바탕 · 단계 색 테두리) + 남색 [이어서 운행]

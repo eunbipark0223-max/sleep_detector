@@ -87,7 +87,7 @@ class _MonthReportState extends State<MonthReport> {
             faceSize: 70, // (11/24 사용자 요청) 두 줄 글 높이에 맞게
             labelWidget: GestureDetector(
               // (11/24 사용자 요청 · 아이폰 사진) 누르면 카드 아래에 흰 바탕 년 · 월 바퀴 (다시 누르면 접힘)
-              onTap: () => setState(() => _picking = !_picking),
+              onTap: () => showWheelPopup(context, initial: now, onChanged: (m) => setState(() => _sel = m)), // (11/24) 가운데 바퀴 창 · 바깥 누르면 닫힘
               behavior: HitTestBehavior.opaque,
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Text('${now.month}월', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppleGray.label)),
@@ -107,21 +107,14 @@ class _MonthReportState extends State<MonthReport> {
               const SizedBox(height: 8),
               Text(
                 prev == 0 && mine.isEmpty
-                    ? '아직 기록이 없어요.'
+                    ? '아직 기록이 없어요'
                     : diff == 0
-                        ? '지난달과 같아요.'
+                        ? '지난달과 같아요'
                         : '지난달보다 ${diff.abs()}건 ${diff < 0 ? '줄었어요' : '늘었어요'}.',
                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xCC1C2033)),
               ),
             ]),
           ),
-          if (_picking) ...[
-            const SizedBox(height: 10),
-            WebCard(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: MonthWheel(initial: now, onChanged: (m) => setState(() => _sel = m)),
-            ),
-          ],
           const SizedBox(height: 12),
           // ② 숫자 칸 4개 (2 x 2)
           Row(children: [

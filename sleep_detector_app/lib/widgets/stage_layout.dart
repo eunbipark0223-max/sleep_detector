@@ -173,7 +173,7 @@ class StageMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = stage.clamp(0, 3);
-    final lines = titleLines(text).take(2).toList();
+    final lines = titleLines(text).take(2).map((l) => l.replaceAll(RegExp(r'[.。]\s*$'), '')).toList(); // (11/24) 마침표 없음
     // (11/23 사용자 요청) 운행 화면 카드도 처음 홈 카드처럼 — 단색 카드는 캐릭터가 안 보여서
     //   흰색 → 아주 연한 단계 색 · 얇은 테두리 / 왼쪽 위 상태 알약 · 큰 글 / 오른쪽 캐릭터
     final c = AppIllust.stageSolid[s]; // (11/23 사용자 요청) 0단계는 초록 (3단계 빨강처럼)
@@ -255,6 +255,13 @@ class _CardChip extends StatelessWidget {
         ]),
       );
 }
+
+/// (11/25 사용자 요청) 2 · 3단계 [쉼터 안내 | 정차했어요] — 남는 자리를 써서 더 크게
+ButtonStyle stageButtonBig(String kind) => stageButton(kind).copyWith(
+      minimumSize: const WidgetStatePropertyAll(Size.fromHeight(68)),
+      textStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
+      iconSize: const WidgetStatePropertyAll(24),
+    );
 
 /// 운행 · 경고 화면 큰 버튼 (readdy) — kind: 'white'(흰 반투명 + 남색 글) · 'navy'(남색 꽉 참)
 ButtonStyle stageButton(String kind, {double height = AppSize.button}) => FilledButton.styleFrom(

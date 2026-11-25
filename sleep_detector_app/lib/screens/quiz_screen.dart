@@ -191,7 +191,9 @@ class _QuizScreenState extends State<QuizScreen> {
                     color: Colors.white,
                     boxShadow: AppShadow.card,
                   ),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 10), // (11/24 사용자 요청) 캐릭터 · 문장 조금 오른쪽으로
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
                       const Buddy(stage: 2, size: 30, breathe: false), // (11/23 사용자 요청) 2단계 주황
                       const SizedBox(width: 10),
@@ -214,6 +216,7 @@ class _QuizScreenState extends State<QuizScreen> {
                       ),
                     ],
                   ]),
+                  ),
                 ),
                 const Spacer(),
                 // 마이크 (듣는 중이면 물결)
@@ -222,14 +225,14 @@ class _QuizScreenState extends State<QuizScreen> {
                 // (11/24 사용자 요청) 남색 점 + '듣는 중' — 카드 안 '크게 말하세요' 와 같은 시작선 · '들은 글자' 칸은 뺌 (결과는 이 줄에)
                 SizedBox(
                   height: 30,
-                  child: (listening || _message.isNotEmpty)
+                  child: listening
                       ? Padding(
-                          padding: const EdgeInsets.only(left: 20),
+                          padding: const EdgeInsets.only(left: 30), // (11/24) 카드 안 캐릭터와 같은 시작선
                           child: Row(children: [
                             Container(width: 9, height: 9, decoration: const BoxDecoration(color: AppColors.navy, shape: BoxShape.circle)),
                             const SizedBox(width: 8),
                             Flexible(
-                              child: Text(listening ? (again ? '다시 한번 말씀해 주세요' : '듣는 중') : _message,
+                              child: Text(again ? '다시 한번 말씀해 주세요' : '듣는 중',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: AppType.headline.copyWith(color: AppColors.textPrimary)),
@@ -239,6 +242,26 @@ class _QuizScreenState extends State<QuizScreen> {
                       : null,
                 ),
                 const Spacer(),
+                // 들은 글자 · 결과 (11/24 사용자 요청으로 다시 넣음)
+                // (11/24 사용자 요청) 조금 위로 · 크게
+                Container(
+                  constraints: const BoxConstraints(minHeight: 110),
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(AppRadius.card), boxShadow: AppShadow.card),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_message.isNotEmpty ? '결과' : '들은 문장', // (11/24 사용자 요청) '들은 글자' → '들은 문장'
+                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                      const SizedBox(height: 8),
+                      Text(
+                        _message.isNotEmpty ? _message : (_heard.isEmpty ? '…' : _heard),
+                        style: const TextStyle(fontSize: 24, height: 1.35, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 28), // (11/24) 아래 여백 — 칸을 조금 위로
               ],
             ),
           ),

@@ -202,15 +202,7 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
           AuthButton(text: '로그인', onPressed: _loginWithEmail),
           const SizedBox(height: 6),
           _findRow(), // 이메일 찾기 | 비밀번호 찾기
-          const SizedBox(height: 6),
-          _divider(), // 또는
-          const SizedBox(height: 14),
-          AuthButton(
-            text: 'Google로 계속하기',
-            primary: false,
-            onPressed: _signInWithGoogle,
-            leading: const GoogleLogo(size: 20), // 구글 공식 G 로고 (관리자 웹과 같게)
-          ),
+          // (11/25 사용자 요청) 구글 로그인 뺌 — 회사 사번으로 가입하는 앱이라 맞지 않음
         ],
       ],
     );

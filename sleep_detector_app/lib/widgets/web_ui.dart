@@ -8,6 +8,7 @@
 //   - WebHeader   : 위 머리줄 [로고] 졸음가드 · ● LIVE
 //   - TimelineRow : 시각 | 단계 색 세로 막대 | 제목 · 단계 (경고 기록 한 줄)
 // ═══════════════════════════════════════════════════════════════
+import 'package:flutter/cupertino.dart' show CupertinoAlertDialog, CupertinoDialogAction;
 import 'package:flutter/material.dart';
 
 import 'owl_says.dart' show keepWords;
@@ -87,7 +88,7 @@ class StageBadge extends StatelessWidget {
 }
 
 /// (11/18 사용자 요청) 화면 글자에는 마침표를 쓰지 않는다 — 서버가 준 문장(AI 분석 · 안내)도 화면에 보일 때
-///   끝 마침표는 지우고, 문장이 여러 개면 줄을 바꾼다. "A 했어요. B 해 주세요." → "A 했어요\nB 해 주세요"
+///   끝 마침표는 지우고, 문장이 여러 개면 줄을 바꾼다. "A 했어요. B 해 주세요" → "A 했어요\nB 해 주세요"
 String noDot(String text) => text
     .trim()
     .replaceAll(RegExp(r'\.\s+'), '\n')
@@ -140,7 +141,8 @@ class StatItem {
   final String value;
   final String unit;
   final bool alert; // 빨간 숫자
-  const StatItem(this.label, this.value, this.unit, {this.alert = false});
+  final bool dropdown; // (11/24) 옆에 달력과 같은 ⌄ 아이콘 (눌러서 날짜 고르기)
+  const StatItem(this.label, this.value, this.unit, {this.alert = false, this.dropdown = false});
 }
 
 /// 숫자 칸 여러 개 + 누른 칸 아래 남색 밑줄 (관리자 웹 홈)
@@ -183,13 +185,20 @@ class StatTabs extends StatelessWidget {
               // (11/18 피드백) 오늘 · 이번 주 · 긴급 — 칸 가운데 정렬
               child: items[i].value.isEmpty
                   // (11/23 사용자 요청) 숫자 없이 제목만 — 고른 칸은 진하게
-                  ? Text(items[i].label,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppType.subheadline.copyWith(
-                          fontWeight: i == selected ? FontWeight.w700 : FontWeight.w500,
-                          color: i == selected ? AppColors.textPrimary : AppColors.textSecondary))
+                  ? Row(mainAxisAlignment: MainAxisAlignment.center, mainAxisSize: MainAxisSize.min, children: [
+                      Flexible(
+                        child: Text(items[i].label,
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppType.subheadline.copyWith(
+                                fontWeight: i == selected ? FontWeight.w700 : FontWeight.w500,
+                                color: i == selected ? AppColors.textPrimary : AppColors.textSecondary)),
+                      ),
+                      // (11/24 사용자 요청) 운행 기록 달력 제목과 같은 ⌄ 아이콘 · 색은 옆 글자와 같게
+                      if (items[i].dropdown)
+                        Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: i == selected ? AppColors.textPrimary : AppColors.textSecondary),
+                    ])
                   : Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
                 Text(items[i].label,
                     maxLines: 1,
@@ -338,4 +347,34 @@ class TimelineRow extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// (11/24 사용자 요청) 앱의 모든 확인 창 = '정차하셨나요?' 창과 같은 아이폰 알림창
+///   가운데 제목(20 · 굵게) · 회색 설명 · 아래 [왼쪽 회색 | 오른쪽 남색 굵게]
+Future<bool> showAppConfirm(BuildContext context, {required String title, required String body, String cancel = '취소', required String ok, bool danger = false}) async {
+  final yes = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => CupertinoAlertDialog(
+      title: Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+      ),
+      content: Text(body, style: const TextStyle(fontSize: 15, height: 1.45, color: AppColors.textSecondary)),
+      actions: [
+        CupertinoDialogAction(
+          onPressed: () => Navigator.pop(ctx, false),
+          textStyle: const TextStyle(fontSize: 18, color: AppColors.textSecondary),
+          child: Text(cancel),
+        ),
+        CupertinoDialogAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.pop(ctx, true),
+          textStyle: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: danger ? AppColors.danger : AppColors.navy),
+          child: Text(ok),
+        ),
+      ],
+    ),
+  );
+  return yes == true;
 }

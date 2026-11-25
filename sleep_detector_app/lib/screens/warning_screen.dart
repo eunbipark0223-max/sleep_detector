@@ -6,11 +6,11 @@
 //
 // [이 파일이 하는 일]
 //   - 단계별 색 · 내 얼굴(카메라) · 큰 글씨 한 줄 (11/18 2단계 [규정 보기] · 1 · 3단계 [규정 듣기] 모두 뺌 → 규정은 휴식 화면 · 경고 기록 상세 · 규정 도우미)
-//   - 2단계 순서 (11/18 팀장): 🔔 + 'OOO님, 쉼터에서 쉬어 가세요.' → 퀴즈 (필수, 버튼 꺼짐) → 통과하면 쉼터 한 줄 + [가까운 졸음쉼터 안내] · [정차했어요]
-//   - 소리 순서: 🔔 알람 → 서버 한 문장 driverVoice ('OOO님, 쉼터에서 쉬어 가세요.' / '… 지금 바로 정차하세요.', 없으면 stage_texts.dart 고정 문구) (11/17)
+//   - 2단계 순서 (11/18 팀장): 🔔 + 'OOO님, 쉼터에서 쉬어 가세요' → 퀴즈 (필수, 버튼 꺼짐) → 통과하면 쉼터 한 줄 + [가까운 졸음쉼터 안내] · [정차했어요]
+//   - 소리 순서: 🔔 알람 → 서버 한 문장 driverVoice ('OOO님, 쉼터에서 쉬어 가세요' / '… 지금 바로 정차하세요', 없으면 stage_texts.dart 고정 문구) (11/17)
 //   - 운전 중 음성 퀴즈 (부품 A): D 의 quiz_screen 을 띄우고, 돌려받은 단계로 색 갱신 (2번 실패면 한 단계 위 + 알람)
 //   - 같은 단계에서 또 졸면 알람 · 음성 보고 없이 낼 퀴즈만 (silent, 기획안 6-6)
-//   - 3단계: 관리자 조치완료 전까지 30초마다 알람 + 'OOO님, 지금 바로 정차하세요.' ('관리자에게 알렸어요' 는 화면 큰 글씨, 11/17)
+//   - 3단계: 관리자 조치완료 전까지 30초마다 알람 + 'OOO님, 지금 바로 정차하세요' ('관리자에게 알렸어요' 는 화면 큰 글씨, 11/17)
 //   - 졸음쉼터 안내 (B 의 rest_area_service): 자동으로 읽지 않음 (11/17) — 2단계 화면에 '📍 가까운 ○○ 졸음쉼터, ○○방향, 약 ○킬로미터' 한 줄
 //     + [가까운 졸음쉼터 듣기] → 다시 읽고 지도 화면 (새 창 없음, 3단계는 길안내를 먼저 권하지 않음, 30초 반복은 짧게 그대로)
 //   - 2단계 [정차했어요] → 확인 창 (음성 · 1분 뒤 저절로 취소) → rest_screen → [운행 재개] 뒤 운행 화면으로 복귀
@@ -56,7 +56,7 @@ Future<bool> confirmRest(BuildContext context) async {
   var open = true;
   Timer? autoClose;
   // (11/16 팀장) 휴식 시간은 서버 값(REST_WAIT_SEC)이라 앱에 '15분'을 박지 않음 — 시연 5초인데 15분이라고 말하던 것
-  VoiceService.speak('정차하셨나요? 휴식을 시작하면 쉬는 시간이 끝나야 운행을 다시 시작할 수 있어요.');
+  VoiceService.speak('정차하셨나요? 휴식을 시작하면 쉬는 시간이 끝나야 운행을 다시 시작할 수 있어요');
   final yes = await showDialog<bool>(
     context: context,
     builder: (ctx) {
@@ -126,6 +126,9 @@ Future<String?> nearRestVoice(double? lat, double? lng) async {
 /// [가까운 졸음쉼터 듣기] — 쉼터 문장을 다시 읽어 주고 B 의 지도 화면을 연다 (목록 · [길찾기] · 반대편 차로면 다른 쉼터)
 ///   새 창(길안내를 시작할까요?)은 만들지 않음 — 운전 중에 버튼 여러 개짜리 창을 보고 누르지 않게 (11/11 팀장)
 ///   (11/23 사용자 요청) 탭바의 쉼터 화면과 따로 — 운행용 큰 글씨 · 큰 버튼. 쉼터를 보는 동안은 졸음 감지를 쉰다 (pause)
+/// (11/24 사용자 요청) 쉼터 화면을 보는 중인지 — 이때 새 단계는 화면을 띄우지 않고 그 단계 안내 음성으로만
+final ValueNotifier<bool> shelterOpen = ValueNotifier<bool>(false);
+
 Future<void> listenRestMap(BuildContext context, Future<String?> voice, {ValueNotifier<bool>? pause}) async {
   final was = pause?.value ?? false;
   pause?.value = true; // 쉼터 보는 동안 졸음 판정 쉼
@@ -133,8 +136,10 @@ Future<void> listenRestMap(BuildContext context, Future<String?> voice, {ValueNo
     final v = await voice;
     if (!context.mounted) return;
     if (v != null) VoiceService.speak(v); // 기다리지 않음 — 읽는 동안 지도가 뜸
+    shelterOpen.value = true;
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MapScreen(driving: true)));
   } finally {
+    shelterOpen.value = false;
     if (!was) pause?.value = false; // 닫으면 다시 감지 (원래 쉬는 중이었으면 그대로)
   }
 }
@@ -339,7 +344,7 @@ class ServerCancelText extends StatelessWidget {
       builder: (_, on, _) => SafeArea(
         top: false,
         child: Visibility(
-          visible: on,
+          visible: false, // (11/24 사용자 요청) '졸음이 아닌 것으로 확인됐어요' 문구는 보이지 않게 (자리만 유지)
           maintainSize: true,
           maintainAnimation: true,
           maintainState: true,
@@ -505,7 +510,7 @@ class _WarningScreenState extends State<WarningScreen> {
       if (_wakePressed) return; // (11/24) 누른 뒤에는 울리지 않음
       await VoiceService.alarm();
       if (!mounted || _repeat == null || _wakePressed) return;
-      await VoiceService.speak('$_voiceName, 지금 바로 정차하세요.'); // (11/17 팀장) 이름 + 할 일만 ('관리자에게 알렸어요' 는 화면에)
+      await VoiceService.speak('$_voiceName, 지금 바로 정차하세요'); // (11/17 팀장) 이름 + 할 일만 ('관리자에게 알렸어요' 는 화면에)
     });
   }
 
@@ -520,7 +525,7 @@ class _WarningScreenState extends State<WarningScreen> {
     if (!widget.silent) {
       await VoiceService.alarm(); // 시작음
       if (!mounted || _flowStopped) return;
-      // (11/16 팀장) 음성은 Agent 한 문장 하나만 — "○○ 기사님, 10분 새 2번 졸았어요. 가까운 쉼터에서 쉬어 가세요." (약 4초)
+      // (11/16 팀장) 음성은 Agent 한 문장 하나만 — "○○ 기사님, 10분 새 2번 졸았어요. 가까운 쉼터에서 쉬어 가세요" (약 4초)
       //   고정 문구 + 음성 보고를 둘 다 읽던 것을 바꿈 (너무 길었음). 서버 문장이 없으면 고정 문구 (stage_texts.dart)
       final agentVoice = widget.response.driverVoice;
       await VoiceService.speak(agentVoice.isNotEmpty ? agentVoice : StageTexts.voice(_stage));
@@ -583,9 +588,9 @@ class _WarningScreenState extends State<WarningScreen> {
     });
     await VoiceService.alarm();
     if (!mounted || _wakePressed) return;
-    // (11/16) Agent 한 문장("○○ 기사님, 10분 새 3번 졸았어요. 지금 바로 정차하세요.") + 버튼 안내
+    // (11/16) Agent 한 문장("○○ 기사님, 10분 새 3번 졸았어요. 지금 바로 정차하세요") + 버튼 안내
     final agentVoice = widget.response.driverVoice;
-    await VoiceService.speak(agentVoice.isNotEmpty ? '$agentVoice 깨어 계시면 버튼을 눌러 주세요.' : '$_voiceName, 지금 바로 정차하세요. 깨어 계시면 버튼을 눌러 주세요.');
+    await VoiceService.speak(agentVoice.isNotEmpty ? '$agentVoice 깨어 계시면 버튼을 눌러 주세요' : '$_voiceName, 지금 바로 정차하세요. 깨어 계시면 버튼을 눌러 주세요');
     while (mounted && !_wakePressed && !_wakeTimedOut) {
       await VoiceService.alarm(); // 누를 때까지 강하게 반복
       await Future.delayed(const Duration(milliseconds: 600));
@@ -620,7 +625,7 @@ class _WarningScreenState extends State<WarningScreen> {
     widget.pauseDetect?.value = false;
     await VoiceService.stop();
     if (!mounted) return;
-    VoiceService.speak('확인했어요. 관리자가 확인하면 정상 화면으로 돌아가요.'); // (11/17 팀장) 버튼 글씨와 같은 말
+    VoiceService.speak('확인했어요. 관리자가 확인하면 정상 화면으로 돌아가요'); // (11/17 팀장) 버튼 글씨와 같은 말
   }
 
   // 2 · 3단계 — 가장 빨리 갈 수 있는 졸음쉼터 1곳 문장 미리 찾기 (알람이 울리는 동안)
@@ -640,7 +645,7 @@ class _WarningScreenState extends State<WarningScreen> {
 
   // 단계별 큰 글씨 — 운행 화면 · 홈 화면 · 음성과 같은 문구 (stage_texts.dart, 11/11)
   // (11/16 팀장) 말풍선 = 음성과 같은 Agent 문장 (이름만 빼고 문장마다 줄바꿈)
-  //   "김기사님, 10분 새 2번 졸았어요. 가까운 쉼터에서 쉬어 가세요." → "10분 새 2번 졸았어요.(줄바꿈)가까운 쉼터에서 쉬어 가세요."
+  //   "김기사님, 10분 새 2번 졸았어요. 가까운 쉼터에서 쉬어 가세요" → "10분 새 2번 졸았어요.(줄바꿈)가까운 쉼터에서 쉬어 가세요"
   //   서버 문장이 없거나, 화면을 연 뒤 단계가 바뀌었으면(관리자 해제 등) 고정 문구 (stage_texts.dart)
   // (11/17 팀장) 음성에서 부르는 이름 — 서버 문장 앞의 'OOO님' 을 그대로 씀 (없으면 '기사님')
   String get _voiceName =>
@@ -761,7 +766,7 @@ class _WarningScreenState extends State<WarningScreen> {
             // (11/19 사용자 요청) 위 제목('쉬어 가세요')은 빼고 작은 '● 운행 중' 만 — 단계 · 운전 시간은 아래 카드에
             camRatio: 0.57, // (11/24 사용자 요청) 카메라 더 크게 · 모든 운행 · 경고 화면 같은 크기 · // (11/23 사용자 요청) 카메라 크기는 운행 0단계와 무조건 같게
             actionsHeight: _stage >= 3 ? 100 : 76, // (11/24) 2단계 버튼은 나란히 한 줄 — 한 화면에 다 들어가게
-            header: DriveStatusStrip(stage: _stage, reportedAt: _stage >= 3 ? _openedAt : null), // (11/23) 관리자에게 알린 시각
+            header: DriveStatusStrip(stage: _stage, reportedAt: _stage >= 3 ? _openedAt : null, faceLost: widget.faceLost), // (11/23) 관리자에게 알린 시각
             headerInset: 0,
             gap: 28, // (11/24 사용자 요청) 카드 조금 더 아래로 · 모든 단계 같은 자리
             cameraOverlay: (widget.faceLost == null && widget.checking == null)
@@ -786,7 +791,8 @@ class _WarningScreenState extends State<WarningScreen> {
             // 버튼 — 아래 자리 고정. 그 단계에서 할 일만
             actions: [
               // 3단계: 아주 큰 [깨어 있어요] + 남은 시간
-              if (_stage >= 3 && driving) ...[
+              // (11/24 사용자 요청) 누르기 전 = 아주 큰 [깨어 있어요] 하나 / 누른 뒤 = 2단계처럼 [쉼터 안내 | 정차했어요] 나란히
+              if (_stage >= 3 && driving && !_wakePressed) ...[
                 SizedBox(
                   height: 94, // (11/23) 위 카드와 겹치지 않게 살짝 낮춤
                   child: ElevatedButton(
@@ -795,9 +801,9 @@ class _WarningScreenState extends State<WarningScreen> {
                     onPressed: _wakePressed ? _listenRest : _onWakePressed,
                     style: ElevatedButton.styleFrom(
                       // (11/23 리디자인_2) 위 빨간 카드와 겹치지 않게 진한 남색 단색 · 흰 글 — 화면에서 가장 강한 버튼
-                      backgroundColor: _wakePressed ? const Color(0xFF3E2716) : AppColors.navy, // (11/24 사용자 요청) 누른 뒤 [쉼터 안내] = 진한 갈색 (딥 브라운)
+                      backgroundColor: _wakePressed ? const Color(0xFF7A4A24) : AppColors.navy, // (11/24 사용자 요청) 누른 뒤 [쉼터 안내] = 진한 갈색 (딥 브라운)
                       foregroundColor: Colors.white,
-                      disabledBackgroundColor: const Color(0xFF3E2716),
+                      disabledBackgroundColor: const Color(0xFF7A4A24),
                       disabledForegroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.card)),
@@ -826,6 +832,28 @@ class _WarningScreenState extends State<WarningScreen> {
                   ),
                 ),
               ],
+              if (_stage >= 3 && driving && _wakePressed)
+                Row(children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _listenRest,
+                      style: stageButtonBig('navy'), // (11/25) 2단계와 똑같이 · 크게
+                      icon: const Icon(Icons.location_on_rounded, size: 22),
+                      label: const FittedBox(child: Text('쉼터 안내')),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        if (await confirmRest(context) && mounted) _goRest();
+                      },
+                      style: stageButtonBig('navy'),
+                      icon: const Icon(Icons.local_parking_rounded, size: 22),
+                      label: const FittedBox(child: Text('정차했어요')),
+                    ),
+                  ),
+                ]),
               // 2단계: 쉼터 안내 + 정차했어요 — 둘 다 퀴즈가 끝난 뒤 켜짐 (11/18 팀장: 퀴즈는 필수, 규정 보기는 뺌 → 휴식 화면)
               if (_stage == 2) ...[
                 // (11/16 R안) [가까운 졸음쉼터 안내] 흰 버튼 + [정차했어요] 남색 꽉 찬 버튼
@@ -834,7 +862,7 @@ class _WarningScreenState extends State<WarningScreen> {
                 Row(children: [
                 Expanded(child: FilledButton.icon(
                   onPressed: _voiceDone ? _listenRest : null,
-                  style: stageButton('navy'),
+                  style: stageButtonBig('navy'),
                   icon: const Icon(Icons.location_on_rounded, size: 22),
                   label: const FittedBox(child: Text('쉼터 안내')),
                 )),
@@ -845,7 +873,7 @@ class _WarningScreenState extends State<WarningScreen> {
                           if (await confirmRest(context) && mounted) _goRest();
                         }
                       : null,
-                  style: stageButton('navy'), // 이 단계에서 가장 중요한 행동
+                  style: stageButtonBig('navy'), // 이 단계에서 가장 중요한 행동
                   icon: const Icon(Icons.local_parking_rounded, size: 22), // (11/19) 애플 'P' 주차 표시
                   label: const FittedBox(child: Text('정차했어요')),
                 )),

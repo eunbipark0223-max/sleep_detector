@@ -38,6 +38,7 @@ import 'profile_screen.dart';
 import 'upload_screen.dart';
 import '../widgets/month_report.dart';
 import 'package:flutter/services.dart';
+import 'privacy_screen.dart' show AppFooter;
 
 // [사진 1장 테스트] 같은 개발용 메뉴를 보일지 (기본 숨김 — 팀장 11/11, 시연 · 측정 때 --dart-define=SHOW_DEV_TOOLS=true)
 const bool _showDevTools = bool.fromEnvironment('SHOW_DEV_TOOLS');
@@ -223,26 +224,7 @@ class _MainScreenState extends State<MainScreen> {
       _reloadName();
       return;
     }
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('로그아웃'),
-        content: const Text('로그아웃할까요?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              '로그아웃',
-              style: TextStyle(color: AppColors.danger),
-            ),
-          ),
-        ],
-      ),
-    );
+    final ok = await showAppConfirm(context, title: '로그아웃', body: '로그아웃할까요?', ok: '로그아웃', danger: true); // (11/24) 확인 창 모양 하나로
     if (ok != true) return;
     await AuthService.logout();
     if (!mounted) return;
@@ -364,6 +346,9 @@ class _MainScreenState extends State<MainScreen> {
         _myGroup([
           _myRow(onTap: () => _onMenu('logout'), icon: Icons.logout_rounded, title: '로그아웃', color: AppColors.navy, chevron: false),
         ]),
+        // (11/25 사용자 요청) 홈 · 운행 기록 · 내 정보와 같은 맨 아래 묶음
+        const SizedBox(height: 40),
+        const AppFooter(),
       ])))],
     ))),
 
@@ -429,7 +414,7 @@ class _MainScreenState extends State<MainScreen> {
     // (11/24 사용자 요청) 바탕 = 위에서 아래로 연한 파랑 그라데이션 (제목줄 · 내용 뒤 모두)
     return DecoratedBox(
       decoration: (_index == 3 || _index == _mapTab)
-          ? const BoxDecoration(color: Color(0xFFF9F5F1)) // (11/24 사용자 요청) 규정 도우미 탭은 처음 크림색
+          ? const BoxDecoration(color: Color(0xFFF9F5F1)) // (11/24 사용자 요청) 가까운 쉼터 · 규정 도우미 = 처음 크림색
           : const BoxDecoration(gradient: AppSol.pageGradient),
       child: Scaffold(
       backgroundColor: Colors.transparent,

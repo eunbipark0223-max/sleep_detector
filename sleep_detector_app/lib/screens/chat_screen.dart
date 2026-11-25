@@ -173,7 +173,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // ── 화면 (11/16 Figma 시안 '졸음운전 감지 앱5' 규정 도우미 — 디자인만. 서버 호출 · 대화 흐름은 위 그대로) ──
-  static const Color _bg = Color(0xFFF9F5F1); // (11/24 사용자 요청) 규정 도우미 바탕은 처음 크림색 그대로
+  static const Color _bg = Color(0xFFF9F5F1); // (11/24 사용자 요청) 규정 도우미는 처음 크림색으로 되돌림
 
   @override
   Widget build(BuildContext context) {
@@ -233,7 +233,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // 봇 말풍선 — 흰 화면 위 연회색 (왼쪽 위만 덜 둥글게 = 말풍선 꼬리 느낌)
   static const BoxDecoration _botBox = BoxDecoration(
-    color: AppColors.field,
+    color: const Color(0x0F1F2A5C), // (11/24) 운행 기록 맨 위 바탕 파랑
     borderRadius: BorderRadius.only(
       topLeft: Radius.circular(6),
       topRight: Radius.circular(20),
@@ -245,7 +245,7 @@ class _ChatScreenState extends State<ChatScreen> {
   // 빠른 질문 알약 — 흰 바탕 · 옅은 회색 테두리 · 남색 글자
   // (11/18 피드백 · 애플 토큰) 테두리 · 남색 없이 연한 회색 칸(systemGray6) + 검정 글자 · 작게 (입력칸과 같은 톤)
   Widget _quickPill(String q, {VoidCallback? onTap}) => Press(child: Material(
-        color: AppleGray.fill,
+        color: const Color(0x0F1F2A5C), // (11/24) 운행 기록 맨 위 바탕 파랑
         shape: const StadiumBorder(),
         child: InkWell(
           customBorder: const StadiumBorder(),
@@ -388,7 +388,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   hintText: '규정에 대해 물어보세요',
                   counterText: '',
                   filled: true,
-                  fillColor: AppColors.field, // 흰 화면 위 연회색 입력칸
+                  fillColor: const Color(0x0F1F2A5C), // (11/24) 운행 기록 맨 위 바탕 파랑
                   contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(999), borderSide: BorderSide.none),
                   enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(999), borderSide: BorderSide.none),

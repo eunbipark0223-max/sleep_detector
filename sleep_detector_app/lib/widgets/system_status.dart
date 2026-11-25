@@ -6,6 +6,7 @@
 //   - 실제로 확인하는 값만 보여 줌: 카메라 · 마이크 · 위치 권한 (휴대폰) / 관제 서버 연결 (운행 상태 요청 성공 여부)
 //   - 장치 연결 · 감지 작동 · 졸음 감지(단계) 는 서로 다른 상태라 따로 보여 줌
 // ═══════════════════════════════════════════════════════════════
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../design_tokens.dart';
@@ -138,7 +139,8 @@ class DriveStatusStrip extends StatelessWidget {
   final bool online;
   final int stage;
   final DateTime? reportedAt; // 3단계 — 관리자에게 알린 시각
-  const DriveStatusStrip({super.key, this.online = true, this.stage = 0, this.reportedAt});
+  final ValueListenable<bool>? faceLost; // (11/24 사용자 요청) 얼굴이 카메라 밖 · 감지 안 됨 → 눈 아이콘 빨강
+  const DriveStatusStrip({super.key, this.online = true, this.stage = 0, this.reportedAt, this.faceLost});
 
   static const _names = ['정상', '주의', '휴식 권고', '긴급'];
 
@@ -168,7 +170,12 @@ class DriveStatusStrip extends StatelessWidget {
           builder: (_, m, _) => _value(m == null ? '—' : DriveClock.label(m)),
         ),
       ),
-      cell(Icons.visibility_rounded, _value('감지 중'), iconColor: AppStatus.normal),
+      faceLost == null
+          ? cell(Icons.visibility_rounded, _value('감지 중'), iconColor: AppStatus.normal)
+          : ValueListenableBuilder<bool>(
+              valueListenable: faceLost!,
+              builder: (_, lost, _) => cell(Icons.visibility_rounded, _value('감지 중'), iconColor: lost ? AppStatus.danger : AppStatus.normal),
+            ),
       reportedAt != null
           ? cell(Icons.notifications_active_rounded, _value('관리자 알림 ${two(reportedAt!.hour)}:${two(reportedAt!.minute)}', color: AppStatus.danger),
               iconColor: AppStatus.danger)

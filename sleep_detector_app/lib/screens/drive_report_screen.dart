@@ -146,7 +146,7 @@ class _DriveReportScreenState extends State<DriveReportScreen> {
                           ]),
                         ),
                         const SizedBox(width: 10),
-                        const Buddy(stage: 2, size: 66, breathe: false), // (11/24 사용자 요청) 옆 두 줄 글 높이에 맞게
+                        const Buddy(stage: 2, size: 70, breathe: false), // (11/24 사용자 요청) 옆 두 줄 글 높이에 맞게 · 운행 기록 · MY 카드와 같은 크기
                       ]),
                     ]),
                   ),
