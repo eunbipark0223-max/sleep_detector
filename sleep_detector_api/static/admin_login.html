@@ -107,7 +107,9 @@ static/admin_login.html — 관리자 로그인 화면
             import('https://www.gstatic.com/firebasejs/' + FIREBASE_SDK + '/firebase-app.js'),
             import('https://www.gstatic.com/firebasejs/' + FIREBASE_SDK + '/firebase-auth.js')]);
           const app = initializeApp({ apiKey: cfg.apiKey, authDomain: cfg.authDomain, projectId: cfg.projectId, appId: cfg.appId || undefined });
-          const cred = await signInWithPopup(getAuth(app), new GoogleAuthProvider());
+          const provider = new GoogleAuthProvider();
+          provider.setCustomParameters({ prompt: 'select_account' });   // 늘 구글 계정 선택 창을 띄움 — 브라우저에 구글 계정이 하나만 로그인돼 있어도 다른 계정을 고를 수 있게 (11/23)
+          const cred = await signInWithPopup(getAuth(app), provider);
           const u = cred.user;
           profile = { email: u.email, name: u.displayName || String(u.email).split('@')[0], firebase_uid: u.uid, id_token: await u.getIdToken() };
         }
