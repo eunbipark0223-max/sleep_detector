@@ -696,6 +696,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
         _eye.reset(); // 퀴즈 동안 쌓인 눈 감김으로 바로 의심이 나지 않게
         if (newStage != null && newStage >= 3) {
           // 2번 실패로 3단계 → 3단계 경고 화면
+          _setStage(newStage); // (11/26) 운행 화면 단계도 3으로 (안 하면 다음 ping 까지 2단계로 남음)
           _showWarning(SleepResponse(
             isSleep: true,
             stage: newStage,

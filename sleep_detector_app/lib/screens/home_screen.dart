@@ -222,27 +222,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 측정 화면이 돌려주는 값: 기준 값(double) / null = 시작 전에 뒤로 가기 (운행을 시작하지 않는다)
   // 기준 값은 DriveScreen(threshold: t) 로 넘긴다 (측정을 건너뛰었으면 기본 기준이 들어 있다)
-  Future<void> _startDrive({bool skipCalibration = false}) async {
+  Future<void> _startDrive() async {
     // 카메라 · 마이크 · 위치 권한이 아직 없으면 시안의 안내창 → [계속] → 휴대폰 권한 창 (11/12 팀장)
     //   이미 다 허용했으면 안내창 없이 바로 측정 화면. 안내창을 닫으면 운행을 시작하지 않음
     if (!await _askPermissions()) return;
     if (!mounted) return;
-    // (11/25 사용자 요청) [새로운 운행 시작] 은 눈 기준 측정을 건너뜀 — 전에 저장한 내 눈 기준 (없으면 기본 기준)
-    // (11/25 사용자 요청) 눈 기준 측정은 처음 운행 때 한 번만 — 저장된 내 눈 기준이 있으면 건너뜀 (다시 재기는 내 정보에서)
-    final saved = await AuthService.getEyeThreshold();
-    if (!mounted) return;
-    final double? t;
-    if (skipCalibration || saved != null) {
-      t = saved;
-    } else {
-      t = await Navigator.of(context).push<double>(
-        MaterialPageRoute(
-          builder: (_) =>
-              (widget.calibrationBuilder ?? () => const CalibrationScreen())(),
-        ),
-      );
-      if (t == null || !mounted) return;
-    }
+    // (11/26 팀장) [운행 시작] · [새로운 운행 시작] 은 매번 눈 기준 측정 (그날 눈 상태 · 조명 · 안경에 맞춤)
+    //   [이어서 운행] 만 측정 없이 저장된 기준으로 (_resumeDrive). 내 정보에서 다시 재기도 그대로
+    final t = await Navigator.of(context).push<double>(
+      MaterialPageRoute(
+        builder: (_) =>
+            (widget.calibrationBuilder ?? () => const CalibrationScreen())(),
+      ),
+    );
+    if (t == null || !mounted) return;
     // 서버에 새 운행 시작을 알린다 — 연속 운전 시간 · 퀴즈 실패 수 · 반쯤 감은 눈 기록을 새로 세고, 0 · 1단계는 정상으로 (2 · 3단계는 서버가 유지).
     //   (11/12 팀장) 지금까지 앱이 /drive/start 를 한 번도 안 불러서 지난 운행의 1단계 · 기록이 이어졌음. 실패해도 운행은 시작 (ping 이 대신 시작함)
     if (widget.driveBuilder == null) {
@@ -253,15 +246,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     await DriveLog.start(); // (11/19) 운행 한 번의 시작 — 홈 리포트 '운행 1 · 운행 2' 를 나누는 기준
     if (!mounted) return;
-    if (t != null) {
-      AuthService.saveEyeThreshold(
-        t,
-      ).ignore(); // 앱을 껐다 켜고 [이어서 운행]으로 들어올 때 같은 기준을 쓰도록 폰에 저장
-    }
+    AuthService.saveEyeThreshold(
+      t,
+    ).ignore(); // 앱을 껐다 켜고 [이어서 운행]으로 들어올 때 같은 기준을 쓰도록 폰에 저장
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) =>
-            (widget.driveBuilder != null && t != null) ? widget.driveBuilder!(t) : DriveScreen(threshold: t),
+            widget.driveBuilder != null ? widget.driveBuilder!(t) : DriveScreen(threshold: t),
       ),
     );
     if (mounted) _reload(); // 운행 중 새로 생긴 경고가 '최근 경고'에 바로 보이게
@@ -333,7 +324,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? _ResumeInCard(
                           state: st!,
                           onResume: () => _resumeDrive(st),
-                          onNew: () => _startDrive(skipCalibration: true), // (11/25) 새 운행은 눈 측정 없이
+                          onNew: _startDrive, // (11/26 팀장) 새 운행도 눈 측정부터
                         )
                       : null,
                 );
