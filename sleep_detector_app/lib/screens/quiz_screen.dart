@@ -227,7 +227,7 @@ class _QuizScreenState extends State<QuizScreen> {
                   height: 30,
                   child: listening
                       ? Padding(
-                          padding: const EdgeInsets.only(left: 30), // (11/24) 카드 안 캐릭터와 같은 시작선
+                          padding: EdgeInsets.zero, // (11/25 사용자 요청) 아래 '들은 문장' 네모와 같은 시작선
                           child: Row(children: [
                             Container(width: 9, height: 9, decoration: const BoxDecoration(color: AppColors.navy, shape: BoxShape.circle)),
                             const SizedBox(width: 8),

@@ -139,7 +139,7 @@ class _DriveReportScreenState extends State<DriveReportScreen> {
                             FittedBox(
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.centerLeft,
-                              child: Text('$_callName.',
+                              child: Text(_callName, // (11/25) 문장 끝 마침표 없앰
                                   maxLines: 1,
                                   style: const TextStyle(fontSize: 24, height: 1.25, fontWeight: FontWeight.w700, letterSpacing: -0.7, color: AppColors.textPrimary)),
                             ),

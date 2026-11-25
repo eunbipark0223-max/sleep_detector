@@ -188,10 +188,8 @@ class StageMessage extends StatelessWidget {
         color: Colors.white,
         boxShadow: AppShadow.card,
       ),
-      child: Row(children: [
-        Expanded(
-          // (11/24 사용자 요청) 단계 알약은 카드 맨 위 · 큰 글은 남은 칸 가운데 (시작선은 알약과 같게)
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // (11/25 사용자 요청) 캐릭터를 큰 글 두 줄 바로 옆에 — 캐릭터 세로 길이 = 두 줄 높이, 두 줄과 같은 가운데
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(
               padding: const EdgeInsets.fromLTRB(9, 2, 11, 2), // (11/24 사용자 요청) 세로 조금 줄임
               decoration: BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.pill)),
@@ -204,14 +202,23 @@ class StageMessage extends StatelessWidget {
             ),
             Expanded(
               child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                for (final (i, line) in lines.indexed) ...[
-                  if (i > 0) const SizedBox(height: 4), // 줄 사이 한 칸
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(line, maxLines: 1, softWrap: false, style: title),
+                Row(children: [
+                  Flexible(
+                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      for (final (i, line) in lines.indexed) ...[
+                        if (i > 0) const SizedBox(height: 4), // 줄 사이 한 칸
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(line, maxLines: 1, softWrap: false, style: title),
+                        ),
+                      ],
+                    ]),
                   ),
-                ],
+                  const SizedBox(width: 12),
+                  // 두 줄 높이 = 22 × 1.3 × 2 + 줄 사이 4 ≈ 61
+                  Buddy(stage: s, size: 61, breathe: s > 0, alert: true),
+                ]),
                 if (sub != null) ...[
                   const SizedBox(height: 6),
                   Row(children: [
@@ -229,10 +236,6 @@ class StageMessage extends StatelessWidget {
               ]),
             ),
           ]),
-        ),
-        const SizedBox(width: 12),
-        Buddy(stage: s, size: 64, breathe: s > 0, alert: true),
-      ]),
     );
   }
 }

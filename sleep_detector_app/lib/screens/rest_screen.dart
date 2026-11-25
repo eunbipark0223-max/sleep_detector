@@ -267,12 +267,14 @@ class _RestScreenState extends State<RestScreen> {
         Widget row(String label, String value, {VoidCallback? onTap}) => InkWell(
               onTap: onTap,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 15, 20, 15), // (11/24 사용자 요청) 오른쪽 값 끝 = 줄 구분선 끝선
+                padding: const EdgeInsets.fromLTRB(20, 11, 20, 11), // (11/25 사용자 요청) 줄 네모를 조금 작게 · 오른쪽 끝 = 줄 구분선 끝선
                 child: Row(children: [
                   Text(label, style: const TextStyle(fontSize: 15.5, color: AppColors.textSecondary)),
                   const Spacer(),
                   Text(value, style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary, fontFeatures: [FontFeature.tabularFigures()])),
-                  if (onTap != null) ...[const SizedBox(width: 4), const Icon(Icons.chevron_right_rounded, size: 20, color: AppleGray.chevron)],
+                  // (11/25 사용자 요청) '보기' 글자 끝 = 위 시각 글자 끝 — 모든 줄 오른쪽에 같은 › 자리 (› 없는 줄은 빈칸)
+                  const SizedBox(width: 4),
+                  SizedBox(width: 20, child: onTap != null ? const Icon(Icons.chevron_right_rounded, size: 20, color: AppleGray.chevron) : null),
                 ]),
               ),
             );
