@@ -18,6 +18,7 @@ import 'find_account_screens.dart';
 import 'main_screen.dart';
 import 'signup_screen.dart';
 import '../widgets/auth_ui.dart';
+import '../widgets/google_logo.dart';
 import '../theme.dart';
 
 // StatefulWidget - 클래스가 두개
@@ -38,6 +39,7 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
   bool _isLoading = false;
   bool _autoLogin = true; // (11/18 피드백) 자동 로그인 체크 (기본 켬)
   // (11/17 사용자 요청) 구글 계정 고르기 창이 떠 있는 동안 뒤 화면은 그냥 흰색 (입력칸 · 버튼 숨김)
+  bool _googleOpen = false;
   String? _error;
 
   @override
@@ -110,6 +112,22 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('비밀번호를 바꿨어요\n새 비밀번호로 로그인해 주세요')));
   }
 
+  // 구글 로그인 (Firebase → 서버 JWT)
+  Future<void> _signInWithGoogle() async {
+    setState(() {_isLoading = true; _googleOpen = true; _error = null;});
+    try {
+      // 구글 로그인 3단계 (구글 계정 선택 → Firebase 확인 → 서버 JWT 저장)는
+      // D 의 AuthService.loginWithGoogle() 이 한 번에 처리한다 (google_sign_in 7 의 initialize 포함) — 10/15 팀장
+      await AuthService.loginWithGoogle();
+      if (mounted) _goHome();
+    } on GoogleCanceled {
+      // (11/17 사용자 요청) 창을 닫은 건 오류가 아님 — 아무 문구도 띄우지 않는다
+    } catch (e) { // 실패 메시지는 AuthService 가 한국어로 만들어 준다
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() {_isLoading = false; _googleOpen = false;});
+    }
+  }
 
   // ── 화면 (Figma 시안: 로고 · 인사 · 아이콘 입력칸 · 큰 버튼, 디자인만 바꿈 — 기능은 위 함수 그대로) ──
   @override
@@ -117,7 +135,7 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
     // (11/17 사용자 요청) 화면 전체 흰색 · 카드 없음 · 로고 자리 → 입력칸 → 버튼 → 회원가입 (제목 · 배지 · 권한 안내 글 없음)
     return Scaffold(
       backgroundColor: AuthUi.page,
-      body: SafeArea(
+      body: _googleOpen ? const SizedBox.expand() : SafeArea(
         child: Center(
           child: SingleChildScrollView( // 키보드가 올라와도 아래 버튼까지 스크롤해서 볼 수 있다
             padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
@@ -183,7 +201,16 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
           AuthButton(text: '로그인', onPressed: _loginWithEmail),
           const SizedBox(height: 6),
           _findRow(), // 이메일 찾기 | 비밀번호 찾기
-          // (11/25 사용자 요청) 구글 로그인 뺌 — 회사 사번으로 가입하는 앱이라 맞지 않음
+          const SizedBox(height: 6),
+          // (11/25 팀장) 구글 로그인 다시 살림 — 구글로 처음 들어온 기사는 main_screen 에서 전화번호 · 차량번호 입력 창(contact_dialog)이 뜸
+          _divider(), // 또는
+          const SizedBox(height: 14),
+          AuthButton(
+            text: 'Google로 계속하기',
+            primary: false,
+            onPressed: _signInWithGoogle,
+            leading: const GoogleLogo(size: 20), // 구글 공식 G 로고 (관리자 웹과 같게)
+          ),
         ],
       ],
     );
@@ -236,4 +263,14 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
     ]);
   }
 
+  Widget _divider() => Row(
+    children: [
+      const Expanded(child: Divider(color: AppColors.fill)),
+      const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12),
+        child: Text('또는', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+      ),
+      const Expanded(child: Divider(color: AppColors.fill)),
+    ],
+  );
 }

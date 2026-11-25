@@ -775,6 +775,8 @@ def update_me(body: ProfileUpdate, user: dict = Depends(current_user)):
         user["phone"] = body.phone or None
     if "vehicle_no" in body.model_fields_set and body.vehicle_no is not None:
         user["vehicle_no"] = body.vehicle_no or None
+    if "emp_no" in body.model_fields_set and (body.emp_no or "").strip() and not user.get("emp_no"):
+        user["emp_no"] = body.emp_no.strip().upper()   # (11/25) 구글 기사 사번 — 연습 서버는 명단 확인 없이 저장
     return me(user)
 
 

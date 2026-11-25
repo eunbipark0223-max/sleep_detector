@@ -203,6 +203,8 @@ class ProfileUpdate(BaseModel):
     name      : Optional[str] = Field(None, max_length=50, description="이름 (관리자 설정 화면). 안 보내면 그대로, 빈 글자는 거절")
     phone     : Optional[str] = Field(None, max_length=30, description="전화번호 (예: 010-1234-5678). ''면 지움, 안 보내면 그대로")
     vehicle_no: Optional[str] = Field(None, max_length=30, description="차량번호 (예: 12가 3456). ''면 지움, 안 보내면 그대로")
+    # (11/25 팀장) 구글로 처음 들어온 기사의 사번 — 회사 명단에 있고 아직 안 쓰인 사번만, 한 번 넣으면 못 바꿈 (사번으로 가입한 계정은 이미 있음)
+    emp_no    : Optional[str] = Field(None, max_length=20, description="사번 (사번이 아직 없는 계정만 한 번). 안 보내면 그대로")
 
     @field_validator("name")
     def check_name(cls, value):

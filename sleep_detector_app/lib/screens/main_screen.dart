@@ -120,6 +120,7 @@ class _MainScreenState extends State<MainScreen> {
         phone: text('phone'),
         vehicleNo: text('vehicle_no'),
         required: true,
+        askEmpNo: ContactRules.missingEmpNo(user), // (11/25 팀장) 구글 기사는 사번도
       ),
     );
     if (!mounted) return;

@@ -328,12 +328,16 @@ def _me_dict(user: User) -> dict:
         "photo_url" : user.photo_url,
         "phone"     : user.phone,
         "vehicle_no": user.vehicle_no,
+        "emp_no"    : user.emp_no,          # (11/25) 구글로 들어온 기사에게 사번을 물을지 앱이 판단
         "created_at": user.created_at.isoformat() if user.created_at else None,
     }
 
 @router.get("/users/me", status_code=status.HTTP_200_OK)
 def get_me_handler(user: User = Depends(get_current_user)):
     return _me_dict(user)
+
+_emp_lock = threading.Lock()   # (11/25) 구글 기사 사번 등록 — 같은 사번을 두 사람이 동시에 넣지 못하게
+
 
 @router.patch("/users/me", status_code=status.HTTP_200_OK)
 def update_me_handler(
@@ -348,6 +352,20 @@ def update_me_handler(
         user.phone = body.phone or None
     if "vehicle_no" in body.model_fields_set and body.vehicle_no is not None:
         user.vehicle_no = body.vehicle_no or None
+    # (11/25 팀장) 구글로 처음 들어온 기사: 사번을 한 번 받음 — 명단에 있고 아직 안 쓰인 사번만 (가입 때와 같은 check_employee)
+    if "emp_no" in body.model_fields_set and (body.emp_no or "").strip():
+        no = employee_service.normalize_emp_no(body.emp_no)
+        if user.emp_no:
+            if user.emp_no != no:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="사번은 바꿀 수 없어요")
+        else:
+            with _emp_lock:                          # 같은 사번 동시 등록 막기
+                try:
+                    emp = employee_service.check_employee(session, no)
+                except employee_service.EmployeeError as e:
+                    raise HTTPException(status_code=e.status, detail=e.message)
+                user.emp_no = emp.emp_no
+                session.commit()
     session.commit()
     return _me_dict(user)
 

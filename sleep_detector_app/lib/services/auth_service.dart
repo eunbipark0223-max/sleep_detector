@@ -244,11 +244,12 @@ class AuthService {
   /// 내 전화번호 · 차량번호 저장 (관리자가 경고를 보고 바로 연락할 때 쓴다).
   /// 넘기지 않은(null) 칸은 그대로 두고, 빈 글자('')를 넘기면 서버가 지운다. 돌려받는 것은 바뀐 내 정보.
   /// 형식이 틀리면(422) 서버 문구가 AuthException 으로 온다 (예: '전화번호 형식이 올바르지 않아요 (예: 010-1234-5678)').
-  static Future<Map<String, dynamic>> updateProfile({String? phone, String? vehicleNo, String? name}) async {
+  static Future<Map<String, dynamic>> updateProfile({String? phone, String? vehicleNo, String? name, String? empNo}) async {
     final body = <String, dynamic>{
       'name': ?name, // (11/18) 내 정보에서 이름 바꾸기
       'phone': ?phone,
       'vehicle_no': ?vehicleNo,
+      'emp_no': ?empNo, // (11/25 팀장) 구글로 처음 들어온 기사의 사번 (한 번만, 서버가 명단 확인)
     };
     final res = await _send(() async => http.patch(_uri('/users/me'), headers: await authHeaders(), body: jsonEncode(body)));
     if (res.statusCode != 200) throw _error(res);
