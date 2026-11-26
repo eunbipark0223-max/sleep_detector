@@ -2,7 +2,6 @@
 // screens/rest_screen.dart — 휴식 화면 (15분 → 운행 재개 → 1단계)
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P0
-// 수업 원본: road_hazard_app/lib/screens/splash_screen.dart (타이머 · 화면 이동 모양, 🔴 신규)
 //
 // [이 파일이 하는 일]
 //   - startRest() → 15분 카운트다운 (눈 판정 멈춤, ping 은 계속) 🔊 '15분 쉬고 출발하세요'
@@ -39,14 +38,18 @@
 // ═══════════════════════════════════════════════════════════════
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart' show CupertinoAlertDialog, CupertinoDialogAction;
 import 'package:flutter/material.dart';
 
 import '../rest_regulations.dart';
 import '../services/api_service.dart';
 import '../services/voice_service.dart';
 import '../theme.dart';
-import '../widgets/web_ui.dart';
 import 'regulation_screen.dart';
+import '../widgets/buddy.dart';
+import '../widgets/auth_ui.dart';
+import '../design_tokens.dart';
+import '../widgets/owl_says.dart' show balancedLines;
 
 class RestScreen extends StatefulWidget {
   /// 휴식 시작 (POST /drive/rest). 서버 JSON 을 돌려준다.
@@ -154,6 +157,37 @@ class _RestScreenState extends State<RestScreen> {
     }
   }
 
+  // (11/23) [운행 종료] — 한 번 묻고 {'end': true} 를 돌려줌 (운행 화면이 운행 종료 · 리포트를 처리)
+  Future<void> _end() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      // (11/24 사용자 요청) 운행 화면 · '정차하셨나요?' 창과 같은 아이폰 알림창
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Padding(
+          padding: EdgeInsets.only(bottom: 4),
+          child: Text('운행을 끝낼까요?', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        ),
+        content: const Text('운행을 끝내면 졸음 감지가 멈춰요', style: TextStyle(fontSize: 15, height: 1.45, color: AppColors.textSecondary)),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(ctx, false),
+            textStyle: const TextStyle(fontSize: 18, color: AppColors.textSecondary),
+            child: const Text('계속 쉬기'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.pop(ctx, true),
+            textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.navy),
+            child: const Text('운행 종료'),
+          ),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+    _timer?.cancel();
+    Navigator.of(context).pop(<String, dynamic>{'end': true});
+  }
+
   // 소리 내기는 실패해도 화면 흐름을 막지 않는다
   Future<void> _say(String text) async {
     if (text.isEmpty) return;
@@ -175,9 +209,22 @@ class _RestScreenState extends State<RestScreen> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false, // 휴식 중에는 뒤로 가기로 나갈 수 없다 (나가는 길은 [운행 재개])
-      child: Scaffold(
-        appBar: AppBar(title: const Text('휴식'), automaticallyImplyLeading: false),
-        body: SafeArea(child: _body()),
+      // (11/24 사용자 요청) 앱 바탕 그라데이션 · 다른 탭과 같은 자리의 큰 제목
+      child: DecoratedBox(
+        decoration: const BoxDecoration(gradient: AppSol.pageGradient),
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            toolbarHeight: 68,
+            backgroundColor: Colors.transparent,
+            automaticallyImplyLeading: false,
+            titleSpacing: 16,
+            centerTitle: false,
+            // (11/24 사용자 요청) 다른 탭 제목과 같은 자리 (4픽셀 위로)
+            title: Transform.translate(offset: const Offset(0, -1.5), child: Text('휴식', style: AppType.title1.copyWith(color: AppColors.textPrimary))),
+          ),
+          body: SafeArea(child: _body()),
+        ),
       ),
     );
   }
@@ -205,44 +252,107 @@ class _RestScreenState extends State<RestScreen> {
         final done = _left == Duration.zero;
         final busy = _phase == _Phase.resuming;
         final progress = _totalSec == 0 ? 0.0 : 1 - _left.inSeconds / _totalSec;
-        return _Centered(children: [
-          // (11/11 C 초안) 컵 아이콘 대신 부엉이 — 쉬는 중 = 눈 감고 자는 초록 부엉이, 다 쉬었으면 = 엄지 척 초록 부엉이
-          const ImageSlot(label: '메인 캐릭터 이미지', width: 190, height: 190, radius: 24), // 쉬는 중 = 편하게 자는 초록 부엉이 (11/11 초안 그림)
-          const SizedBox(height: 12),
-          Text(done ? '충분히 쉬었어요' : '쉬는 중이에요', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-          if (_message.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(_message, style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-          ],
-          const SizedBox(height: 24),
-          Text(_clock, style: const TextStyle(fontSize: 56, fontWeight: FontWeight.w800, color: AppColors.textPrimary, fontFeatures: [FontFeature.tabularFigures()])),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(value: progress, minHeight: 10, color: AppColors.rest, backgroundColor: AppColors.cardBorder),
-          ),
-          const SizedBox(height: 24),
-          if (_error != null) ...[
-            Text(_error!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: AppColors.urgent)),
-            const SizedBox(height: 12),
-          ],
-          FilledButton(
-            onPressed: (done && !busy) ? _resume : null,
-            child: busy
-                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
-                : const Text('운행 재개'),
-          ),
-          if (!done) ...[
+        // (11/24 사용자 요청) 흰 카드 — 상태 알약 · '남은 휴식 시간' · 큰 숫자 · 둥근 막대 / 아래 상세 줄 카드 / 맨 아래 버튼
+        String hm(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+        final started = _startedAt;
+        final ready = started?.add(Duration(seconds: _totalSec));
+        final accent = done ? AppStatus.normal : AppColors.navy;
+        BoxDecoration card() => BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(AppRadius.card),
+              border: Border.all(color: AppColors.cardBorder),
+              boxShadow: AppShadow.card,
+            );
+        Widget row(String label, String value, {VoidCallback? onTap}) => InkWell(
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 11, 20, 11), // (11/25 사용자 요청) 줄 네모를 조금 작게 · 오른쪽 끝 = 줄 구분선 끝선
+                child: Row(children: [
+                  Text(label, style: const TextStyle(fontSize: 15.5, color: AppColors.textSecondary)),
+                  const Spacer(),
+                  Text(value, style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary, fontFeatures: [FontFeature.tabularFigures()])),
+                  // (11/25 사용자 요청) '보기' 글자 끝 = 위 시각 글자 끝 — 모든 줄 오른쪽에 같은 › 자리 (› 없는 줄은 빈칸)
+                  const SizedBox(width: 4),
+                  SizedBox(width: 20, child: onTap != null ? const Icon(Icons.chevron_right_rounded, size: 20, color: AppleGray.chevron) : null),
+                ]),
+              ),
+            );
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // ① 남은 시간 카드 (계좌 잔액 카드처럼)
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+              decoration: card(),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(9, 3, 11, 3),
+                    decoration: BoxDecoration(color: accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(AppRadius.pill)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Container(width: 6, height: 6, decoration: BoxDecoration(color: accent, shape: BoxShape.circle)),
+                      const SizedBox(width: 5),
+                      Text(done ? '휴식 완료' : '휴식 중', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: accent)),
+                    ]),
+                  ),
+                  const Spacer(),
+                  Buddy(stage: done ? 0 : 2, size: 40, breathe: false),
+                ]),
+                const SizedBox(height: 10),
+                Text(done ? '충분히 쉬었어요' : '남은 휴식 시간', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                const SizedBox(height: 2),
+                Text(_clock,
+                    style: const TextStyle(fontSize: 48, height: 1.1, fontWeight: FontWeight.w800, letterSpacing: -1.2,
+                        color: AppColors.textPrimary, fontFeatures: [FontFeature.tabularFigures()])),
+                const SizedBox(height: 14),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                  child: LinearProgressIndicator(value: progress, minHeight: 8, color: accent, backgroundColor: AppColors.field),
+                ),
+                if (_message.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  for (final line in balancedLines(_message, maxChars: 22)) // (11/24) 3단계 카드처럼 줄마다 한 줄
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(line, maxLines: 1, softWrap: false, style: const TextStyle(fontSize: 14.5, color: AppColors.textSecondary)),
+                    ),
+                ],
+              ]),
+            ),
+            const SizedBox(height: 24), // (11/24 사용자 요청) 상세 카드 조금 아래로
+            // ② 상세 줄 카드 (계좌 상세처럼)
+            Container(
+              decoration: card(),
+              clipBehavior: Clip.antiAlias,
+              child: Column(children: [
+                row('휴식 시작', started == null ? '—' : hm(started.toLocal())),
+                const Divider(height: 1, thickness: 1, indent: 20, endIndent: 20, color: AppColors.line),
+                row('다시 출발 가능', ready == null ? '—' : hm(ready.toLocal())),
+                const Divider(height: 1, thickness: 1, indent: 20, endIndent: 20, color: AppColors.line),
+                row('관련 규정', '보기', onTap: () => showRegulationSheet(context, RestRegulations.list)),
+              ]),
+            ),
+            const Spacer(),
+            if (_error != null) ...[
+              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: AppColors.urgent)),
+              const SizedBox(height: 12),
+            ],
+            if (!done) ...[
+              Text('휴식이 끝나면 [운행 재개]를 누를 수 있어요',
+                  textAlign: TextAlign.center, style: AppType.footnote.copyWith(color: AppColors.textMuted)),
+              const SizedBox(height: 10),
+            ],
+            AuthButton(
+              text: busy ? '재개하는 중' : '운행 재개',
+              onPressed: (done && !busy) ? _resume : null,
+              height: AppSize.button,
+              color: AppStatus.normal, // (11/23) [운행 종료] 와 구분되게 초록
+            ),
             const SizedBox(height: 10),
-            const Text('휴식 시간이 끝나면 [운행 재개]가 켜져요', style: TextStyle(fontSize: 13, color: AppColors.textMuted)),
-          ],
-          // (11/18 팀장) 규정은 경고 화면 대신 쉬는 동안 여기서
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: () => showRegulationSheet(context, RestRegulations.list),
-            child: const Text('관련 규정 보기 ›', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-          ),
-        ]);
+            AuthButton(text: '운행 종료', onPressed: busy ? null : _end, height: AppSize.button), // (11/23 사용자 요청) 늘 남색 · 흰 글
+          ]),
+        );
     }
   }
 }

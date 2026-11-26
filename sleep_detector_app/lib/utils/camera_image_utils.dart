@@ -2,7 +2,7 @@
 // utils/camera_image_utils.dart — 카메라 영상 변환 도우미
 // ═══════════════════════════════════════════════════════════════
 // 담당: A   |   우선: P0
-// 수업 원본: (없음, 🔴 신규) google_mlkit_commons 공식 예제
+// 참고: google_mlkit_commons 공식 예제
 //
 // [이 파일이 하는 일]
 //   - CameraImage → InputImage (ML Kit 에 넣는 모양). Android(nv21) 먼저, iOS(bgra8888) 는 나중

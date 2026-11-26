@@ -2,7 +2,6 @@
 # routers/admin.py — 관리자 웹용 API
 # ═══════════════════════════════════════════════════════════════
 # 담당: D   |   우선: P0 (통계는 P2)
-# 수업 원본: road_hazard_api/routers/admin.py (🟡 수정)
 #
 # [이 파일이 하는 일]
 #   - GET /admin/events — 졸음 경고 목록 (사진 · 위치 · 단계 · 보고서 · 상태)
@@ -18,7 +17,7 @@
 #   - get_road_address (카카오 주소 변환) 는 그대로 유지
 #
 # [연결 약속 — 다른 사람 파일의 이름. 다르면 아래 import 한 줄만 고친다]
-#   - database.orm.get_db · auth.jwt.get_current_user (수업 그대로 복사하는 파일)
+#   - database.orm.get_db · auth.jwt.get_current_user
 #   - models.models.User(id · email · name · role) · SleepEvent(기획안 칸 그대로)
 #   - require_admin 은 이 파일에 둠 (event.py 도 여기서 가져다 씀)
 #
@@ -64,7 +63,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 def require_admin(user: User = Depends(get_current_user)) -> User:
-    """관리자만 통과 (role 값 user / admin 은 수업 그대로)."""
+    """관리자만 통과 (role 값 user / admin)."""
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="관리자만 사용할 수 있습니다")
     return user

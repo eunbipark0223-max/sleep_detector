@@ -1,5 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
-// widgets/contact_dialog.dart — 전화번호 · 차량번호 입력 창 (내 정보 [수정] · 로그인 직후 필수 입력 공통)
+// widgets/contact_dialog.dart — 전화번호 · 차량번호 (· 사번) 입력 창 (내 정보 [수정] · 로그인 직후 필수 입력 공통)
+//   (11/25 팀장) 구글로 처음 들어온 기사는 사번도 받음 — 회사 명단에 있고 아직 안 쓰인 사번만 (서버 PATCH /users/me emp_no)
 // ═══════════════════════════════════════════════════════════════
 // 담당: 팀장   |   우선: P0 (11/12 D 요청 — 관리자 웹 [전화 걸기]로 긴급 기사에게 바로 연락)
 //
@@ -18,6 +19,7 @@ import '../services/auth_service.dart';
 import '../theme.dart';
 import '../utils/phone_format.dart';
 import 'auth_ui.dart';
+import '../design_tokens.dart';
 
 class ContactRules {
   ContactRules._();
@@ -33,13 +35,22 @@ class ContactRules {
   static String? checkVehicle(String? v) =>
       vehicleRule.hasMatch((v ?? '').trim()) ? null : '차량번호 형식이 올바르지 않아요';
 
+  // (11/25) 사번 — 빈칸만 막고, 명단에 있는지는 서버가 확인 (등록되지 않은 사번 · 이미 가입된 사번 문구를 그대로 보여 줌)
+  static String? checkEmpNo(String? v) =>
+      RegExp(r'^[0-9A-Za-z]{4,20}$').hasMatch((v ?? '').trim()) ? null : '사번을 입력해 주세요';
+
+  /// 구글 기사 계정인데 사번이 비어 있는지 (사번으로 가입한 계정은 이미 있음)
+  static bool missingEmpNo(Map<String, dynamic>? user) =>
+      user != null && user['role'] != 'admin' && (user['provider'] ?? '').toString() == 'google' &&
+      (user['emp_no'] ?? '').toString().trim().isEmpty;
+
   /// 구글로 로그인한 기사 계정인데 전화번호나 차량번호가 비어 있는지 (관리자 계정은 묻지 않음)
   ///   (11/17 사용자 요청) 이메일 가입은 회원가입 때 이미 받았으므로 구글 로그인 때만 묻는다
   static bool missing(Map<String, dynamic>? user) {
     if (user == null || user['role'] == 'admin') return false;
     if ((user['provider'] ?? '').toString() != 'google') return false;
     String text(String k) => (user[k] ?? '').toString().trim();
-    return text('phone').isEmpty || text('vehicle_no').isEmpty;
+    return text('phone').isEmpty || text('vehicle_no').isEmpty || text('emp_no').isEmpty; // (11/25) 사번도
   }
 }
 
@@ -50,13 +61,15 @@ class ContactDialog extends StatefulWidget {
   final String phone;
   final String vehicleNo;
   final bool required; // 로그인 직후 필수 입력 (닫기 · 뒤로 가기 없음)
-  final Future<Map<String, dynamic>> Function({String? phone, String? vehicleNo}) save;
+  final bool askEmpNo; // (11/25) 구글로 처음 들어온 기사 — 사번 칸도 보여 줌
+  final Future<Map<String, dynamic>> Function({String? phone, String? vehicleNo, String? empNo}) save;
 
   const ContactDialog({
     super.key,
     required this.phone,
     required this.vehicleNo,
     this.required = false,
+    this.askEmpNo = false,
     this.save = AuthService.updateProfile,
   });
 
@@ -68,6 +81,7 @@ class _ContactDialogState extends State<ContactDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _phone = TextEditingController(text: widget.phone);
   late final TextEditingController _vehicle = TextEditingController(text: widget.vehicleNo);
+  final TextEditingController _empNo = TextEditingController();
   bool _saving = false;
   String? _error;
 
@@ -75,6 +89,7 @@ class _ContactDialogState extends State<ContactDialog> {
   void dispose() {
     _phone.dispose();
     _vehicle.dispose();
+    _empNo.dispose();
     super.dispose();
   }
 
@@ -86,7 +101,8 @@ class _ContactDialogState extends State<ContactDialog> {
       _error = null;
     });
     try {
-      final result = await widget.save(phone: _phone.text.trim(), vehicleNo: _vehicle.text.trim());
+      final result = await widget.save(
+          phone: _phone.text.trim(), vehicleNo: _vehicle.text.trim(), empNo: widget.askEmpNo ? _empNo.text.trim() : null);
       if (!mounted) return;
       Navigator.of(context).pop(result);
     } on AuthException catch (e) {
@@ -99,7 +115,7 @@ class _ContactDialogState extends State<ContactDialog> {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _error = '저장하지 못했어요. 잠시 뒤 다시 시도해 주세요';
+        _error = '저장하지 못했어요\n잠시 뒤 다시 시도해 주세요';
       });
     }
   }
@@ -114,7 +130,7 @@ class _ContactDialogState extends State<ContactDialog> {
         backgroundColor: AppColors.card,
         surfaceTintColor: Colors.transparent,
         insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.card)),
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(22, 26, 22, 20),
           child: Form(
@@ -135,6 +151,22 @@ class _ContactDialogState extends State<ContactDialog> {
                       style: TextStyle(fontSize: 13.5, height: 1.5, color: AppColors.textSecondary)),
                 ],
                 const SizedBox(height: 20),
+                if (widget.askEmpNo) ...[
+                  // (11/25 팀장) 구글 기사 — 회사에서 받은 사번 (가입 화면의 사번과 같음)
+                  AuthField(
+                    label: '사번',
+                    controller: _empNo,
+                    hint: '회사에서 받은 사번',
+                    enabled: !_saving,
+                    keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.next,
+                    onChanged: (_) => setState(() {}),
+                    valid: _tri(_empNo.text, ContactRules.checkEmpNo(_empNo.text) == null),
+                    invalidNote: '사번을 입력해 주세요',
+                    validator: ContactRules.checkEmpNo,
+                  ),
+                  const SizedBox(height: 13),
+                ],
                 AuthField(
                   label: '전화번호',
                   controller: _phone,

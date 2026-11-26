@@ -15,7 +15,12 @@ import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
 import '../theme.dart';
+import '../widgets/auth_ui.dart';
 import '../widgets/web_ui.dart';
+import '../widgets/buddy.dart';
+import 'event_detail_screen.dart';
+import '../design_tokens.dart';
+import '../widgets/owl_says.dart' show keepWords;
 
 class DriveReportScreen extends StatefulWidget {
   final Map<String, dynamic> report;
@@ -65,8 +70,8 @@ class _DriveReportScreenState extends State<DriveReportScreen> {
     }
   }
 
-  static const Color _bg = Color(0xFFF8F9FC);
-  static const List<String> _stageNames = ['정상', '주의', '휴식 권고', '긴급'];
+  static const Color _bg = AppColors.background; // (11/18 피드백) 다른 화면과 같은 흰 바탕
+  static const double _side = 20; // 다른 탭과 같은 좌우 여백 (시작점 · 끝점)
 
   int _i(String k) => (report[k] is num) ? (report[k] as num).toInt() : 0;
   String _s(String k) => report[k] is String ? (report[k] as String).trim() : '';
@@ -79,6 +84,10 @@ class _DriveReportScreenState extends State<DriveReportScreen> {
     return mm == 0 ? '$h시간' : '$h시간 $mm분';
   }
 
+  // (11/18 피드백 · 애플 스타일) 흰 바탕 · 다른 탭과 같은 좌우 여백 20 · 내용이 길어지면 스크롤
+  //   ① 캐릭터(왼쪽 고정) | 세로선 | '○○님, 수고하셨어요' + 시간  ② 요약 글
+  //   ③ 운행 시간 · 졸음 · 휴식 — 카드 하나에 세로선으로 나눔  ④ 오늘 있었던 일  ⑤ 다음 운행 조언  ⑥ [확인했어요]
+  //   글은 마침표 없이 (noDot) · '부엉이 정리' 표시는 뺌
   @override
   Widget build(BuildContext context) {
     final timeline = (report['timeline'] is List ? report['timeline'] as List : const [])
@@ -86,126 +95,112 @@ class _DriveReportScreenState extends State<DriveReportScreen> {
         .map((e) => Map<String, dynamic>.from(e))
         .toList();
     final top = _i('max_stage').clamp(0, 3);
-    final range = [_s('started'), _s('ended')].where((x) => x.isNotEmpty).join(' ~ ');
+    final sleeps = _i('sleep_count');
 
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
         backgroundColor: _bg,
         surfaceTintColor: _bg,
-        foregroundColor: AppColors.textPrimary,
         elevation: 0,
         centerTitle: true,
-        automaticallyImplyLeading: false,
-        title: const Text('오늘 운행 리포트', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+        automaticallyImplyLeading: true, // (11/18 피드백) 다른 화면과 같은 '<' 뒤로 가기
+        title: const Text('오늘 운행 리포트'),
       ),
       body: SafeArea(
         child: Column(
           children: [
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(18, 4, 18, 16),
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(_side, 16, _side, 28), // (11/18) 위아래 넉넉하게
                 children: [
-                  // ① AI 요약 — 남색 카드 + 부엉이
+                  // ① (11/19 사용자 요청 · Headspace '오늘의 명상' 카드) 노랑 그라데이션 카드 · 오른쪽에 웃는 해 캐릭터
+                  //   위 작은 날짜 '11/19' · 아래 큰 글 '수고하셨어요 / 김기사 기사님' (운행 시각 줄은 뺌)
+                  // (11/23 사용자 요청) 글 끝 바로 옆에 캐릭터 · 두 줄 (줄 사이 한 칸 · 마지막에 마침표)
                   Container(
-                    padding: const EdgeInsets.fromLTRB(18, 16, 14, 18),
-                    decoration: BoxDecoration(color: AppColors.navy, borderRadius: BorderRadius.circular(20)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(999)),
-                              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                const Icon(Icons.auto_awesome, size: 14, color: Color(0xFFCFC3FF)),
-                                const SizedBox(width: 4),
-                                Text(report['is_real'] == true ? 'AI 부엉이 정리' : '부엉이 정리',
-                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white)),
-                              ]),
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(AppRadius.card),
+                      border: Border.all(color: AppleGray.separator),
+                      gradient: LinearGradient(colors: [Colors.white, AppIllust.softTint[2]]),
+                    ),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('${DateTime.now().month}/${DateTime.now().day}',
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                      const SizedBox(height: 10),
+                      Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                        Flexible(
+                          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            const Text('수고하셨어요',
+                                style: TextStyle(fontSize: 24, height: 1.25, fontWeight: FontWeight.w700, letterSpacing: -0.7, color: AppColors.textPrimary)),
+                            const SizedBox(height: 4),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(_callName, // (11/25) 문장 끝 마침표 없앰
+                                  maxLines: 1,
+                                  style: const TextStyle(fontSize: 24, height: 1.25, fontWeight: FontWeight.w700, letterSpacing: -0.7, color: AppColors.textPrimary)),
                             ),
-                            const Spacer(),
-                            if (range.isNotEmpty)
-                              Text(range, style: const TextStyle(fontSize: 13, color: Color(0xFFBEC8E9))),
-                          ],
+                          ]),
                         ),
-                        const SizedBox(height: 12),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('${_s('name').isEmpty ? '기사님' : _s('name')}, 수고하셨어요',
-                                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.white)),
-                                  const SizedBox(height: 8),
-                                  Text(_s('summary'),
-                                      style: const TextStyle(fontSize: 16, height: 1.5, color: Color(0xFFE6EAF7))),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            const ImageSlot(label: '캐릭터 이미지', width: 68, height: 68),
-                          ],
-                        ),
-                      ],
+                        const SizedBox(width: 10),
+                        const Buddy(stage: 2, size: 70, breathe: false), // (11/24 사용자 요청) 옆 두 줄 글 높이에 맞게 · 운행 기록 · MY 카드와 같은 크기
+                      ]),
+                    ]),
+                  ),
+                  const SizedBox(height: 22),
+                  // ② 요약 글 — (11/24 사용자 요청) 뺌 ('오늘 n분 운행 중 n번 졸음 …')
+                  const SizedBox(height: 4),
+                  // ③ 숫자 — 카드 하나 · 세로 구분선
+                  WebCard(
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    child: IntrinsicHeight(
+                      child: Row(children: [
+                        _stat('운행 시간', _driveText, AppColors.textPrimary),
+                        const VerticalDivider(width: 1, thickness: 1, indent: 6, endIndent: 6, color: AppColors.line),
+                        // 졸음 0번 = 초록 (졸음이 없었음) · 있으면 그날 가장 높은 단계 색
+                        _stat('졸음', '$sleeps번', sleeps == 0 ? AppColors.normal : AppColors.stage(top)),
+                        const VerticalDivider(width: 1, thickness: 1, indent: 6, endIndent: 6, color: AppColors.line),
+                        _stat('휴식', '${_i('rest_count')}번', AppColors.textPrimary),
+                      ]),
                     ),
                   ),
-                  const SizedBox(height: 14),
-
-                  // ② 숫자 3칸
-                  Row(
-                    children: [
-                      _stat('운행 시간', _driveText, AppColors.navy),
-                      const SizedBox(width: 10),
-                      _stat('졸음', '${_i('sleep_count')}번', _i('sleep_count') == 0 ? AppColors.normal : AppColors.stage(top)),
-                      const SizedBox(width: 10),
-                      _stat('휴식', '${_i('rest_count')}번', AppColors.navy),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-
-                  // ③ 시간표
-                  _card(
-                    title: '오늘 있었던 일',
+                  const SizedBox(height: 32),
+                  // ④ 오늘 있었던 일
+                  const _Heading(icon: Icons.schedule_rounded, text: '오늘 있었던 일'),
+                  WebCard(
+                    padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
                     child: timeline.isEmpty
-                        ? const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 6),
-                            child: Text('경고 없이 운행했어요 👍',
-                                style: TextStyle(fontSize: 15, color: AppColors.textSecondary)),
-                          )
-                        : Column(children: [
-                            for (var i = 0; i < timeline.length; i++) _row(timeline[i], last: i == timeline.length - 1),
+                        ? const Text('경고 없이 운행했어요 👍', style: TextStyle(fontSize: 15, color: AppColors.textSecondary))
+                        : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            for (var i = 0; i < timeline.length; i++)
+                              InkWell(
+                                onTap: () => _openReport(timeline[i]['event_id']),
+                                child: _row(timeline[i], last: i == timeline.length - 1),
+                              ),
+                            // (11/23 사용자 요청) 홈 운행 기록과 같은 안내 — 카드 맨 아래
+                            const Padding(
+                              padding: EdgeInsets.only(top: 16),
+                              child: Text('› 를 누르면 AI 분석 보고서를 볼 수 있어요', style: TextStyle(fontSize: 13.5, color: AppColors.textMuted)),
+                            ),
                           ]),
                   ),
-                  const SizedBox(height: 14),
-
-                  // ④ 다음 운행 조언
-                  _card(
-                    title: '다음 운행 조언',
-                    icon: Icons.lightbulb_outline,
-                    child: Text(_s('advice'),
-                        style: const TextStyle(fontSize: 16, height: 1.5, color: AppColors.textPrimary)),
+                  const SizedBox(height: 32),
+                  // ⑤ 다음 운행 조언
+                  const _Heading(icon: Icons.lightbulb_outline_rounded, text: '다음 운행 조언'),
+                  WebCard(
+                    padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
+                    child: Text(keepWords(noDot(_s('advice'))),
+                        style: const TextStyle(fontSize: 15.5, height: 1.55, color: AppColors.textPrimary)),
                   ),
                 ],
               ),
             ),
+            // ⑥ 다른 화면과 같은 남색 알약 버튼 · 같은 좌우 여백
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 4, 18, 14),
-              child: FilledButton(
-                onPressed: () => Navigator.of(context).pop(),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.navy,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size.fromHeight(60),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  textStyle: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
-                ),
-                child: const Text('확인했어요'),
-              ),
+              padding: const EdgeInsets.fromLTRB(_side, 8, _side, 20),
+              child: AuthButton(text: '확인했어요', height: AppSize.button, onPressed: () => Navigator.of(context).pop()) /* (11/24 사용자 요청) 남색 */,
             ),
           ],
         ),
@@ -213,45 +208,31 @@ class _DriveReportScreenState extends State<DriveReportScreen> {
     );
   }
 
-  Widget _stat(String label, String value, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.cardBorder),
-        ),
-        child: Column(
-          children: [
-            Text(label, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-            const SizedBox(height: 4),
-            Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: color)),
-          ],
-        ),
-      ),
-    );
+  // (11/19 사용자 요청) 줄을 누르면 그 경고의 AI 보고서
+  Future<void> _openReport(dynamic id) async {
+    if (id is! num) return;
+    try {
+      final events = await ApiService.fetchMyEvents();
+      final e = events.where((x) => x.id == id.toInt()).firstOrNull;
+      if (e == null || !mounted) return;
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => EventDetailScreen(event: e)));
+    } catch (_) {}
   }
 
-  Widget _card({required String title, IconData? icon, required Widget child}) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            if (icon != null) ...[Icon(icon, size: 19, color: AppColors.aiPurple), const SizedBox(width: 6)],
-            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
-          ]),
-          const SizedBox(height: 10),
-          child,
-        ],
-      ),
+  // 부르는 말 — 서버 이름이 '김기사' 면 '김기사 기사님', 이미 '…님' 으로 끝나면 그대로 (예전엔 '김기사 기사님님' 이 됐음)
+  String get _callName {
+    final n = _s('name');
+    if (n.isEmpty) return '기사님';
+    return n.endsWith('님') ? n : '$n 기사님';
+  }
+
+  Widget _stat(String label, String value, Color color) {
+    return Expanded(
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Text(label, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+        const SizedBox(height: 4),
+        Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.4, color: color)),
+      ]),
     );
   }
 
@@ -281,7 +262,17 @@ class _DriveReportScreenState extends State<DriveReportScreen> {
             width: 22,
             child: Column(children: [
               const SizedBox(height: 4),
-              Container(width: 11, height: 11, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+              // (11/18 팀장) 운행 기록 타임라인과 같은 점 — 흰 테두리 + 옅은 고리
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: c,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.card, width: 2),
+                  boxShadow: [BoxShadow(color: c.withValues(alpha: 0.35), blurRadius: 0, spreadRadius: 1.5)],
+                ),
+              ),
               if (!last) Expanded(child: Container(width: 2, color: AppColors.cardBorder)),
             ]),
           ),
@@ -292,8 +283,9 @@ class _DriveReportScreenState extends State<DriveReportScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('$s단계 ${_stageNames[s]} · ${t['reason'] ?? '졸음'}',
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                  // (11/23 사용자 요청) 앱 전체와 같은 이름 — 주의 · 휴식 권고 · 긴급 (음성 응답 없음만 그대로)
+                  Text('${t['reason']}'.contains('응답') ? '음성 응답 없음' : const ['정상', '주의', '휴식 권고', '긴급'][s],
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
                   if (extra.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
@@ -304,8 +296,25 @@ class _DriveReportScreenState extends State<DriveReportScreen> {
               ),
             ),
           ),
+          const Icon(Icons.chevron_right_rounded, size: 20, color: AppleGray.chevron), // (11/23) 홈처럼 줄 끝 ›
         ],
       ),
     );
   }
+}
+
+/// 묶음 위 작은 제목 — 남색 아이콘 + 회색 글자 (아이폰 설정처럼)
+class _Heading extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _Heading({required this.icon, required this.text});
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(left: 4, bottom: 10),
+        child: Row(children: [
+          Icon(icon, size: 16, color: AppColors.navy),
+          const SizedBox(width: 6),
+          Text(text, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+        ]),
+      );
 }

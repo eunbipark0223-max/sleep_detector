@@ -11,7 +11,7 @@
 #   - 새 패키지 없이 이미 있는 PyJWT · cryptography · requests 만 쓴다
 #
 # [왜 필요한가]
-#   - POST /users/google 은 앱이 보내는 email · name · firebase_uid 를 그대로 믿는다 (수업 방식). 그대로 두면 관리자 이메일만 알면
+#   - POST /users/google 은 앱이 보내는 email · name · firebase_uid 를 그대로 믿는다. 그대로 두면 관리자 이메일만 알면
 #     관리자 토큰을 받을 수 있다 → 관리자 계정(role = admin)의 구글 로그인은 이 검증을 반드시 통과해야 한다.
 #   - .env 의 FIREBASE_VERIFY=true 로 두면 일반 기사의 구글 로그인에도 같은 검증을 요구한다 (그때는 앱도 id_token 을 보내야 함)
 #

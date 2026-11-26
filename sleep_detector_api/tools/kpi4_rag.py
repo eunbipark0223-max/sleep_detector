@@ -4,7 +4,7 @@
 # 담당: B   |   우선: P2 (KPI ④, 선택)   |   서버 코드가 아니라 PC 에서 돌리는 시험 도구
 #
 # [설계 — 돌리기 전에 정해 둔 것 (11/02, 첫 시험의 편향을 고침)]
-#   1. 질문 (tools/kpi4_questions.csv): 자료(knowledge/)를 보고 만든 질문은 쓰지 않음 — RAG 에 유리해짐
+#   1. 질문 (tools/kpi4_questions.csv — GitHub 에 없음, 구글 드라이브에서 받아 tools/ 에 둠): 자료(knowledge/)를 보고 만든 질문은 쓰지 않음 — RAG 에 유리해짐
 #      · app  : 앱 규정 도우미 예시 질문 4개 (실제 사용자가 누르는 질문) — a3 는 11/04 지시문 조정에 써서 집계 제외 (exclude 칸)
 #      · team : 팀원이 knowledge/ 를 보지 않고 '기사라면 물어볼 질문' 을 쓴 것 (6개 이상)
 #      · 돌리기 전에 B 가 질문마다 answerable(yes / no) · gold(정답 법령 · 조항, law.go.kr 로 확인) · key_facts 를 채움
@@ -30,6 +30,19 @@
 #   (review.csv 의 verdict · made_up 을 채운 뒤)
 #   venv\Scripts\python tools/kpi4_rag.py summarize --out D:\kpi4
 #   - 결과 파일은 저장소 밖 폴더에 (--out)
+#
+# [일상어 시험 — daily (11/18 팀장 점검)]  고치기 전 · 후 규정 도우미만 비교 (LLM만 조건 없음)
+#   - 질문: kpi4_questions.csv 의 source=daily (d1~d10) — 기사가 직접 쓸 법한 말투. 위 KPI ④ 집계(run)에는 안 들어감
+#   - 자동 채점 (사람 채점 아님 — 발표에는 '자동 채점' 이라고 적기):
+#       근거 맞음 = 근거 카드 제목에 gold 법령 · 조항이 하나라도 있음
+#       정답      = yes 질문: AI 답 + 거절 아님 + 근거 맞음 + key_facts 낱말이 답에 있음
+#                   no 질문 : 거절('확인되지 않습니다' · 규정 도우미 안내 문장)
+#                   key_facts 의 '!낱말' = 답에 없어야 하는 말 (예: d12 '!8시간' — 관계없는 버스 출근 전 휴식 규정)
+#       AI 실패   = is_real False (시간 초과 · 숫자 검사 불통과 → 기본 문장)
+#   venv\Scripts\python tools/kpi4_rag.py daily --label before --out D:\kpi4     (고치기 전 코드에서)
+#   venv\Scripts\python tools/kpi4_rag.py daily --label after  --out D:\kpi4     (고친 뒤)
+#   venv\Scripts\python tools/kpi4_rag.py daily-compare --out D:\kpi4          → 전 · 후 표
+#   (11/18 2차: d11 · d12 추가 — --label v2_before / v2_after, daily-compare --labels v2_before,v2_after)
 #
 # 자세한 내용: 「파이널 프로젝트 최종 기획안 10.13」 KPI ④ · 6-2 RAG · knowledge/README.md
 # ═══════════════════════════════════════════════════════════════
@@ -58,9 +71,12 @@ def _excluded(r):
     return bool((r.get("exclude") or "").strip())
 
 
-def load_questions():
+DAILY = "daily"  # 일상어 시험 질문 (11/18) — KPI ④ 집계와 따로
+
+
+def load_questions(daily=False):
     rows = list(csv.DictReader(open(QUESTIONS_CSV, encoding="utf-8-sig")))
-    return [r for r in rows if r["question"].strip() and not _excluded(r)]
+    return [r for r in rows if r["question"].strip() and not _excluded(r) and (r["source"] == DAILY) == daily]
 
 
 def check():
@@ -69,7 +85,7 @@ def check():
     skipped = [f"{r['id']}({r['exclude'].strip()})" for r in rows if _excluded(r)]
     if skipped:
         print(f"집계 제외: {', '.join(skipped)}")
-    qs = [r for r in rows if r["question"].strip() and not _excluded(r)]
+    qs = [r for r in rows if r["question"].strip() and not _excluded(r) and r["source"] != DAILY]
     no_label = [r["id"] for r in qs if r["answerable"].strip() not in ("yes", "no")]
     no_gold = [r["id"] for r in qs if r["answerable"].strip() == "yes" and not r["gold"].strip()]
     print(f"질문 {len(qs)}개 (출처: {', '.join(sorted({r['source'] for r in qs}))}) · 빈 질문 {empty or '없음'}")
@@ -88,9 +104,12 @@ def llm_only_prompt():
     p = p.replace("답에 쓴 근거는 문장 끝에만 [출처 번호]로 표시하고, '[1]에 따르면'처럼 문장 앞에는 쓰지 마라.",
                   "답에 쓴 근거는 문장 끝에 법령 이름과 조항 번호로 표시하라.")
     p = p.replace("숫자는 근거에 적힌 그대로 쓰고", "숫자는 법령에 적힌 그대로 쓰고")
-    p = p.replace("근거가 질문의 대상과 다른 대상에 관한 것이면 그 근거를 대신 적용하지 마라. ",
-                  "질문의 대상과 다른 대상에 관한 법령을 대신 적용하지 마라. ")
-    p = p.replace("질문이 묻는 규정이나 통계가 [근거]에 없으면", "질문이 묻는 규정이나 통계를 확실히 알지 못하면")
+    # 11/18 chat_service 거절 기준 완화와 같게: 가까운 규정은 적용 대상을 밝혀 안내, 모르거나 관계없으면 '확인되지 않습니다'
+    p = p.replace("질문과 가까운 규정이 [근거]에 있으면", "질문과 가까운 규정을 확실히 알고 있으면")
+    p = p.replace("근거에 나온 대상", "그 규정에 나온 대상")
+    p = p.replace("근거에 나오지 않는 대상", "그 규정에 나오지 않는 대상")
+    p = p.replace("도로교통법 근거에 따로", "도로교통법에 따로")
+    p = p.replace("근거와 전혀 관계없는 질문에만", "그 규정을 확실히 알지 못하거나 관계없는 질문에는")
     assert "[근거]" not in p, "SYSTEM_PROMPT 가 바뀜 — llm_only_prompt 를 다시 맞추기"
     return p
 
@@ -176,9 +195,83 @@ def summarize(out):
             print(f"| {name} | {label} | {llm} | {rag} |")
 
 
+def _grade(q, r, searched):
+    """일상어 시험 자동 채점 (위 [일상어 시험] 기준). searched = 검색이 찾은 근거 제목
+    (답이 '확인되지 않습니다' 뿐이면 chat_service 가 근거 카드를 숨기므로 r["sources"] 로는 검색을 채점할 수 없음)"""
+    from services import chat_service
+    ans = r["answer"]
+    titles = " | ".join(searched)
+    refused = ans == chat_service.NOT_FOUND_ANSWER or "확인되지 않" in ans or "자료에 없어요" in ans
+    gold_hit = any(g.strip() and g.strip() in titles for g in q["gold"].split(";"))
+    facts = all((f[1:] not in ans) if f.startswith("!") else (f in ans)
+                for f in (x.strip() for x in q["key_facts"].split(";")) if f)
+    if q["answerable"] == "yes":
+        correct = r["is_real"] and not refused and gold_hit and facts
+    else:
+        correct = refused
+    return dict(gold_hit=int(gold_hit), refused=int(refused), no_ai=int(not r["is_real"]), correct=int(bool(correct)))
+
+
+def daily(out, label):
+    from services import chat_service, llm_service, rag_service
+    if not llm_service.USE_REAL_AI:
+        raise SystemExit("USE_REAL_AI 가 꺼져 있음 (.env 의 GEMINI_API_KEY 확인)")
+    os.makedirs(out, exist_ok=True)
+    searched = []
+    original = rag_service.search_by_text
+
+    def recording(*args, **kw):  # 검색이 찾은 근거를 적어 둠 (채점용 — 결과는 그대로 돌려줌)
+        found = original(*args, **kw)
+        searched.extend(s["title"] for s in found)
+        return found
+
+    rag_service.search_by_text = recording
+    rows = []
+    for k in range(1, RUNS + 1):
+        for q in load_questions(daily=True):
+            searched.clear()
+            t0 = time.time()
+            r = chat_service.answer(q["question"])
+            sec = round(time.time() - t0, 1)
+            g = _grade(q, r, searched)
+            rows.append(dict(label=label, run=k, id=q["id"], question=q["question"], answerable=q["answerable"], **g,
+                             sec=sec, answer=r["answer"], shown=" | ".join(s["title"] for s in r["sources"]),
+                             searched=" | ".join(dict.fromkeys(searched))))
+            print(f"{k}회 {q['id']} 정답={g['correct']} 근거={g['gold_hit']} 거절={g['refused']} AI실패={g['no_ai']} ({sec}초)", flush=True)
+            time.sleep(2)  # 무료 한도
+    write(os.path.join(out, f"daily_{label}.csv"), rows)
+    print(f"→ {os.path.join(out, f'daily_{label}.csv')}")
+
+
+def daily_compare(out, labels=("before", "after")):
+    data = {lb: list(csv.DictReader(open(os.path.join(out, f"daily_{lb}.csv"), encoding="utf-8-sig"))) for lb in labels}
+    groups = [("전체", lambda r: True), ("자료로 답할 수 있는 질문", lambda r: r["answerable"] == "yes"),
+              ("자료에 없는 질문", lambda r: r["answerable"] == "no")]
+    metrics = [("정답", "correct"), ("근거 맞음", "gold_hit"), ("거절", "refused"), ("AI 실패", "no_ai")]
+    print(f"| 묶음 | 지표 | {' | '.join(labels)} |\n|---|---|{'---|' * len(labels)}")
+    for name, f in groups:
+        for m, col in metrics:
+            if name == "자료에 없는 질문" and col == "gold_hit":
+                continue
+            cells = []
+            for lb in labels:
+                rs = [r for r in data[lb] if f(r)]
+                cells.append(f"{sum(int(r[col]) for r in rs)}/{len(rs)} ({sum(int(r[col]) for r in rs) / len(rs):.0%})" if rs else "-")
+            print(f"| {name} | {m} | {' | '.join(cells)} |")
+    print("\n질문별 정답 (3번 중)")
+    for qid in dict.fromkeys(r["id"] for r in data[labels[0]]):
+        cells = [str(sum(int(r["correct"]) for r in data[lb] if r["id"] == qid)) for lb in labels]
+        q = next(r["question"] for r in data[labels[0]] if r["id"] == qid)
+        print(f"  {qid} {' → '.join(cells)}  {q}")
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("step", choices=["check", "run", "summarize"])
+    ap.add_argument("step", choices=["check", "run", "summarize", "daily", "daily-compare"])
     ap.add_argument("--out", default=r"D:\kpi4", help="결과 폴더 (저장소 밖)")
+    ap.add_argument("--label", default="after", help="daily: 결과 이름 (before / after)")
+    ap.add_argument("--labels", default="before,after", help="daily-compare: 비교할 결과 이름들 (쉼표)")
     a = ap.parse_args()
-    {"check": check, "run": lambda: run(a.out), "summarize": lambda: summarize(a.out)}[a.step]()
+    {"check": check, "run": lambda: run(a.out), "summarize": lambda: summarize(a.out),
+     "daily": lambda: daily(a.out, a.label),
+     "daily-compare": lambda: daily_compare(a.out, tuple(a.labels.split(",")))}[a.step]()

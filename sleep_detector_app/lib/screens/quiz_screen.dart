@@ -23,12 +23,18 @@
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」 8-2
 // ═══════════════════════════════════════════════════════════════
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../models/sleep_response.dart';
 import '../services/api_service.dart';
 import '../services/voice_service.dart';
+import '../design_tokens.dart';
 import '../theme.dart';
+import '../widgets/buddy.dart';
+import '../widgets/owl_says.dart' show balancedLines;
 
 class QuizScreen extends StatefulWidget {
   final VoiceQuiz quiz;
@@ -36,11 +42,14 @@ class QuizScreen extends StatefulWidget {
   /// 퀴즈가 시작될 때의 단계 (배경 색)
   final int stage;
 
+  /// (11/26 팀장) 지금 카메라 사진 1장 (운행 화면이 줌) — 2번째 듣기가 끝난 순간 찍어 두고, 응답 없음으로 저장됐을 때만 보낸다
+  final Future<Uint8List?> Function()? takePhoto;
+
   /// 디자인 미리보기 전용 (tools/quiz_preview_main.dart) — 읽기 · 듣기를 하지 않고 이 글을 보여 준다. 앱에서는 쓰지 않음
   final String? previewGuide;
   final String? previewHeard;
 
-  const QuizScreen({super.key, required this.quiz, required this.stage, this.previewGuide, this.previewHeard});
+  const QuizScreen({super.key, required this.quiz, required this.stage, this.takePhoto, this.previewGuide, this.previewHeard});
 
   @override
   State<QuizScreen> createState() => _QuizScreenState();
@@ -65,6 +74,7 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 
   Future<void> _run() async {
+    var tries = 0;
     while (mounted) {
       setState(() {
         _guide = '';
@@ -86,8 +96,12 @@ class _QuizScreenState extends State<QuizScreen> {
       );
       if (!mounted) return;
       if (heard == null) break; // 마이크 권한 없음 · 인식기 없음 → 서버에 보내지 않음 (실패로 안 셈)
+      tries++;
+      final photo = tries >= 2 ? widget.takePhoto?.call() : null; // 2번째 퀴즈가 끝난 순간 (통과하면 버림)
       try {
         final r = await ApiService.submitAnswer(_quiz.quizId, heard, VoiceService.lastAnswerSec);
+        final eventId = r.noResponseEventId;
+        if (eventId != null && photo != null) unawaited(_sendPhoto(eventId, photo)); // 뒤에서 — 3단계가 늦지 않게
         if (!mounted) return;
         setState(() {
           _stage = r.stage;
@@ -108,6 +122,16 @@ class _QuizScreenState extends State<QuizScreen> {
     if (mounted) Navigator.of(context).pop(_stage);
   }
 
+  // 실패해도 조용히 — 서버에는 2단계 경고 사진이 그대로 남는다
+  static Future<void> _sendPhoto(int eventId, Future<Uint8List?> photo) async {
+    try {
+      final jpg = await photo;
+      if (jpg != null) await ApiService.sendNoResponsePhoto(eventId, jpg);
+    } catch (e) {
+      debugPrint('[quiz] 퀴즈 뒤 사진 보내기 실패: $e');
+    }
+  }
+
   @override
   void dispose() {
     VoiceService.stop();
@@ -116,20 +140,20 @@ class _QuizScreenState extends State<QuizScreen> {
 
   // ── 화면 (11/16 Figma 시안 '졸음운전 감지 앱5' 음성 퀴즈 — 디자인만. 읽기 · 듣기 · 채점 흐름은 위 그대로) ──
   // (11/16 팀장) 운전 중에 뜨는 화면이라 운행 · 경고 화면과 같은 남색 (밤에 흰 화면이 눈부시지 않게)
-  static const Color _bg = AppColors.navyDeep; // (11/17 R안 · readdy 퀴즈) 진한 남색
-  static const Color _sub = Color(0xFFBEC8E9);
+  // (11/18 피드백 · 애플 토큰) 흰 바탕 · 검정 제목 · 회색 설명 · 남색은 마이크에만
+  static const Color _bg = AppColors.background;
 
   String get _typeLabel => switch (_quiz.type) {
         'add' => '간단 계산',
         'reverse' => '거꾸로 말하기',
-        _ => '따라 말하기',
+        _ => '크게 말하기', // (11/19 팀장) 질문 '크게 말하세요' 와 맞춤 (전: 따라 말하기)
       };
 
   @override
   Widget build(BuildContext context) {
     final again = _guide.contains('다시');
     final listening = _guide.isNotEmpty;
-    final stateColor = again ? AppColors.rest : const Color(0xFF5FD38D); // 다시 듣는 중이면 주황, 처음이면 초록
+    final stateColor = again ? AppColors.rest : AppColors.normal; // 다시 듣는 중이면 주황, 처음이면 초록
     final question = _quiz.type == 'add' ? _quiz.display : '“${_quiz.display}”';
 
     return PopScope(
@@ -142,81 +166,122 @@ class _QuizScreenState extends State<QuizScreen> {
         appBar: AppBar(
           backgroundColor: _bg,
           surfaceTintColor: _bg,
-          foregroundColor: Colors.white,
+          foregroundColor: AppColors.textPrimary,
           elevation: 0,
           centerTitle: true,
           leading: IconButton(
-            icon: const Icon(Icons.chevron_left, size: 30),
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 22),
             tooltip: '닫기',
             onPressed: () => Navigator.of(context).pop(_stage),
           ),
-          title: const Text('음성 퀴즈', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+          title: const Text('음성 퀴즈'),
         ),
         body: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(22, 4, 22, 20),
+            padding: const EdgeInsets.fromLTRB(AppSpace.l, 4, AppSpace.l, AppSpace.l),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 문제 종류 (알약)
-                Center(
+                // (11/19 사용자 요청 · Headspace) 단계 알약 + 큰 흰 카드 안에 따라 말할 문장 (운전석에서 한눈에 읽히게 아주 크게)
+                // (11/24 사용자 요청 · 애플식) 모든 글 왼쪽 시작선
+                Align(
+                  alignment: Alignment.centerLeft,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(999)),
-                    child: Text(_typeLabel,
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
+                    padding: const EdgeInsets.fromLTRB(12, 7, 14, 7),
+                    decoration: BoxDecoration(color: AppColors.stageTint(_stage), borderRadius: BorderRadius.circular(999)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Container(
+                        width: 9,
+                        height: 9,
+                        decoration: BoxDecoration(color: AppColors.stage(_stage), shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 7),
+                      Text('${const ['정상', '주의', '휴식 권고', '긴급'][_stage.clamp(0, 3)]} · $_typeLabel',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.stageInk(_stage))),
+                    ]),
                   ),
                 ),
-                const SizedBox(height: 22),
-                const Text('큰 소리로 말해 주세요',
-                    textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: _sub)),
-                const SizedBox(height: 10),
-                // 문제 — 크게
-                Text(question,
-                    textAlign: TextAlign.center,
-                    maxLines: 4,
-                    style: const TextStyle(
-                        fontSize: 32, height: 1.3, fontWeight: FontWeight.w900, letterSpacing: -0.8, color: Colors.white)),
+                const SizedBox(height: 18),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 26),
+                  decoration: BoxDecoration(
+                    // (11/23 리디자인_3) 흰색 → 아주 연한 노랑 · 얇은 테두리 · 둥글기 16
+                    borderRadius: BorderRadius.circular(AppRadius.card),
+                    // (11/24 신한 슈퍼SOL) 흰 카드 · 테두리 없이 부드러운 그림자
+                    color: Colors.white,
+                    boxShadow: AppShadow.card,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 10), // (11/24 사용자 요청) 캐릭터 · 문장 조금 오른쪽으로
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      const Buddy(stage: 2, size: 30, breathe: false), // (11/23 사용자 요청) 2단계 주황
+                      const SizedBox(width: 10),
+                      const Text('크게 말하세요', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xB31C2033))),
+                    ]),
+                    const SizedBox(height: 16),
+                    // (11/24 사용자 요청 · 3단계 카드처럼) 뜻 단위로 한 줄씩 · 줄마다 한 줄 고정 (단어 중간에서 안 끊김) · 왼쪽 시작선
+                    for (final (i, line) in balancedLines(question.replaceAll('"', '').replaceAll('“', '').replaceAll('”', '')).indexed) ...[
+                      if (i > 0) const SizedBox(height: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 40), // (11/24 사용자 요청) '크게 말하세요' 글자와 같은 시작선
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(line,
+                              maxLines: 1,
+                              softWrap: false,
+                              style: const TextStyle(fontSize: 34, height: 1.3, fontWeight: FontWeight.w800, letterSpacing: -0.8, color: AppColors.textPrimary)), // (11/24) 조금 크게
+                        ),
+                      ),
+                    ],
+                  ]),
+                  ),
+                ),
                 const Spacer(),
                 // 마이크 (듣는 중이면 물결)
                 Center(child: _MicOrbit(active: listening, color: stateColor)),
                 const SizedBox(height: 12),
+                // (11/24 사용자 요청) 남색 점 + '듣는 중' — 카드 안 '크게 말하세요' 와 같은 시작선 · '들은 글자' 칸은 뺌 (결과는 이 줄에)
                 SizedBox(
                   height: 30,
                   child: listening
-                      ? Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(width: 9, height: 9, decoration: BoxDecoration(color: stateColor, shape: BoxShape.circle)),
-                            const SizedBox(width: 7),
-                            Text(again ? '다시 한번 말씀해 주세요' : '듣는 중',
-                                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: stateColor)),
-                          ],
+                      ? Padding(
+                          padding: EdgeInsets.zero, // (11/25 사용자 요청) 아래 '들은 문장' 네모와 같은 시작선
+                          child: Row(children: [
+                            Container(width: 9, height: 9, decoration: const BoxDecoration(color: AppColors.navy, shape: BoxShape.circle)),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(again ? '다시 한번 말씀해 주세요' : '듣는 중',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppType.headline.copyWith(color: AppColors.textPrimary)),
+                            ),
+                          ]),
                         )
                       : null,
                 ),
                 const Spacer(),
-                // 들은 글자 · 결과
+                // 들은 글자 · 결과 (11/24 사용자 요청으로 다시 넣음)
+                // (11/24 사용자 요청) 조금 위로 · 크게
                 Container(
-                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-                  ),
+                  constraints: const BoxConstraints(minHeight: 110),
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(AppRadius.card), boxShadow: AppShadow.card),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(_message.isNotEmpty ? '결과' : '들은 글자',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _sub)),
-                      const SizedBox(height: 6),
+                      Text(_message.isNotEmpty ? '결과' : '들은 문장', // (11/24 사용자 요청) '들은 글자' → '들은 문장'
+                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                      const SizedBox(height: 8),
                       Text(
                         _message.isNotEmpty ? _message : (_heard.isEmpty ? '…' : _heard),
-                        style: const TextStyle(fontSize: 21, height: 1.35, fontWeight: FontWeight.w800, color: Colors.white),
+                        style: const TextStyle(fontSize: 24, height: 1.35, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(height: 28), // (11/24) 아래 여백 — 칸을 조금 위로
               ],
             ),
           ),
@@ -264,7 +329,7 @@ class _MicOrbitState extends State<_MicOrbit> with SingleTickerProviderStateMixi
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                        color: Colors.white.withValues(alpha: widget.active ? (1 - t) * 0.45 : 0.10), width: 2),
+                        color: AppColors.navy.withValues(alpha: widget.active ? (1 - t) * 0.35 : 0.06), width: 2),
                   ),
                 );
               }),
@@ -272,11 +337,11 @@ class _MicOrbitState extends State<_MicOrbit> with SingleTickerProviderStateMixi
               width: 96,
               height: 96,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.navy,
                 shape: BoxShape.circle,
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 18, offset: const Offset(0, 8))],
+                boxShadow: [BoxShadow(color: AppColors.navy.withValues(alpha: 0.25), blurRadius: 16, offset: const Offset(0, 6))],
               ),
-              child: const Icon(Icons.mic, size: 44, color: AppColors.navy),
+              child: const Icon(Icons.mic_rounded, size: 42, color: Colors.white),
             ),
           ],
         ),

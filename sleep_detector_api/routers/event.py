@@ -2,18 +2,16 @@
 # routers/event.py — 내 경고 목록 · 처리 상태 변경
 # ═══════════════════════════════════════════════════════════════
 # 담당: D   |   우선: P0
-# 수업 원본: road_hazard_api/routers/hazard.py (🟡 이름 변경 + 수정)
 #
 # [이 파일이 하는 일]
 #   - GET /events/my — 내 경고 목록 (앱 운행 기록 화면)
 #   - PATCH /events/{id}/status — 관리자가 상태 변경. '조치완료'면 sleep_state reset → 3단계 해제 (앱은 다음 ping 에서 0단계)
 #     '확인'은 미확인일 때만 바뀐다 (관리자 웹이 상세를 열 때 자동으로 보냄, 11/09)
-#     '조치완료'는 그 기사의 미처리 긴급 경고(3단계 · 음성 응답 없음)를 모두 함께 조치완료로 바꾼다 — 응답 resolved_ids (11/16)
+#     '조치완료'는 그 기사의 미처리 긴급 경고(3단계 · 퀴즈 응답 없음)를 모두 함께 조치완료로 바꾼다 — 응답 resolved_ids (11/16)
 #   - GET /events/{id}/photo — 졸음 확정 사진 (얼굴 사진이라 로그인 필요: 그 경고의 기사 본인 또는 관리자만, 11/10)
 #     uploads/events/ 폴더를 주소로 공개하지 않고 이 API 로만 내준다. 관리자 웹은 토큰을 붙여 받아서 그린다
 #
 # [주의]
-#   - 수업의 POST /hazards (직접 신고) · POST /reports 는 만들지 않는다
 #
 # [연결 약속 — 다른 사람 파일의 이름. 다르면 아래 import 한 줄만 고친다]
 #   - services.sleep_state.reset(user_id) — 그 기사의 졸음 기록 · 단계를 0 으로 (A)
@@ -25,7 +23,7 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 import config
@@ -77,28 +75,27 @@ def update_status(
     if body.status == "확인" and event.status != "미확인":
         return {"success": True, "id": event.id, "status": event.status, "stage_reset": False}
     event.status = body.status
-
     stage_reset = body.status == "조치완료"
     resolved_ids: list[int] = []
     if stage_reset and event.user_id is not None:
-        # (11/16) 3단계 기사가 계속 졸면 졸 때마다 3단계 경고가 새로 저장돼 '지금 긴급' 줄이 여러 개가 된다.
-        # [조치완료] = 그 기사의 3단계를 푸는 일이므로, 같은 기사의 미처리 긴급 경고도 한꺼번에 조치완료로 바꾼다.
-        # (한 줄만 바꾸면 나머지가 남아 배너가 안 사라지고, 남은 옛 줄을 나중에 눌렀을 때 새로 난 3단계까지 함께 풀렸다)
-        # 긴급 = admin.py 의 urgent 와 같은 규칙 (3단계 또는 음성 응답 없음), 미처리 = 웹의 isOpenUrgent 와 같게 '조치완료가 아닌 것'.
+        # (11/16 D) 같은 기사의 미처리 긴급 경고(3단계 · 퀴즈 응답 없음)를 한꺼번에 조치완료 — 배너 · 옛 줄이 남지 않게
+        # (11/18 C) + 그 기사의 아직 처리 안 된 경고(미확인 · 확인)도 모두 조치완료 — [조치완료] = 0단계로 완전 해제.
+        #   한 줄만 바뀌면 서버를 다시 켤 때 restore_all 이 남은 경고로 단계를 되살렸음
         # user_id 가 비어 있는 경고는 묶지 않는다 (IS NULL 로 엉뚱한 경고까지 바뀌지 않게) — 눌린 그 줄만
         others = db.execute(
             select(SleepEvent).where(
                 SleepEvent.user_id == event.user_id,
                 SleepEvent.id != event.id,
-                SleepEvent.status != "조치완료",
-                or_(SleepEvent.stage == 3, SleepEvent.reason == "no_response"),
+                or_(
+                    SleepEvent.status.in_(("미확인", "확인")),
+                    and_(SleepEvent.status != "조치완료", or_(SleepEvent.stage == 3, SleepEvent.reason == "no_response")),
+                ),
             )
         ).scalars().all()
         for other in others:
             other.status = "조치완료"
             resolved_ids.append(other.id)
     db.commit()    # 누른 줄과 함께 풀린 줄이 한 번에 저장됨 (중간에 실패하면 모두 그대로)
-
     if stage_reset:
         sleep_state.reset(event.user_id)  # 앱은 다음 ping 에서 0단계를 받는다
     return {"success": True, "id": event.id, "status": event.status, "stage_reset": stage_reset,

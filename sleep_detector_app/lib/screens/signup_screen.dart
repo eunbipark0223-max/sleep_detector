@@ -55,16 +55,16 @@ class _SignupScreenState extends State<SignupScreen> {
   //   · 규칙 1단계(첫 졸음)는 AI 를 안 부르고, 2단계부터 llm_service 가 졸음 판정 숫자만 Gemini 로 보냄 (11/26 — 얼굴 사진은 AI 에 안 보냄)
   //   · 사진 열람은 본인 · 관리자만 (GET /events/{id}/photo)
   static const String _consentText =
-      '졸음 가드는 회원가입과 졸음 경고 대응을 위해 아래 정보를 수집 · 이용해요.\n\n'
+      '졸음 가드는 회원가입과 졸음 경고 대응을 위해 아래 정보를 수집 · 이용해요\n\n'
       '• 수집 항목\n'
       '  - 가입할 때: 사번, 이름, 이메일, 비밀번호(암호화해서 저장), 전화번호, 차량번호\n'
       '  - 출발 전 눈 기준 측정과 운행 중 눈 상태를 확인할 때: 얼굴 사진 (졸음이 아니라고 확인되면 바로 삭제해요)\n'
-      '  - 졸음이 확인됐을 때: 그 순간의 얼굴 사진, 위치(위도 · 경도), 졸음 기록(단계 · 요약 · 음성 퀴즈에 답한 글자). 음성은 녹음하지 않아요\n'
+      '  - 졸음이 확인됐을 때: 그 순간의 얼굴 사진, 위치(위도 · 경도), 졸음 기록(단계 · 요약 · 음성 퀴즈에 답한 글자) · 음성은 녹음하지 않아요\n'
       '• 이용 목적: 로그인 등 계정 관리, 졸음 경고 대응, 경고가 났을 때 관리자가 기사님께 연락\n'
       '• 외부 AI 전송: 2단계 이상 졸음이 확인되면 졸음 판정 숫자(눈 감은 시간 · 졸음 횟수 등)만 구글 Gemini(AI)에 보내 상황 요약을 만들어요. 얼굴 사진은 AI에 보내지 않아요\n'
       '• 열람: 졸음 사진과 기록은 기사님 본인과 관리자만 볼 수 있어요\n'
-      '• 보관 기간: 졸음 사진은 30일 뒤 자동으로 삭제해요. 계정과 경고 기록은 서비스를 이용하는 동안 보관해요\n\n'
-      '동의하지 않으면 회원가입을 할 수 없어요.';
+      '• 보관 기간: 졸음 사진은 30일 뒤 자동으로 삭제해요 · 계정과 경고 기록은 서비스를 이용하는 동안 보관해요\n\n'
+      '동의하지 않으면 회원가입을 할 수 없어요';
 
   final _formKey = GlobalKey<FormState>();
   final _empNoInput = TextEditingController();
@@ -167,7 +167,7 @@ class _SignupScreenState extends State<SignupScreen> {
     } on AuthException catch (e) {
       if (mounted) setState(() => _empError = e.message);
     } catch (_) {
-      if (mounted) setState(() => _empError = '사번을 확인하지 못했어요. 잠시 뒤 다시 시도해 주세요');
+      if (mounted) setState(() => _empError = '사번을 확인하지 못했어요\n잠시 뒤 다시 시도해 주세요');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -191,7 +191,7 @@ class _SignupScreenState extends State<SignupScreen> {
     } on AuthException catch (e) {
       if (mounted) setState(() => v.msg = e.message);
     } catch (_) {
-      if (mounted) setState(() => v.msg = '인증번호를 보내지 못했어요. 잠시 뒤 다시 시도해 주세요');
+      if (mounted) setState(() => v.msg = '인증번호를 보내지 못했어요\n잠시 뒤 다시 시도해 주세요');
     } finally {
       if (mounted) setState(() => v.busy = false);
     }
@@ -219,7 +219,7 @@ class _SignupScreenState extends State<SignupScreen> {
     } on AuthException catch (e) {
       if (mounted) setState(() => v.msg = e.message);
     } catch (_) {
-      if (mounted) setState(() => v.msg = '인증하지 못했어요. 잠시 뒤 다시 시도해 주세요');
+      if (mounted) setState(() => v.msg = '인증하지 못했어요\n잠시 뒤 다시 시도해 주세요');
     } finally {
       if (mounted) setState(() => v.busy = false);
     }
@@ -261,7 +261,7 @@ class _SignupScreenState extends State<SignupScreen> {
     } on AuthException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (_) {
-      if (mounted) setState(() => _error = '가입하지 못했어요. 잠시 뒤 다시 시도해 주세요');
+      if (mounted) setState(() => _error = '가입하지 못했어요\n잠시 뒤 다시 시도해 주세요');
     } finally {
       if (mounted) setState(() => _loading = false);
     }

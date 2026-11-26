@@ -2,7 +2,7 @@
 // services/voice_service.dart — 음성 (TTS 말하기 + STT 듣기) 한 파일
 // ═══════════════════════════════════════════════════════════════
 // 담당: 팀장 (11/02 C 에서 이동)   |   우선: P1
-// 수업 원본: (없음, 🔴 신규) — 듣는 방식은 10/29 STT 시험 도구(lib/tools/stt_test_main.dart)에서 검증한 그대로
+// 참고: 듣는 방식은 10/29 STT 시험 도구(lib/tools/stt_test_main.dart)에서 검증한 그대로
 //
 // [이 파일이 하는 일]
 //   - TTS: flutter_tts, ko-KR, awaitSpeakCompletion(true) — 말이 끝날 때까지 기다림

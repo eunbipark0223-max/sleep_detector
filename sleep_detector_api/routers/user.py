@@ -2,13 +2,12 @@
 # routers/user.py — 회원가입 · 로그인 · 구글 로그인 · 내 정보
 # ═══════════════════════════════════════════════════════════════
 # 담당: -   |   우선: P0
-# 수업 원본: road_hazard_api/routers/user.py (🟢 그대로 복사 + 이름만 맞춤)
 #
 # [이 파일이 하는 일]
 #   - POST /users/signup {email, password, name, phone?, vehicle_no?, privacy_agreed?} · /users/login · /users/google  ·  GET /users/me
 #     · /users/google {email, name, firebase_uid, id_token?} — 관리자 계정은 id_token 검증 필수 (services/firebase_verify.py) · GET /users/google/config = 관리자 웹용 Firebase 웹 설정
 #     (회원가입 화면이 전화번호 · 차량번호를 같이 보냄. privacy_agreed=false 면 422. 동의 여부는 DB 칸을 늘리지 않아 저장하지 않음)
-#   - 프로필 사진 POST · GET · DELETE /users/me/photo (수업 그대로, profile_screen)
+#   - 프로필 사진 POST · GET · DELETE /users/me/photo (profile_screen)
 #   - PATCH /users/me  {name?, phone?, vehicle_no?} — 기사 연락용 전화번호 · 차량번호 (profile_screen 에서 입력, 관리자 웹 연락처에 보임) · 이름은 관리자 설정 화면
 #   - PUT /users/me/password {current_password, new_password} — 비밀번호 변경 (관리자 설정 화면, 가입과 같은 규칙. 구글 계정은 400)
 #   - (11/19) POST /users/me/email/request {new_email, current_password} · /users/me/email/confirm {new_email, code}
@@ -20,7 +19,7 @@
 #       POST /users/email/send · /users/email/verify — 이메일도 같은 방식 (email_token)
 #         (11/19) .env 에 구글 SMTP(SMTP_USER · SMTP_PASSWORD)가 있으면 /users/email/send 가 진짜 메일로 보냄 (services/mail_service.py) — 없으면 demo_code 시연용
 #
-# [수업에서 바꾼 것]
+# [정한 것]
 #   - 요청 · 응답 이름: schema 의 SignupRequest · LoginRequest · GoogleLoginRequest · UserResponse · LoginResponse (D)
 #   - 로그인 응답: {access_token} → {success, access_token, token_type, user} (mock_server 와 같은 모양, 앱은 access_token 만 읽어도 됨)
 #   - 토큰 검사는 auth.jwt.get_current_user 한 줄로
@@ -52,7 +51,7 @@ import config
 from schema.request  import (
     SignupRequest, LoginRequest, GoogleLoginRequest, ProfileUpdate, PasswordChange,
     EmployeeCheckRequest, PhoneSendRequest, PhoneVerifyRequest, EmailSendRequest, EmailVerifyRequest,
-    EmailChangeRequest, EmailChangeConfirm,
+    FindEmailRequest, PasswordResetRequest, EmailChangeRequest, EmailChangeConfirm,
 )
 from services import employee_service, mail_service
 from schema.response import UserResponse, LoginResponse
@@ -196,6 +195,39 @@ def verify_email_code_handler(body: EmailVerifyRequest):
     return {"verified": True, "email": str(body.email), "email_token": token}
 
 
+def _mask_email(email: str) -> str:
+    """abcdef@test.com → ab****@test.com (앞 2글자만 보여 줌)"""
+    local, _, domain = email.partition("@")
+    keep = local[:2] if len(local) > 2 else local[:1]
+    return f"{keep}{'*' * max(len(local) - len(keep), 2)}@{domain}"
+
+
+@router.post("/users/find-email", status_code=status.HTTP_200_OK)
+def find_email_handler(body: FindEmailRequest, session: Session = Depends(get_session)):
+    """(11/18 C) 이메일 찾기 — 전화번호 인증(phone_token)을 마치면 그 번호로 가입한 이메일을 가려서 알려 줌"""
+    if not employee_service.use_phone_token(body.phone, body.phone_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="전화번호 인증을 먼저 해 주세요")
+    users = session.scalars(select(User).where(User.phone == body.phone, User.role == "user")).all()
+    if not users:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="이 전화번호로 가입한 계정이 없어요")
+    return {"emails": [{"email": _mask_email(u.email), "provider": u.provider or "email"} for u in users]}
+
+
+@router.post("/users/password/reset", status_code=status.HTTP_200_OK)
+def reset_password_handler(body: PasswordResetRequest, session: Session = Depends(get_session)):
+    """(11/18 C) 비밀번호 찾기 — 가입한 이메일로 인증(email_token)을 마치면 새 비밀번호로 바꿈. 구글 계정은 거절"""
+    user = session.scalar(select(User).where(User.email == str(body.email)))
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="가입되지 않은 이메일이에요")
+    if not user.hashed_password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="구글 계정은 구글로 계속하기로 로그인해 주세요")
+    if not employee_service.use_email_token(str(body.email), body.email_token):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이메일 인증을 먼저 해 주세요")
+    user.hashed_password = hash_password(body.new_password)
+    session.commit()
+    return {"success": True}
+
+
 @router.post(
     "/users/login",
     status_code=status.HTTP_200_OK,
@@ -296,12 +328,16 @@ def _me_dict(user: User) -> dict:
         "photo_url" : user.photo_url,
         "phone"     : user.phone,
         "vehicle_no": user.vehicle_no,
+        "emp_no"    : user.emp_no,          # (11/25) 구글로 들어온 기사에게 사번을 물을지 앱이 판단
         "created_at": user.created_at.isoformat() if user.created_at else None,
     }
 
 @router.get("/users/me", status_code=status.HTTP_200_OK)
 def get_me_handler(user: User = Depends(get_current_user)):
     return _me_dict(user)
+
+_emp_lock = threading.Lock()   # (11/25) 구글 기사 사번 등록 — 같은 사번을 두 사람이 동시에 넣지 못하게
+
 
 @router.patch("/users/me", status_code=status.HTTP_200_OK)
 def update_me_handler(
@@ -316,6 +352,20 @@ def update_me_handler(
         user.phone = body.phone or None
     if "vehicle_no" in body.model_fields_set and body.vehicle_no is not None:
         user.vehicle_no = body.vehicle_no or None
+    # (11/25 팀장) 구글로 처음 들어온 기사: 사번을 한 번 받음 — 명단에 있고 아직 안 쓰인 사번만 (가입 때와 같은 check_employee)
+    if "emp_no" in body.model_fields_set and (body.emp_no or "").strip():
+        no = employee_service.normalize_emp_no(body.emp_no)
+        if user.emp_no:
+            if user.emp_no != no:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="사번은 바꿀 수 없어요")
+        else:
+            with _emp_lock:                          # 같은 사번 동시 등록 막기
+                try:
+                    emp = employee_service.check_employee(session, no)
+                except employee_service.EmployeeError as e:
+                    raise HTTPException(status_code=e.status, detail=e.message)
+                user.emp_no = emp.emp_no
+                session.commit()
     session.commit()
     return _me_dict(user)
 

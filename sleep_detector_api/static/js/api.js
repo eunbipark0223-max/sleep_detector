@@ -2,10 +2,9 @@
 // static/js/api.js — 관리자 웹이 서버를 부르는 함수 모음
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P0
-// 수업 원본: road_hazard_api/static/js/api.js (🟡 수정)
 //
 // [이 파일이 하는 일]
-//   - /admin/hazards → /admin/events 등 주소 변경
+//   - 관리자 주소는 /admin/events 등
 //   - 조치완료 상태 변경 호출 (PATCH /events/{id}/status)
 //
 // [쓰는 곳] admin_login.html · admin.html  (둘 다 <script src="js/api.js"> 로 불러옴, 서버와 같은 주소라 주소 앞부분은 비움)

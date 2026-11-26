@@ -2,15 +2,23 @@
 # routers/detect.py — 졸음 의심 사진 확인 + 운행 API  ⭐ 핵심
 # ═══════════════════════════════════════════════════════════════
 # 담당: 팀장   |   우선: P0 (퀴즈 연결은 P1)
-# 수업 원본: road_hazard_api/routers/detect.py (🟡 수정)
 #
 # [이 파일이 하는 일]
 #   - POST /detect — 앱이 '졸음 의심' 때만 보냄 (사진 1장 + reason · closed_sec · perclos · eye_open_prob · 위도 · 경도, JWT 필수)
-#   -   ① 로그인 · 사진 확인 (uploads/tmp/ 에 잠깐)
-#   -   ② 확인 판정 face_service → 취소면 사진 삭제 후 바로 응답 (is_sleep false, AI 안 부름)
-#   -   ③ sleep_state 에 졸음 1회 → 규칙 단계   ④ LLM 요약   ⑤ RAG 규정
-#   -   ⑥ Agent 단계 · 안내문 · 보고서 · driver_voice → 바닥 · 천장 검사 + 음성 보고 숫자 검사
-#   -   ⑦ 저장 (사진 uploads/events/ + DB 1줄)   ⑧ 음성 퀴즈 1문제 (경고 저장 뒤, quiz_id ↔ event_id 기억)
+#     (11/16 재설계) 경고는 규칙이 바로 (응답 전 0.1초 미만) · AI 는 응답 뒤에서 관리자 보고서만
+#     ── 응답 전 ──
+#   -   ① 로그인 · 사진 확인 (uploads/tmp/ 에 잠깐) · 휴식 중이면 무시 · half(반쯤 감은 눈)는 4번 중 3번일 때만 확정
+#   -   ② 확인 판정 face_service (CNN + EAR) → 취소면 사진 삭제 후 바로 응답 (is_sleep false, AI 안 부름)
+#   -   ②-1 예비 경고 (PRE_WARN_ON, 11/15부터 기본 꺼짐)
+#   -   ③ sleep_state 에 졸음 1회 → 규칙 단계 (0 ~ 3) · facts (10분 졸음 횟수 · 감은 시간 · 운전 시간) · stage_note
+#   -   ④ 단계 · 기사 음성 · 요약 = 규칙 템플릿 (llm_service.template_summary · agent_service.rule_response)
+#   -   ⑦ 저장 (확정 사진 uploads/events/ + DB 1줄, guidance = 기사가 실제로 들은 문장)
+#   -   ⑧ 2단계만 음성 퀴즈 1문제 (경고 저장 뒤, quiz_id ↔ event_id 기억) · 3단계는 [깨어 있어요] 버튼
+#   -   ⑨ 2단계부터 BackgroundTasks 로 _fill_ai_report 예약 → 앱에 응답
+#     ── 응답 뒤 (2단계부터, 약 3 ~ 6초) ──
+#   -   _fill_ai_report: LLM 상황 요약 → RAG 규정 → Agent 관리자 보고서 → 같은 경고 기록의 summary · report 채움
+#       단계는 바꾸지 않음 (AGENT_MAX_STEP_UP = 0) · guidance 는 덮어쓰지 않음 · 실패해도 템플릿 기록 그대로
+#   -   1단계는 AI 를 부르지 않음 (첫 졸음 · 무료 한도 보호)
 #   -   reason 이 비어 있으면 '사진 1장 테스트' → 서버 EAR 만으로 판정
 #   -   사진 없이 오면 (고개를 떨궈 얼굴을 놓친 채 감김, 10/28) → '얼굴 없음' 과 같이 앱 판단대로 확정 (method mlkit, photo_path 없음)
 #       사진 1장 테스트(reason 없음)는 사진이 꼭 있어야 함 → 400
@@ -27,7 +35,7 @@
 # [주의]
 #   - 응답 모양은 기획안 9-3 (졸음) · 9-5 (ping) 그대로 — 앱 sleep_response.dart · drive_status.dart 와 맞춰야 함
 #     (D 의 mock_server.py 와도 같은 모양 → 앱은 주소만 바꾸면 진짜 서버로 넘어감)
-#   - 숫자는 _normalize 로 int / float 확정해서 보냄 (수업에서 배운 '5' 문자열 사고 방지)
+#   - 숫자는 _normalize 로 int / float 확정해서 보냄 ('5' 같은 문자열 사고 방지)
 #
 # [연결 약속 — 다른 사람 파일의 이름]
 #   - sleep_state (A): start_drive · reset · get_stage · add_sleep · set_stage · facts · start_rest · rest_elapsed_min · finish_rest
@@ -74,6 +82,7 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 _calib_photos = {}       # user_id → [임시 사진 경로, ...]
 # [정차했어요] 때 휴식완료로 바꿀 2단계 경고 번호
 _rest_event = {}         # user_id → event_id
+_stop_event = {}         # (11/26) user_id → [정차했어요] 를 누를 때 열려 있던 2 · 3단계 경고 (AI 보고서 '기사님이 한 일')
 _lock = threading.Lock()
 # 서버를 켠 뒤 /detect 판정 방식별 건수 (GET /health — method 가 cnn 이 아니면 폴백이 난 것)
 _method_counts = {"cnn": 0, "ear": 0, "mlkit": 0}
@@ -96,7 +105,7 @@ def _label(stage):
 
 
 async def _save_upload(file: UploadFile, folder: str, prefix: str) -> str:
-    """사진 확인 (확장자 · 크기) → folder 에 저장 → 경로. 수업 detect.py 의 검사 그대로."""
+    """사진 확인 (확장자 · 크기) → folder 에 저장 → 경로."""
     ext = os.path.splitext(file.filename or "photo.jpg")[1].lower() or ".jpg"
     if ext not in ALLOWED_EXTS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"이미지 파일만 올릴 수 있습니다 ({', '.join(sorted(ALLOWED_EXTS))})")
@@ -121,6 +130,48 @@ def _remove(path):
         pass
 
 
+# (11/25 팀장) 고개 숙임 경고에도 관리자 웹 사진 — 앱은 숙임을 처음 사진과 보내고, 서버가 취소하면(얼굴 없음 · 눈 뜸)
+#   숙인 채 계속이면 사진 없이 다시 보낸다 → 그 경고는 사진이 없었음. 취소된 사진을 잠깐(HELD_PHOTO_SEC) 들고 있다가
+#   사진 없이 온 경고가 확정되면 그 사진을 붙인다. 시간이 지나거나 다음 취소 사진이 오면 바로 지움 (개인정보)
+HELD_PHOTO_SEC = 60
+_held_photos: dict[int, tuple[str, float]] = {}     # user_id → (임시 사진 경로, 취소 시각)
+
+
+def _sweep_held():
+    """시간이 지난 들고 있던 사진을 모두 지움 (다른 기사 것 포함 — 다시 보내지 않은 사진이 남지 않게)"""
+    now = time.time()
+    with _lock:
+        old = [uid for uid, (_, at) in _held_photos.items() if now - at > HELD_PHOTO_SEC]
+        paths = [_held_photos.pop(uid)[0] for uid in old]
+    for p in paths:
+        _remove(p)
+
+
+def _hold_photo(user_id: int, path):
+    if not path:
+        return
+    _sweep_held()
+    with _lock:
+        old = _held_photos.pop(user_id, None)
+        _held_photos[user_id] = (path, time.time())
+    if old:
+        _remove(old[0])
+
+
+def _take_held_photo(user_id: int):
+    """HELD_PHOTO_SEC 안에 취소된 사진이 있으면 꺼내 준다 (한 번만). 오래된 것은 지움."""
+    _sweep_held()
+    with _lock:
+        held = _held_photos.pop(user_id, None)
+    if not held:
+        return None
+    path, at = held
+    if time.time() - at > HELD_PHOTO_SEC or not os.path.exists(path):
+        _remove(path)
+        return None
+    return path
+
+
 def _open_stage2_event(session: Session, user_id: int) -> Optional[SleepEvent]:
     """[정차했어요] 때 휴식완료로 바꿀 경고 — 가장 최근의 아직 처리 안 된 2단계 경고."""
     return session.scalar(
@@ -128,6 +179,24 @@ def _open_stage2_event(session: Session, user_id: int) -> Optional[SleepEvent]:
         .where(SleepEvent.user_id == user_id, SleepEvent.stage == 2, SleepEvent.status.in_(["미확인", "확인"]))
         .order_by(SleepEvent.id.desc())
     )
+
+
+def _open_alert_event(session: Session, user_id: int) -> Optional[SleepEvent]:
+    """(11/26 팀장) [정차했어요] 를 누를 때 열려 있는 가장 최근의 2 · 3단계 경고 — 그 보고서에 '정차함' 을 남긴다."""
+    return session.scalar(
+        select(SleepEvent)
+        .where(SleepEvent.user_id == user_id, SleepEvent.stage >= 2, SleepEvent.status.in_(["미확인", "확인"]))
+        .order_by(SleepEvent.id.desc())
+    )
+
+
+def _add_report(event: SleepEvent, key: str, value) -> None:
+    try:
+        report = json.loads(event.report) if event.report else {}
+    except (TypeError, ValueError):
+        report = {}
+    report[key] = value
+    event.report = json.dumps(report, ensure_ascii=False)
 
 
 def method_counts() -> dict:
@@ -223,17 +292,29 @@ def drive_ping_handler(
     stage = int(sleep_state.get_stage(user.id))
 
     if t["rest_overdue"]:                    # 휴게 알림 뒤 15분 안에 안 쉼 → 경고 1줄 (단계는 그대로)
+        # (11/23 팀장) 관리자 상세 'AI 분석 결과' 칸을 AI 없이 정해진 문장으로 채움 — 숫자 · 규정이 정해져 있어 정확하고 무료 한도도 안 씀
+        situation = (f"연속 {drive_timer.span_text(t['drive_min'])} 운전 · "
+                     f"휴게 알림 뒤 {config.REST_GRACE_MIN}분 동안 쉬지 않음")
         session.add(SleepEvent(
             user_id=user.id, stage=max(stage, 1), reason="rest_overdue", method="mlkit",
             perclos=body.perclos if body else None,
-            summary=f"휴게 알림 뒤 {config.REST_GRACE_MIN}분이 지나도록 휴식하지 않았습니다 (연속 운전 {t['drive_min']}분).",
+            summary=situation,
             guidance=f"가까운 졸음쉼터에서 {config.REST_MIN}분 이상 쉬어 주세요.",
-            report=json.dumps({"situation": "휴게 미준수", "drive_min": t["drive_min"]}, ensure_ascii=False),
+            report=json.dumps({
+                "situation": situation,
+                "stage_reason": f"\"연속 {drive_timer.span_text(config.DRIVE_LIMIT_MIN)} 운전 후 {config.REST_MIN}분 휴식\" 규정 미준수",
+                "regulation": drive_timer.rest_rule(),
+                "recommended_action": "기사에게 연락해 휴식 안내",
+                "drive_min": t["drive_min"],
+                "is_real": {"llm": False, "rag": False, "agent": False, "driver_voice": False},   # 정해진 문장 (AI 아님)
+            }, ensure_ascii=False),
         ))
         session.commit()
 
     out = {"stage": stage, "status": _label(stage), "drive_min": int(t["drive_min"]),
-           "rest_due": bool(t["rest_due"]), "rest_message": t["rest_message"]}
+           "rest_due": bool(t["rest_due"]),
+           # (11/24 팀장) 휴게 안내는 다른 경고처럼 '○○님, ' 으로 시작
+           "rest_message": f"{_driver_name(user.name) or '기사'}님, {t['rest_message']}" if t["rest_message"] else ""}
     new_token = refreshed_token(authorization, user)
     if new_token:                            # 앱이 저장해서 다음 요청부터 씀 (운행 중 401 방지)
         out["access_token"] = new_token
@@ -274,8 +355,9 @@ _session_start: dict[int, tuple] = {}   # user_id → (시작 시각, 그때 마
 _drive_reports: dict[str, dict] = {}
 DRIVE_REPORT_KEEP_SEC = 600   # 10분 지난 것은 지움 (앱은 화면을 연 동안만 물어봄)
 STAGE1_DELIVERED = "졸음이 감지됐어요. 정신 차려 주세요."   # (11/18) 앱 1단계 음성과 같은 문장 (drive_screen._stage1Voice · stage_texts)
-_REASON_TEXT = {"microsleep": "눈 감김", "perclos": "피로 누적", "no_face": "고개 숙임", "half": "눈 반쯤 감김",
-                "rest_overdue": "휴게 미준수"}
+# (11/23 팀장 용어표) 운행 리포트 타임라인 = 기사 앱 말 (관리자 웹은 admin.html REASON_LABEL)
+_REASON_TEXT = {"microsleep": "순간 졸음", "perclos": "졸음 잦음", "no_face": "고개 숙임", "half": "눈 반쯤 감김",
+                "rest_overdue": "휴식 안 함", "no_response": "퀴즈 응답 없음", "pre_warning": "첫 졸음"}
 
 
 def _driver_name(name):
@@ -368,6 +450,15 @@ def drive_rest_handler(session: Session = Depends(get_session), user: User = Dep
     if elapsed is None:
         sleep_state.start_rest(user.id)
         elapsed = 0.0
+        stop_ev = _open_alert_event(session, user.id)
+        if stop_ev is not None:   # (11/26 팀장) AI 보고서 '기사님이 한 일' — [정차했어요] 를 눌러 정차함
+            _add_report(stop_ev, "stopped", {"at": datetime.now().strftime("%H:%M")})
+            session.commit()
+        with _lock:
+            if stop_ev is not None:
+                _stop_event[user.id] = stop_ev.id
+            else:
+                _stop_event.pop(user.id, None)
         event = _open_stage2_event(session, user.id)
         with _lock:
             if event:
@@ -411,6 +502,16 @@ def drive_resume_handler(session: Session = Depends(get_session), user: User = D
                           "minutes": int(elapsed)}
         event.report = json.dumps(report, ensure_ascii=False)
         event.status = "휴식완료"
+        session.commit()
+    # (11/26) 3단계 등 정차를 남긴 경고가 휴식완료 경고와 다르면 그쪽에도 휴식 기록 (단계 · 상태는 그대로)
+    with _lock:
+        stop_id = _stop_event.pop(user.id, None)
+    stop_ev = session.get(SleepEvent, stop_id) if stop_id and stop_id != (event.id if event else None) else None
+    if stop_ev is not None:
+        now = datetime.now()
+        started = datetime.fromtimestamp(now.timestamp() - elapsed * 60)
+        _add_report(stop_ev, "rest", {"started": started.strftime("%H:%M"), "resumed": now.strftime("%H:%M"),
+                                      "minutes": int(elapsed)})
         session.commit()
 
     message = {0: "운행을 재개합니다", 1: "주의 단계로 다시 출발합니다",
@@ -536,7 +637,7 @@ async def detect_handler(
           f"(기준 {base['ear_threshold']}) cnn={base['eye_closed_prob']} method={base['method']} "
           f"{'확정' if eye.get('is_sleep') else '취소'} 단계 {sleep_state.get_stage(user.id)} 눈판정 {t_eye - t_start:.1f}초")
     if not eye.get("is_sleep"):             # 취소 → AI 를 부르지 않고 바로 응답, 사진은 지움 (개인정보)
-        _remove(tmp_path)
+        _hold_photo(user.id, tmp_path)      # (11/25) 단, 숙인 채 사진 없이 다시 오면 붙이려고 HELD_PHOTO_SEC 동안만 들고 있음
         stage = int(sleep_state.get_stage(user.id))
         return {**base, "is_sleep": False, "reason": "", "stage": stage, "status": _label(stage),
                 "summary": "", "guidance": "", "driver_voice": "",
@@ -597,6 +698,11 @@ async def detect_handler(
           f"{' (관리자 해제됨)' if released else ''}")
 
     # ⑦ 저장 — 확정 사진만 uploads/events/ 로, DB 1줄 (사진 없이 온 경고는 photo_path 없음 → 관리자 웹 '사진 없음')
+    #   (11/25) 사진 없이 온 경고(숙인 채 재전송)면 방금 취소된 숙임 사진을 붙인다 (_take_held_photo, 60초 안)
+    held_photo = False
+    if tmp_path is None:
+        tmp_path = _take_held_photo(user.id)
+        held_photo = tmp_path is not None
     photo_path = None
     if tmp_path is not None:
         os.makedirs(config.UPLOAD_EVENT_DIR, exist_ok=True)
@@ -607,6 +713,7 @@ async def detect_handler(
         **agent["report"],
         "eye": {"closed_sec": closed, "perclos": pc, "eye_open_prob": open_prob, "ear": eye.get("ear"),
                 "photo": tmp_path is not None,
+                **({"photo_note": "처음 의심 때 사진 (고개 숙임)"} if held_photo else {}),
                 **({"trigger": "half", "half_ear": half["ear"], "half_baseline": half["baseline"]} if half else {})},
         "driving_quiz": [],
         "facts": facts,

@@ -2,7 +2,7 @@
 // services/eye_monitor.dart — ML Kit 눈 판정 (앱의 실시간 1차 판정)  ⭐ 핵심
 // ═══════════════════════════════════════════════════════════════
 // 담당: A   |   우선: P0 (개인 기준은 P1)
-// 수업 원본: (없음, 🔴 신규) google_mlkit_face_detection 예제
+// 참고: google_mlkit_face_detection 예제
 //
 // [이 파일이 하는 일]
 //   - FaceDetector 옵션: enableClassification 켬 · performanceMode fast · minFaceSize 0.15 (윤곽 · 랜드마크 · 추적은 끔)
@@ -21,7 +21,7 @@
 //   - 🆕 (AppConfig.smileOpenProb) 웃음 확률이 기준 이상이면 감김으로 세지 않음 ('뜸' 으로 셈, '모름' 아님 → PERCLOS 에도 뜸)
 //       크게 웃으면 볼이 올라가 눈이 가늘어져 감김으로 오판 (11/03 웹캠 확인). 졸면서 크게 웃는 경우는 거의 없음
 //       (11/09) 웃는 프레임은 고개 숙임 · 평소 각도에도 넣지 않음 — 정면에서 웃을 때 숙임 3초로 잡힘 (11/05 시연 폰, 팀장 요청)
-//   - 🆕 (11/09, AppConfig.microsleepPhotos) 눈 감김 미세수면은 감는 동안의 처음 · 가운데 · 마지막 3장을 넘김 (lastSuspectJpgs)
+//   - (11/09, AppConfig.microsleepPhotos) 눈 감김은 감는 동안의 사진 microsleepPhotos 장을 넘김 (lastSuspectJpgs) — 11/23부터 1장 (마지막 장)
 //       고개 숙임 · PERCLOS 는 1장 그대로, 재전송은 사진 없음
 //   - 🆕 (11/10, AppConfig.graceAfterWarningSec) 경고 화면에서 돌아온 뒤 (reset) 눈을 한 번이라도 뜬 프레임이 나오면
 //       그때부터 10초는 미세수면 · 고개 숙임 의심을 안 냄 (팀장: 경고 뒤 눈 비비기로 단계가 바로 오름)
@@ -339,7 +339,9 @@ class EyeMonitor {
       //   졸면서 크게 웃는 경우는 거의 없어서, 웃는 프레임은 감김으로 세지 않음
       final bool smiling = (lastSmileProb ?? 0) >= AppConfig.smileOpenProb;
       // 완전히 감음 = 뜸 확률, (useContourEar 켜면) 반쯤 감음 = 폰 EAR
-      final bool eyesClosed = !smiling &&
+      // (11/19) 고개를 옆으로 25° 넘게 돌리면 눈 확률이 틀려서 감김으로 세지 않음 (옆을 볼 때 졸음 오판)
+      final bool turned = (face.headEulerAngleY ?? 0).abs() > 25;
+      final bool eyesClosed = !smiling && !turned &&
           (avgProb < threshold || (AppConfig.useContourEar && ear != null && ear < AppConfig.earClosed));
       _headDown = AppConfig.headRuleOn && _isHeadDown(face.headEulerAngleX, now, eyesClosed, smiling);
       // (11/10) 경고 뒤 첫 '뜸' 프레임 → 그때부터 graceAfterWarningSec 봐줌

@@ -2,7 +2,6 @@
 # routers/chat.py — 규정 도우미 채팅 API
 # ═══════════════════════════════════════════════════════════════
 # 담당: B   |   우선: P2
-# 수업 원본: road_hazard_api/routers/chat.py (🟢 그대로 복사)
 #
 # [이 파일이 하는 일]
 #   - GET /chat/hello · POST /chat — chat_service 를 부름

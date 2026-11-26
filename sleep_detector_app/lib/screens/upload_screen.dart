@@ -2,7 +2,6 @@
 // screens/upload_screen.dart — 사진 1장 테스트 (비상 시연 · KPI ① 측정)
 // ═══════════════════════════════════════════════════════════════
 // 담당: C   |   우선: P0
-// 수업 원본: road_hazard_app/lib/screens/upload_screen.dart (🟡 수정)
 //
 // [이 파일이 하는 일]
 //   - 갤러리 / 촬영으로 사진 1장 → eye_monitor.analyzeFile 로 ML Kit 눈 뜸 확률 재기 (화면에는 안 보여 줌)
@@ -26,6 +25,7 @@ import '../services/api_service.dart';
 import '../services/eye_monitor.dart';
 import '../theme.dart';
 import 'warning_screen.dart';
+import '../design_tokens.dart';
 
 class UploadScreen extends StatefulWidget {
   const UploadScreen({super.key});
@@ -75,7 +75,7 @@ class _UploadScreenState extends State<UploadScreen> {
       if (!mounted) return;
       setState(() {
         _analyzing = false;
-        _error ??= '사진을 불러오지 못했어요. 사진 · 카메라 권한을 확인해 주세요';
+        _error ??= '사진을 불러오지 못했어요\n사진 · 카메라 권한을 확인해 주세요';
       });
     }
   }
@@ -199,14 +199,14 @@ class _UploadScreenState extends State<UploadScreen> {
   Widget _resultCard(SleepResponse r) {
     final bg = AppColors.stage(r.stage); // 단계(0~3) → 화면 색
     final fg = AppColors.onStage(r.stage); // 그 색 위에 올리는 글자색
-    final summary = r.summary.isNotEmpty ? r.summary : '졸음이 감지되지 않았어요.';
+    final summary = r.summary.isNotEmpty ? r.summary : '졸음이 감지되지 않았어요';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
           padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(16)),
+          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(AppRadius.card)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

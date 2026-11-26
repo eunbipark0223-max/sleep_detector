@@ -2,7 +2,7 @@
 # mock_server.py — 임시 서버 (C 앱 연결용 · AI · DB · 진짜 로그인 없음)
 # ═══════════════════════════════════════════════════════════════
 # 담당: D   |   우선: P0 (진짜 서버가 되기 전까지 임시)
-# 수업 원본: (없음, 🔴 신규 — 진짜 서버 main.py + routers/ 가 완성되면 이 파일은 버린다)
+# 참고: 진짜 서버 main.py + routers/ 가 완성되면 이 파일은 버린다
 #
 # [이 파일이 하는 일]
 #   - 진짜 서버와 같은 주소 · 같은 JSON 칸 이름으로 대답해서 C(앱) 가 서버 없이도 화면을 만들 수 있게 한다
@@ -68,6 +68,7 @@ PRE_WARN_ON = os.getenv("PRE_WARN_ON", "false").lower() in ("1", "true", "yes") 
 DRIVE_LIMIT_MIN = 120                                         # 연속 운전 휴게 알림
 CALIB_FRAMES = 5                                              # 개인 기준 측정 사진 수
 LISTEN_SEC = 10                                               # 음성 퀴즈 듣는 시간 (10/29 STT 시험으로 7 → 10)
+MOCK_QUIZ_TYPES = ("repeat",)                                 # (11/19 팀장) 운전 중 음성 퀴즈는 따라 말하기만 (덧셈은 화면을 보게 됨) — 진짜 서버 config.VOICE_QUIZ_TYPES
 REPEAT_MIN_SCORE = 0.7                                        # 따라 말하기 통과 유사도 (11/02 STT 시험 결과 0.8 → 0.7, 진짜 서버 config 와 같게)
 VOICE_QUIZ_MAX_TRIES = 2
 MAX_PHOTO_BYTES = 10 * 1024 * 1024
@@ -225,14 +226,14 @@ def make_ai_text(stage: int, reason: str, count: int, closed_sec: float, perclos
     if reason == "perclos":
         summary = f"최근 30초 중 {int(round(perclos * 100))}% 동안 눈을 감아 피로가 쌓인 상태로 보여요. 10분 안에 {count}번째 졸음이에요."
     else:
-        summary = f"약 {closed}초간 눈을 감은 미세수면 상태로 보여요. 10분 안에 {count}번째 졸음이에요." if closed >= 1 else f"졸음이 감지됐어요. 10분 안에 {count}번째 졸음이에요."
+        summary = f"약 {closed}초간 눈을 감은 순간 졸음 상태로 보여요. 10분 안에 {count}번째 졸음이에요." if closed >= 1 else f"졸음이 감지됐어요. 10분 안에 {count}번째 졸음이에요."
     # (11/16 팀장) 음성은 '사실 하나 + 행동 하나' 짧은 한 문장 (진짜 서버 agent_service._template_voice 와 같음, 이름은 응답 때 붙임)
     if stage == 1:
         voice = f"{closed}초 동안 눈을 감았어요. 정신 차려 주세요." if closed >= 1 else "눈을 자주 감고 있어요. 정신 차려 주세요."
     elif stage == 2:
-        voice = f"10분 새 {count}번 졸았어요. 가까운 쉼터에서 쉬어 가세요."
+        voice = "쉼터에서 쉬어 가세요."   # (11/18 C) 진짜 서버 agent_service._template_voice 와 같게 — 이름 + 할 일만
     else:
-        voice = f"10분 새 {count}번 졸았어요. 지금 바로 정차하세요."
+        voice = "지금 바로 정차하세요."
     return {
         "summary": summary, "guidance": GUIDANCE[stage], "driver_voice": voice,
         "report": {
@@ -308,10 +309,10 @@ def parse_number(text: str) -> Optional[int]:
 
 def make_quiz(user_id: int, qtype: Optional[str] = None, event_id: Optional[int] = None) -> dict:
     """문제 dict 를 돌려준다 (정답은 서버 QUIZZES 에만 보관, 응답에는 없음). qtype 을 주면 같은 유형 새 문제."""
-    qtype = qtype or random.choice(["repeat", "add"])
+    qtype = qtype if qtype in MOCK_QUIZ_TYPES else random.choice(MOCK_QUIZ_TYPES)  # (11/19 팀장) 진짜 서버 config.VOICE_QUIZ_TYPES 와 같게 — 따라 말하기만
     if qtype == "repeat":
         sentence = random.choice(_repeat_sentences())
-        speak, display, asked, answer = f"따라 말하세요. {sentence}", sentence, sentence, sentence
+        speak, display, asked, answer = f"크게 말하세요. {sentence}.", sentence, sentence, sentence  # (11/19 C) 안내는 한 문장  # (11/19 팀장) 진짜 서버와 같은 질문
     else:
         while True:  # 받아올림 없는 2자리 + 2자리
             a, b = random.randint(10, 89), random.randint(10, 89)
@@ -355,7 +356,7 @@ def add_event(user_id: int, stage: int, reason: str, report: dict, *, summary=""
 def event_out(e: dict, admin: bool = False) -> dict:
     out = dict(e)
     out.pop("photo_path")
-    out["photo_url"] = f"/events/{e['id']}/photo" if e["photo_path"] else None    # 진짜 서버와 같음: 로그인 필요한 API 주소 (폴더는 공개 안 함)
+    out["photo_url"] = f"/events/{e['id']}/photo" + ("?v=after_quiz" if e["report"].get("photo_at") == "after_quiz" else "") if e["photo_path"] else None    # 진짜 서버와 같음: 로그인 필요한 API 주소 (폴더는 공개 안 함)
     out["stage_label"] = STAGE_LABELS[e["stage"]]
     if admin:
         user = USERS.get(e["user_id"], {})
@@ -377,7 +378,7 @@ def seed() -> None:
               "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[1], "location": "37.4021, 127.1088",
               "eye": {"closed_sec": 2.1, "perclos": 0.12, "eye_open_prob": 0.18}, "driving_quiz": quiz_ok,
               "is_real": {"llm": True, "rag": True, "agent": True, "driver_voice": True}},  # 시험용: 전부 진짜인 경고
-              summary="약 2초간 눈을 감은 미세수면 상태로 보여요. 10분 안에 1번째 졸음이에요.", guidance=GUIDANCE[1], ear=0.17, method="ear",
+              summary="약 2초간 눈을 감은 순간 졸음 상태로 보여요. 10분 안에 1번째 졸음이에요.", guidance=GUIDANCE[1], ear=0.17, method="ear",
               perclos=0.12, eye_closed_prob=0.82, lat=37.4021, lng=127.1088, status="확인", created_at=_now_text(now - timedelta(hours=3)))
     add_event(1, 2, "perclos", {"situation": "10분 안 두 번째 졸음, PERCLOS 33%", "stage_reason": STAGE_REASON[2],
               "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[2], "location": "37.4105, 127.1190",
@@ -391,9 +392,9 @@ def seed() -> None:
               "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[3], "location": "37.3950, 127.1100",
               "driving_quiz": quiz_fail}, summary="운전 중 음성 퀴즈에 2번 답하지 못했습니다.", guidance=GUIDANCE[3],
               lat=37.3950, lng=127.1100, created_at=_now_text(now - timedelta(minutes=20)))
-    add_event(1, 1, "rest_overdue", {"situation": "연속 운전 2시간 안내 뒤 15분 안에 쉬지 않음", "stage_reason": "휴게 미준수 (단계는 올리지 않고 최소 1단계로 기록)",
+    add_event(1, 1, "rest_overdue", {"situation": "연속 2시간 15분 운전 · 휴게 알림 뒤 15분 동안 쉬지 않음", "stage_reason": "\"연속 2시간 운전 후 15분 휴식\" 규정 미준수",  # (11/23 팀장) 진짜 서버와 같은 정해진 문장
               "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": "기사에게 휴식 안내", "location": "37.4300, 127.1300"},
-              summary="휴게 시간을 지키지 않았습니다.", guidance="가까운 졸음쉼터에서 쉬어 주세요.",
+              summary="연속 2시간 15분 운전 · 휴게 알림 뒤 15분 동안 쉬지 않음", guidance="가까운 졸음쉼터에서 15분 이상 쉬어 주세요.",
               lat=37.4300, lng=127.1300, created_at=_now_text(now - timedelta(minutes=50)))
 
 
@@ -447,6 +448,9 @@ def seed_more() -> None:
             make(u["id"], stage, reason, when, "조치완료" if stage == 3 else ("휴식완료" if stage == 2 else "확인"), rng_old)
 
 
+REST_OVERDUE_REASON = "\"연속 2시간 운전 후 15분 휴식\" 규정 미준수"   # (11/23 팀장) 진짜 서버와 같은 정해진 문장
+
+
 def demo_history(user_id: int) -> int:
     """(11/17 C) 화면 확인용 운행 기록 — 최근 3주에 걸친 경고 + 방금 생긴 경고 2개(알림 '새 알림' 확인용).
 
@@ -456,9 +460,9 @@ def demo_history(user_id: int) -> int:
     quiz_ok = [{"type": "add", "asked": "23+45", "heard": "육십팔", "passed": True, "answer_sec": 2.1}]
     quiz_fail = [{"type": "repeat", "asked": "졸리면 쉬어 가겠습니다", "heard": "", "passed": False, "answer_sec": None}]
     situations = {
-        "microsleep": "약 {s}초간 눈을 감은 미세수면 상태로 보여요.",
+        "microsleep": "약 {s}초간 눈을 감은 순간 졸음 상태로 보여요.",
         "perclos": "최근 30초 중 {p}% 동안 눈을 감아 피로가 쌓인 상태로 보여요.",
-        "rest_overdue": "연속 운전 2시간 안내 뒤 15분 안에 쉬지 않았어요.",
+        "rest_overdue": "연속 2시간 15분 운전 · 휴게 알림 뒤 15분 동안 쉬지 않음",
         "no_response": "운전 중 음성 퀴즈에 2번 답하지 못했어요.",
     }
     # (며칠 전, 시, 분, 단계, 이유, 처리 상태)  — 0일 전 = 오늘
@@ -479,7 +483,7 @@ def demo_history(user_id: int) -> int:
         closed = round(1.2 + (i % 4) * 0.4, 1)
         perclos = 0.18 + (i % 5) * 0.05
         add_event(user_id, stage, reason, {
-            "situation": situations[reason].format(s=closed, p=int(perclos * 100)), "stage_reason": STAGE_REASON[stage],
+            "situation": situations[reason].format(s=closed, p=int(perclos * 100)), "stage_reason": (REST_OVERDUE_REASON if reason == "rest_overdue" else STAGE_REASON[stage]),
             "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[stage], "location": f"{lat}, {lng}",
             "eye": {"closed_sec": closed, "perclos": perclos, "eye_open_prob": 0.3} if reason in ("microsleep", "perclos") else None,
             "driving_quiz": quiz_fail if reason == "no_response" else quiz_ok,
@@ -490,7 +494,7 @@ def demo_history(user_id: int) -> int:
         n += 1
     # 방금 생긴 경고 2개 — 알림 화면 '새 알림' 과 종 빨간 숫자 확인용
     for mins, stage, reason in ((6, 1, "microsleep"), (1, 2, "perclos")):
-        add_event(user_id, stage, reason, {"situation": situations[reason].format(s=1.8, p=31), "stage_reason": STAGE_REASON[stage],
+        add_event(user_id, stage, reason, {"situation": situations[reason].format(s=1.8, p=31), "stage_reason": (REST_OVERDUE_REASON if reason == "rest_overdue" else STAGE_REASON[stage]),
                   "regulation": MOCK_REGULATIONS[0]["title"], "recommended_action": RECOMMENDED[stage], "location": "37.4021, 127.1088",
                   "eye": {"closed_sec": 1.8, "perclos": 0.31, "eye_open_prob": 0.3}, "driving_quiz": quiz_ok},
                   summary=situations[reason].format(s=1.8, p=31), guidance=GUIDANCE[stage], ear=0.18, method="ear",
@@ -528,7 +532,7 @@ if os.path.isdir(STATIC_DIR):
 
 
 # ═══════════════════════════════════════════════════════════════
-# 숫자 · 글자 정리 (수업에서 배운 '5' 문자열 사고 방지 — Form 은 전부 글자로 받아서 직접 바꿈)
+# 숫자 · 글자 정리 ('5' 같은 문자열 사고 방지 — Form 은 전부 글자로 받아서 직접 바꿈)
 # ═══════════════════════════════════════════════════════════════
 def to_float(value, default=None):
     try:
@@ -678,13 +682,55 @@ async def phone_verify(request: Request):
     return {"verified": True, "phone": phone, "phone_token": token}
 
 
+# (11/18 C) 이메일 찾기 · 비밀번호 찾기 — 진짜 서버(routers/user.py)와 같은 주소 · 같은 응답 모양
+def _mask_email(email: str) -> str:
+    local, _, domain = email.partition("@")
+    keep = local[:2] if len(local) > 2 else local[:1]
+    return f"{keep}{'*' * max(len(local) - len(keep), 2)}@{domain}"
+
+
+@app.post("/users/find-email")
+async def find_email(request: Request):
+    body = await read_body(request)
+    phone = _phone_or_422(body.get("phone"))
+    if not employee_service.use_phone_token(phone, body.get("phone_token")):
+        raise HTTPException(status_code=400, detail="전화번호 인증을 먼저 해 주세요")
+    found = [u for u in USERS.values() if u.get("phone") == phone and u.get("role") != "admin"]
+    if not found:
+        raise HTTPException(status_code=404, detail="이 전화번호로 가입한 계정이 없어요")
+    return {"emails": [{"email": _mask_email(str(u["email"])), "provider": u.get("provider") or "email"} for u in found]}
+
+
+@app.post("/users/password/reset")
+async def reset_password(request: Request):
+    body = await read_body(request)
+    email = _email_or_422(body.get("email"))
+    user = next((u for u in USERS.values() if str(u["email"]).lower() == email.lower()), None)
+    if user is None:
+        raise HTTPException(status_code=404, detail="가입되지 않은 이메일이에요")
+    if user.get("provider") == "google":
+        raise HTTPException(status_code=400, detail="구글 계정은 구글로 계속하기로 로그인해 주세요")
+    try:
+        new_password = check_password_rules(str(body.get("new_password") or ""))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    if not employee_service.use_email_token(email, body.get("email_token")):
+        raise HTTPException(status_code=400, detail="이메일 인증을 먼저 해 주세요")
+    _PASSWORDS[user["id"]] = new_password
+    return {"success": True}
+
+
 @app.post("/users/login")
 async def login(request: Request):
     body = await read_body(request)
     email = str(body.get("email") or body.get("username") or "").strip()  # OAuth2 폼이면 username
     if not email:
         raise HTTPException(status_code=422, detail="email 이 필요합니다")
-    return login_response(add_user(email, email.split("@")[0], "admin" if email.startswith("admin") else "user"))
+    user = add_user(email, email.split("@")[0], "admin" if email.startswith("admin") else "user")
+    # (11/18 C) 화면 확인용 — 경고 기록이 하나도 없는 기사는 로그인할 때 운행 기록(최근 3주)을 자동으로 채움
+    if user["role"] != "admin" and not any(e["user_id"] == user["id"] for e in EVENTS):
+        demo_history(user["id"])
+    return login_response(user)
 
 
 @app.get("/users/google/config")
@@ -729,6 +775,8 @@ def update_me(body: ProfileUpdate, user: dict = Depends(current_user)):
         user["phone"] = body.phone or None
     if "vehicle_no" in body.model_fields_set and body.vehicle_no is not None:
         user["vehicle_no"] = body.vehicle_no or None
+    if "emp_no" in body.model_fields_set and (body.emp_no or "").strip() and not user.get("emp_no"):
+        user["emp_no"] = body.emp_no.strip().upper()   # (11/25) 구글 기사 사번 — 연습 서버는 명단 확인 없이 저장
     return me(user)
 
 
@@ -941,7 +989,11 @@ def _driver_name(name) -> str:
 @app.post("/drive/start")
 def drive_start(user: dict = Depends(current_user)):
     st = state_of(user["id"])
+    # (11/19 C) 진짜 서버처럼 2 · 3단계는 새 운행을 시작해도 유지 (관리자 [조치완료] 로만 풀림) — 0 · 1단계만 처음부터
+    keep = {k: st[k] for k in ("stage", "sleeps", "rest_started", "rest_event_id")} if st.get("stage", 0) >= 2 else None
     reset_state(st)
+    if keep:
+        st.update(keep)
     st["session"] = (datetime.now(), _next["event"] - 1)   # (11/16) 운행 종료 리포트: 이 뒤의 경고만
     st.update({"drive_start": time.time(), "drive_offset_min": 0, "rest_due_sent": False, "last_quiz_at": 0.0, "last_ping": time.time(),
                "pre_warned": False})  # (11/12 팀장) 운행마다 첫 졸음은 예비 경고 한 번
@@ -978,7 +1030,7 @@ def drive_ping(body: Optional[DrivePing] = None, user: dict = Depends(current_us
     if minutes >= DRIVE_LIMIT_MIN and not st["rest_due_sent"]:  # 한 번만
         st["rest_due_sent"] = True
         rest_due = True
-        rest_message = f"연속 {DRIVE_LIMIT_MIN // 60}시간 운전했습니다. 규정상 15분 이상 휴식이 필요합니다. 가까운 졸음쉼터를 확인하세요."
+        rest_message = f"기사님, {DRIVE_LIMIT_MIN // 60}시간 연속 운전했어요. 15분 이상 쉬어 가세요."  # 진짜 서버와 같은 말투 (11/24)
     return {"stage": stage, "status": STAGE_LABELS[stage], "drive_min": minutes, "rest_due": rest_due, "rest_message": rest_message}
 
 
@@ -1004,7 +1056,8 @@ def drive_state(user: dict = Depends(current_user)):
             "resting": resting, "rest_left_sec": left, "drive_min": drive_min_of(st), "summary": summary, "guidance": guidance}
 
 
-_REASON_TEXT = {"microsleep": "눈 감김", "perclos": "피로 누적", "no_face": "고개 숙임", "half": "눈 반쯤 감김"}
+_REASON_TEXT = {"microsleep": "순간 졸음", "perclos": "졸음 잦음", "no_face": "고개 숙임", "half": "눈 반쯤 감김",   # (11/23 팀장 용어표) 진짜 서버와 같게
+                "rest_overdue": "휴식 안 함", "no_response": "퀴즈 응답 없음", "pre_warning": "첫 졸음"}
 
 
 @app.post("/drive/end")
@@ -1204,11 +1257,30 @@ def quiz_answer(body: VoiceQuizAnswer, user: dict = Depends(current_user)):
     ai = make_ai_text(new_stage, "microsleep", len(recent_sleeps(st)), st["last_closed_sec"], 0.0, drive_min_of(st), None, None)
     ai["report"]["situation"] = "운전 중 음성 퀴즈에 2번 답하지 못함"
     ai["report"]["driving_quiz"] = [dict(x) for x in failed]
-    add_event(user["id"], new_stage, "no_response", ai["report"], summary="운전 중 음성 퀴즈에 2번 답하지 못했습니다.", guidance=ai["guidance"],
+    no_resp = add_event(user["id"], new_stage, "no_response", ai["report"], summary="운전 중 음성 퀴즈에 2번 답하지 못했습니다.", guidance=ai["guidance"],
               lat=origin["latitude"] if origin else None, lng=origin["longitude"] if origin else None)
     st["quiz_fail"] = 0
     return {**result, "stage_up": new_stage > stage, "stage": new_stage, "status": STAGE_LABELS[new_stage],
-            "message": "응답이 없어 관리자에게 알렸어요. 안전한 곳에 정차해 주세요."}
+            "message": "응답이 없어 관리자에게 알렸어요. 안전한 곳에 정차해 주세요.", "no_response_event_id": no_resp["id"]}
+
+
+@app.post("/quiz/no-response-photo")
+async def no_response_photo(event_id: int = Form(...), file: UploadFile = File(...), user: dict = Depends(current_user)):
+    """진짜 서버 routers/quiz.py 와 같음 (11/26): 2번째 퀴즈가 끝난 순간의 사진 → 그 퀴즈 응답 없음 경고의 사진."""
+    event = next((e for e in EVENTS if e["id"] == event_id), None)
+    if not event or event["user_id"] != user["id"] or event["reason"] != "no_response":
+        raise HTTPException(status_code=404, detail="없는 경고입니다")
+    if event["report"].get("photo_at") == "after_quiz":
+        raise HTTPException(status_code=409, detail="이미 사진이 있습니다")
+    photo = await file.read()
+    if not photo or len(photo) > MAX_PHOTO_BYTES:
+        raise HTTPException(status_code=400, detail="사진이 비었거나 너무 큽니다")
+    name = f"{uuid.uuid4().hex}.jpg"
+    with open(os.path.join(EVENT_DIR, name), "wb") as f:
+        f.write(photo)
+    event["photo_path"] = f"uploads/events/{name}"
+    event["report"]["photo_at"] = "after_quiz"
+    return {"success": True, "event_id": event_id}
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1242,6 +1314,10 @@ def event_status(event_id: int, body: StatusUpdate, admin: dict = Depends(requir
     event["status"] = body.status
     reset = body.status == "조치완료"
     if reset:  # 3단계 해제 — 앱은 다음 ping 에서 0단계
+        # (11/18 C) 진짜 서버와 같게: 그 기사의 처리 안 된 경고(미확인 · 확인)도 모두 조치완료
+        for other in EVENTS:
+            if other["user_id"] == event["user_id"] and other["status"] in ("미확인", "확인"):
+                other["status"] = "조치완료"
         reset_state(state_of(event["user_id"]))
     return {"success": True, "id": event_id, "status": event["status"], "stage_reset": reset}
 
@@ -1359,6 +1435,42 @@ def chat_hello():
         except Exception:
             pass
     return {"message": "안녕하세요, 졸음 가드 규정 도우미예요. 졸음운전 · 연속 운전 휴게시간 규정을 물어보세요. (규정 원문 검색)"}
+
+
+# (11/18 C) 졸음쉼터 도로 거리 · 걸리는 시간 — 진짜 서버 routers/rest_area.py (B) 와 같은 주소 · 같은 응답 모양
+#   서버 .env 에 KAKAO_API_KEY 가 있으면 B 의 route_distance_service(카카오 자동차 길찾기)를 그대로 부르고,
+#   없으면 연습용 어림값: 도로 거리 = 직선 × 1.3, 평균 시속 60km (화면 확인용 — 진짜 서버는 키가 없으면 시간 없이 거리만)
+@app.post("/rest-areas/road-distance")
+async def rest_area_road_distance(request: Request, user: dict = Depends(current_user)):
+    import math
+    body = await read_body(request)
+    lat, lng = to_float(body.get("lat")), to_float(body.get("lng"))
+    dests = [d for d in (body.get("destinations") or []) if isinstance(d, dict)][:20]
+    if lat is None or lng is None:
+        raise HTTPException(status_code=422, detail="lat · lng 가 필요해요")
+    try:
+        from services import route_distance_service
+        if route_distance_service.available():
+            results = route_distance_service.road_distances(lat, lng, dests)
+            return {"available": True, "results": results}
+    except Exception as e:  # 카카오 오류면 아래 어림값으로
+        print(f"[mock] 카카오 길찾기 실패 → 어림값: {type(e).__name__}: {e}")
+
+    def straight_m(a_lat, a_lng, b_lat, b_lng):
+        r = 6371000.0
+        p1, p2 = math.radians(a_lat), math.radians(b_lat)
+        dp, dl = p2 - p1, math.radians(b_lng - a_lng)
+        h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+        return 2 * r * math.asin(math.sqrt(h))
+
+    results = {}
+    for d in dests:
+        d_lat, d_lng = to_float(d.get("lat")), to_float(d.get("lng"))
+        if d_lat is None or d_lng is None or not d.get("key"):
+            continue
+        road_m = straight_m(lat, lng, d_lat, d_lng) * 1.3
+        results[str(d["key"])] = {"distance_m": int(road_m), "duration_s": int(road_m / (60_000 / 3600))}
+    return {"available": True, "results": results}
 
 
 @app.post("/chat")

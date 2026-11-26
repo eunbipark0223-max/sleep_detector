@@ -2,7 +2,6 @@
 # config.py — 서버 기준 숫자 · 스위치를 한곳에 모은 파일
 # ═══════════════════════════════════════════════════════════════
 # 담당: 팀장   |   우선: P0
-# 수업 원본: (신규) 수업 각 서비스 맨 위 상수들을 모은 것
 #
 # [쓰는 법]
 #   from config import EAR_THRESHOLD, WINDOW_MIN
@@ -35,7 +34,7 @@ DEMO_MODE = _env_bool("DEMO_MODE", False)
 #   다시 켜려면 .env 에 PRE_WARN_ON=true (detect.py · sleep_state.try_pre_warn 은 그대로 남겨 둠)
 PRE_WARN_ON = _env_bool("PRE_WARN_ON", False)
 
-# ── AI 스위치 (수업 방식: 가짜 ↔ 진짜, 실패하면 가짜로) ──
+# ── AI 스위치 (가짜 ↔ 진짜, 실패하면 가짜로) ──
 USE_REAL_AI = True
 FALLBACK_ON_ERROR = True
 
@@ -70,14 +69,14 @@ STAGE3_REPEAT_SEC = 30        # 3단계 경고 반복 간격 (앱)
 # ── 운전 · 휴식 (drive_timer, /drive/*) ───────────────
 DRIVE_LIMIT_MIN = 2 if DEMO_MODE else 120   # 연속 운전 휴게 알림
 REST_MIN = 1 if DEMO_MODE else 15           # 휴식 인정 시간
-# [정차했어요] 뒤 기다리는 휴식 시간 (초) — 시연 모드는 10초 (11/12 팀장, 강사님 시연용). 안내 문구 · 연속 운전 계산은 REST_MIN 그대로
+# [정차했어요] 뒤 기다리는 휴식 시간 (초) — 시연 모드는 10초 (11/12 팀장, 시연용). 안내 문구 · 연속 운전 계산은 REST_MIN 그대로
 REST_WAIT_SEC = int(os.getenv("REST_WAIT_SEC") or (10 if DEMO_MODE else REST_MIN * 60))  # 환경 변수 REST_WAIT_SEC 로 휴식만 따로 줄일 수 있음 (11/12 시연)
 REST_WAIT_TEXT = f"{REST_WAIT_SEC}초" if REST_WAIT_SEC < 60 else f"{REST_WAIT_SEC // 60}분"
 REST_GRACE_MIN = 1 if DEMO_MODE else 15     # 휴게 알림 후 이 시간 안에 안 쉬면 rest_overdue
 PING_SEC = 30                 # 앱 /drive/ping 간격 (앱 config.dart 와 같은 값)
 
 # ── 로그인 (auth/jwt.py) ──────────────────────────────
-TOKEN_EXPIRE_MIN = 12 * 60    # 수업은 60분 → 운행(2시간 이상) 중에 토큰이 끝나면 /detect 가 401 이라 12시간
+TOKEN_EXPIRE_MIN = 12 * 60    # 60분이면 운행(2시간 이상) 중에 토큰이 끝나면 /detect 가 401 이라 12시간
 TOKEN_REFRESH_MIN = 6 * 60    # 운행 중 ping 때 남은 시간이 이 값보다 적으면 새 토큰을 내려 줌 (운행 중에 로그인이 끊기지 않게)
 
 # ── 기사 음성 보고 (agent_service) ────────────────────
@@ -85,6 +84,8 @@ DRIVER_VOICE_MAX_CHARS = 50   # (11/16) 한 번에 듣고 이해되는 길이 �
 
 # ── 음성 퀴즈 (voice_quiz_service, /quiz/answer) ──────
 QUIZ_MODE = "voice"           # 10/29 STT 시험으로 부품 A 확정 (STT 안 되면 "screen" = 부품 B)
+VOICE_QUIZ_TYPES = ("repeat",)  # (11/19 팀장) 운전 중 음성 퀴즈는 따라 말하기만 — 덧셈은 숫자를 기억해 계산하느라 자꾸 폰 화면을 보게 됨 (시연에서 찾음)
+                                #   덧셈 출제 · 채점 코드는 voice_quiz_service 에 남겨 둠 → ("repeat", "add") 로 되돌릴 수 있음
 VOICE_QUIZ_MAX_TRIES = 2      # 이만큼 실패하면 단계 +1, reason = no_response
 LISTEN_SEC = 10               # 앱이 듣는 시간 — 10/29 STT 시험 7 → 10 (말을 시작하는 데 ~3초, 계산하느라 6~7초에 답하기도 함)
 REPEAT_MIN_SCORE = 0.7        # 따라 말하기 유사도 통과 기준 — 11/02 KPI ⑤ 0.8 → 0.7

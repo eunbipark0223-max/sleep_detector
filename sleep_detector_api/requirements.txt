@@ -63,6 +63,15 @@ opencv-python-headless==5.0.0.93
 numpy==2.4.6
 
 # ───────────────────────────────────────────────
+# 눈 판정 CNN (face_service._get_cnn — ml_models/eye_cnn_548.pt, resnet18)
+#   (11/26 팀장) Railway 배포에 꼭 필요 — 없으면 오류 없이 EAR 만 씀 (/health 의 eye.loaded 가 false)
+#   CPU 판 (GPU 판은 몇 GB 라 배포 서버에 안 맞음) → 아래 주소에서 받음
+# ───────────────────────────────────────────────
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1+cpu
+torchvision==0.29.1+cpu
+
+# ───────────────────────────────────────────────
 # LLM · RAG · Agent (B · 팀장 — llm / rag / agent / chat_service.py)
 #   Gemini 를 OpenAI 호환 주소로 호출 (주소·모델 이름은 .env)
 # ───────────────────────────────────────────────

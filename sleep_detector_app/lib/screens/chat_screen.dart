@@ -2,7 +2,6 @@
 // screens/chat_screen.dart — 규정 도우미 채팅
 // ═══════════════════════════════════════════════════════════════
 // 담당: B   |   우선: P2
-// 수업 원본: road_hazard_app/lib/screens/chat_screen.dart (🟡 인사말 · 예시 질문 + 아래 '수업과 다른 점')
 //
 // [이 파일이 하는 일]
 //   - 졸음운전 · 휴게 규정 Q&A — 첫 인사, 추천 질문, 질문 → 답 + 근거 규정
@@ -12,15 +11,14 @@
 //   - POST /chat (로그인 필요) {message, history: [{role: 'user'|'bot', text}]}
 //       → {"success", "answer", "sources": [{title, source, content, is_real}], "is_real"}
 //
-// [수업과 다른 점]
-//   - 응답 키: 수업 reply · suggestions → 우리 서버 message / answer · sources · is_real
+// [정한 것]
+//   - 응답 키: message / answer · sources · is_real
 //     추천 질문은 서버가 주지 않아서 _greetingSuggestions — 답이 올 때마다 아직 안 물어본 것만 다시 보여 줌
 //   - 답 아래에 근거 규정(sources) — regulation_screen.dart 의 RegulationCard (collapsible), 누르면 원문
 //   - is_real == false → "AI 답변 아님 — 규정 원문" 표시
 //   - MainScreen(D) 의 '규정 도우미' 탭 안에 들어가므로 AppBar 없음 (제목은 MainScreen 이 보여 줌)
-//   - 서버 호출: 수업은 ApiService.chatHello · sendChat 인데 api_service.dart(C) 에 아직 없어서 이 파일 아래 _chatHello · _sendChat.
+//   - 서버 호출: api_service.dart(C) 에 chatHello · sendChat 이 아직 없어서 이 파일 아래 _chatHello · _sendChat.
 //     C 가 api_service.dart 에 만들면 그쪽으로 바꾼다. 토큰은 AuthService.authHeaders() (D)
-//   - 색: 수업 primaryLight · primaryDark 가 팀 theme.dart 에 없어서 _chipBg · _chipText
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
@@ -31,12 +29,15 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../services/auth_service.dart';
+import '../design_tokens.dart';
 import '../theme.dart';
-import '../widgets/web_ui.dart';
+import '../widgets/press.dart';
+import '../widgets/owl_says.dart' show keepWords;
+import '../widgets/buddy.dart';
+import 'guide_screen.dart';
 
 const String _baseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://10.0.2.2:8000');
 const Duration _timeout = Duration(seconds: 40); // RAG + Gemini 라 조금 길게
-const Color _chipText = AppColors.navy; // 수업 primaryDark 자리
 const List<String> _greetingSuggestions = [
   '연속 운전 기준은?',
   '얼마나 쉬어야 하나요?',
@@ -97,7 +98,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _messages.add(ChatMessage('안녕하세요, 졸음 가드 규정 도우미예요. 졸음운전 · 연속 운전 휴게시간 규정을 물어보세요.', isMine: false));
+        _messages.add(ChatMessage('안녕하세요, 졸음 가드 규정 도우미예요\n졸음운전 · 연속 운전 휴게시간 규정을 물어보세요', isMine: false));
         _suggestions = List<String>.from(_greetingSuggestions);
       });
     }
@@ -138,10 +139,10 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       if (!mounted) return;
       final msg = e is TimeoutException
-          ? '응답이 너무 늦습니다. 잠시 후 다시 시도해 주세요.'
+          ? '응답이 너무 늦어요\n잠시 뒤 다시 시도해 주세요'
           : e is _LoginRequired
-          ? '로그인이 필요합니다. 다시 로그인해 주세요.'
-          : '연결에 문제가 있습니다. 네트워크를 확인해 주세요.';
+          ? '로그인이 필요해요\n다시 로그인해 주세요'
+          : '연결에 문제가 있어요\n네트워크를 확인해 주세요';
       setState(() {
         _messages.add(ChatMessage('⚠️ $msg', isMine: false));
       });
@@ -170,9 +171,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // ── 화면 (11/16 Figma 시안 '졸음운전 감지 앱5' 규정 도우미 — 디자인만. 서버 호출 · 대화 흐름은 위 그대로) ──
-  static const Color _bg = AppColors.background; // (11/17 R안) readdy 바탕
-
-  bool get _started => _messages.any((m) => m.isMine);
+  static const Color _bg = Color(0xFFF9F5F1); // (11/24 사용자 요청) 규정 도우미는 처음 크림색으로 되돌림
 
   @override
   Widget build(BuildContext context) {
@@ -188,47 +187,41 @@ class _ChatScreenState extends State<ChatScreen> {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               children: [
                 _greeting(),
-                // 추천 질문 — 처음에는 인사 아래 2 × 2 카드
-                if (!_started && _suggestions.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  _suggestionGrid(),
-                ],
                 const SizedBox(height: 14),
                 for (final m in _messages.skip(1)) _bubble(m),
                 if (_isSending) _typingBubble(),
               ],
             ),
           ),
-          // 대화가 시작된 뒤 남은 추천 질문 — 입력창 위 한 줄 (답을 가리지 않게)
-          if (_started && _suggestions.isNotEmpty && !_isSending) _suggestionRow(),
+          // (11/18 사용자 요청) 빠른 질문은 처음부터 입력창 바로 위 한 줄 — 옆으로 밀어서 다 볼 수 있게
+          if (!_isSending) _suggestionRow(), // (11/23) 사용 가이드 알약은 늘 보이게
           _inputBar(),
         ],
       ),
     );
   }
 
-  Widget _avatar() => const ImageSlot(label: '캐릭터', width: 40, height: 40, radius: 20); // (11/17) 캐릭터 그림 자리만
+  Widget _avatar() => const Buddy(stage: 0, size: 40, breathe: false); // (11/19) 작은 캐릭터 얼굴
 
-  // 첫 인사 — 부엉이 + 굵은 제목 · 설명 (서버 인사말 대신 시안 문구)
+  // 첫 인사 — (11/18 사용자 요청) 큰 굵은 제목 + 벽돌 같은 2×2 카드 대신, 보통 채팅앱처럼
+  //   평범한 말풍선 한 개 + 그 아래 '빠른 질문' 알약 버튼 (GS · 카카오 상담 챗봇 느낌)
   Widget _greeting() {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _avatar(),
         const SizedBox(width: 10),
-        Flexible(
+        // (11/18 피드백) 첫 인사 말풍선은 오른쪽 끝까지 — 아래 보내기 버튼 끝과 같은 선
+        Expanded(
           child: Container(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             decoration: _botBox,
-            child: const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('무엇이 궁금하세요?',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
-                SizedBox(height: 4),
-                Text('운전 시간과 휴식 규정을 쉬운 말로 알려드릴게요.',
-                    style: TextStyle(fontSize: 14, height: 1.45, color: AppColors.textSecondary)),
-              ],
+            child: Text.rich(
+              TextSpan(children: [
+                TextSpan(text: '안녕하세요, 규정 도우미예요\n', style: TextStyle(fontWeight: FontWeight.w600)),
+                TextSpan(text: keepWords('운전 시간과 휴식 규정을 쉬운 말로 알려 드릴게요')),
+              ]),
+              style: TextStyle(fontSize: 15, height: 1.5, color: AppColors.textPrimary),
             ),
           ),
         ),
@@ -236,69 +229,48 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // 봇 말풍선 — 흰 화면 위 연회색 (왼쪽 위만 덜 둥글게 = 말풍선 꼬리 느낌)
   static const BoxDecoration _botBox = BoxDecoration(
-    color: AppColors.card, // 흰 말풍선 · 테두리 없음 (readdy)
+    color: Color(0x0F1F2A5C), // (11/24) 운행 기록 맨 위 바탕 파랑
     borderRadius: BorderRadius.only(
       topLeft: Radius.circular(6),
-      topRight: Radius.circular(22),
-      bottomLeft: Radius.circular(22),
-      bottomRight: Radius.circular(22),
+      topRight: Radius.circular(20),
+      bottomLeft: Radius.circular(20),
+      bottomRight: Radius.circular(20),
     ),
   );
 
-  Widget _suggestionGrid() {
-    return Padding(
-      padding: const EdgeInsets.only(left: 50),
-      child: GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 8,
-        crossAxisSpacing: 8,
-        childAspectRatio: 2.6,
-        children: [
-          for (final q in _suggestions)
-            Material(
-              color: AppColors.card,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(22),
-                onTap: () => _send(q),
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Text(q,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
+  // 빠른 질문 알약 — 흰 바탕 · 옅은 회색 테두리 · 남색 글자
+  // (11/18 피드백 · 애플 토큰) 테두리 · 남색 없이 연한 회색 칸(systemGray6) + 검정 글자 · 작게 (입력칸과 같은 톤)
+  Widget _quickPill(String q, {VoidCallback? onTap}) => Press(child: Material(
+        color: Color(0x0F1F2A5C), // (11/24) 운행 기록 맨 위 바탕 파랑
+        shape: const StadiumBorder(),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: onTap ?? () => _send(q),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+            child: Text(q, style: AppType.footnote.copyWith(fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
+          ),
+        ),
+      ));
 
+  // 입력창 위 한 줄 — 옆으로 밀어서 넘김 (화면 끝에서 살짝 잘려 보여서 더 있다는 걸 알 수 있음)
   Widget _suggestionRow() {
-    // (11/17 사용자 요청 10) 추천 질문 줄을 입력창에서 조금 위로 — 아래에 여백
     return SizedBox(
-      height: 58,
+      height: 46,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+        physics: const BouncingScrollPhysics(), // 애플처럼 끝에서 살짝 튕김
         children: [
-          for (final q in _suggestions)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ActionChip(
-                label: Text(q, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _chipText)),
-                backgroundColor: AppColors.card,
-                side: BorderSide.none,
-                shape: const StadiumBorder(),
-                onPressed: () => _send(q),
-              ),
-            ),
+          // (11/23 사용자 요청) 맨 앞 '사용 가이드는?' — 누르면 사용 가이드 화면 (질문으로 보내지 않음 · 늘 보임)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: _quickPill('어떻게 쓰나요?', // (11/23 사용자 요청)
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const GuideScreen()))),
+          ),
+          for (final q in _suggestions) Padding(padding: const EdgeInsets.only(right: 8), child: _quickPill(q)),
         ],
       ),
     );
@@ -361,21 +333,28 @@ class _ChatScreenState extends State<ChatScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // AI 가 답하지 못해 규정 원문만 보여 줄 때
+                  // (11/18 피드백 · 애플 스타일) AI 대신 규정 원문으로 답할 때 — 주황 대신 흰 칸 + 회색 작은 글
                   if (!m.isReal)
                     Container(
-                      margin: const EdgeInsets.only(bottom: 6),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                          color: AppColors.rest.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(999)),
-                      child: const Text('규정 원문으로 안내해요',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.rest)),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.fromLTRB(7, 3, 9, 3),
+                      decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(AppRadius.pill)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.menu_book_rounded, size: 13, color: AppColors.textSecondary),
+                        const SizedBox(width: 4),
+                        Text('규정 원문으로 안내해요',
+                            style: AppType.caption.copyWith(fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                      ]),
                     ),
-                  Text(m.text, style: const TextStyle(fontSize: 15, height: 1.5, color: AppColors.textPrimary)),
+                  Text(m.text, style: AppType.callout.copyWith(height: 1.5, color: AppColors.textPrimary)),
                   if (m.sources.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    const Divider(height: 1, color: AppColors.cardBorder),
-                    const SizedBox(height: 6),
-                    for (final src in m.sources) _SourceLine(src: src),
+                    const SizedBox(height: 12),
+                    Text('참고한 규정', style: AppType.caption.copyWith(fontWeight: FontWeight.w600, color: AppColors.textMuted)),
+                    const SizedBox(height: 4),
+                    for (var k = 0; k < m.sources.length; k++) ...[
+                      if (k > 0) const Divider(height: 1, thickness: 1, color: AppColors.fill),
+                      _SourceLine(src: m.sources[k]),
+                    ],
                   ],
                 ],
               ),
@@ -407,8 +386,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   hintText: '규정에 대해 물어보세요',
                   counterText: '',
                   filled: true,
-                  fillColor: AppColors.card,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
+                  fillColor: const Color(0x0F1F2A5C), // (11/24) 운행 기록 맨 위 바탕 파랑
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(999), borderSide: BorderSide.none),
                   enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(999), borderSide: BorderSide.none),
                   focusedBorder: OutlineInputBorder(
@@ -417,15 +396,15 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            Material(
+            Press(enabled: !_isSending, scale: 0.9, child: Material(
               color: _isSending ? AppColors.textMuted : AppColors.navy,
               shape: const CircleBorder(),
               child: InkWell(
                 customBorder: const CircleBorder(),
                 onTap: _isSending ? null : () => _send(_inputController.text),
-                child: const SizedBox(width: 52, height: 52, child: Icon(Icons.arrow_upward_rounded, size: 26, color: Colors.white)),
+                child: const SizedBox(width: 46, height: 46, child: Icon(Icons.arrow_upward_rounded, size: 24, color: Colors.white)),
               ),
-            ),
+            )),
           ],
         ),
       ),
@@ -458,17 +437,22 @@ class _SourceLineState extends State<_SourceLine> {
           children: [
             Row(
               children: [
-                const Icon(Icons.description_outlined, size: 18, color: AppColors.navy),
+                const Icon(Icons.description_outlined, size: 16, color: AppColors.textSecondary),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.navy)),
+                      style: AppType.footnote.copyWith(fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                 ),
-                if (content.isNotEmpty)
-                  Text(_open ? '접기' : '원문 보기',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textMuted)),
+                if (content.isNotEmpty) ...[
+                  Text(_open ? '접기' : '원문 보기', style: AppType.caption.copyWith(color: AppColors.textMuted)),
+                  AnimatedRotation(
+                    turns: _open ? 0.5 : 0,
+                    duration: AppMotion.normal,
+                    child: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: AppleGray.chevron),
+                  ),
+                ],
               ],
             ),
             if (_open)
@@ -476,7 +460,7 @@ class _SourceLineState extends State<_SourceLine> {
                 margin: const EdgeInsets.only(top: 6),
                 padding: const EdgeInsets.all(10),
                 constraints: const BoxConstraints(maxHeight: 220),
-                decoration: BoxDecoration(color: const Color(0xFFF3F5FA), borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(AppRadius.small)),
                 child: SingleChildScrollView(
                   child: Text(content, style: const TextStyle(fontSize: 13, height: 1.5, color: AppColors.textSecondary)),
                 ),
@@ -488,7 +472,7 @@ class _SourceLineState extends State<_SourceLine> {
   }
 }
 
-// ── 서버 호출 (수업 api_service.dart 모양 — C 가 api_service 에 chatHello · sendChat 을 만들면 그쪽으로) ──
+// ── 서버 호출 (C 가 api_service 에 chatHello · sendChat 을 만들면 그쪽으로) ──
 class _LoginRequired implements Exception {}
 
 // 첫 인사 (GET /chat/hello)

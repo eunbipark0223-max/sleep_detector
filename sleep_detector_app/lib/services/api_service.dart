@@ -2,10 +2,9 @@
 // services/api_service.dart — 서버 통신 함수 모음
 // ═══════════════════════════════════════════════════════════════
 // 담당: C   |   우선: P0
-// 수업 원본: road_hazard_app/lib/services/api_service.dart (🟡 수정, 사진 전송은 uploadProfilePhoto 방식)
 //
 // [이 파일이 하는 일]
-//   - 모든 요청에 로그인 토큰(JWT) 붙이기 (수업 그대로)
+//   - 모든 요청에 로그인 토큰(JWT) 붙이기
 //
 // [만들 것 (이름 약속 — 다른 파일이 이 이름으로 부름)]
 //   - sendDetect(jpgBytes, reason, closedSec, perclos, eyeOpenProb, lat, lng) → SleepResponse   POST /detect
@@ -17,7 +16,7 @@
 //   - startRest() · resumeDrive()   POST /drive/rest · /drive/resume
 //   - submitAnswer(quizId, answerText, answerSec) → passed · nextQuiz · stage · message   POST /quiz/answer
 //   - fetchMyEvents() → List<SleepEvent>   GET /events/my
-//   - sendChat(message)   POST /chat  (수업 앱에서 빠져 있던 함수)
+//   - sendChat(message)   POST /chat 
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
@@ -91,6 +90,7 @@ class ApiService {
   // ── 함수들 (이름 약속 그대로) ───────────────────────────────────
 
   // 여러 장 사진을 보낼 칸 이름 — 서버(팀장 다수결 판정)와 맞춰 정할 것. 정해지면 이 한 줄만 바꾸면 됨 (11/10)
+  //   (11/23 팀장) AppConfig.microsleepPhotos = 1 로 통일 → frames 가 1장이라 이 칸은 지금 보내지 않음
   //   지금 서버는 이 칸을 모르면 그냥 무시하고 'file' 1장으로 판정한다 → 서버가 바뀌기 전에도 앱은 그대로 돌아감
   static const String detectFramesField = 'files';
 
@@ -251,6 +251,21 @@ class ApiService {
     return QuizAnswerResult.fromJson(data);
   }
 
+  // sendNoResponsePhoto (11/26 팀장) — 2번째 퀴즈가 끝난 순간의 사진을 '퀴즈 응답 없음' 경고에 붙이기
+  static Future<void> sendNoResponsePhoto(int eventId, Uint8List jpgBytes) async {
+    final headers = await AuthService.authHeaders();
+    headers.remove('Content-Type');
+    final request = http.MultipartRequest('POST', _uri('/quiz/no-response-photo'))
+      ..headers.addAll(headers)
+      ..fields['event_id'] = '$eventId'
+      ..files.add(http.MultipartFile.fromBytes('file', jpgBytes,
+          filename: 'quiz.jpg', contentType: MediaType('image', 'jpeg')));
+    final streamed = await request.send().timeout(const Duration(seconds: 30));
+    final res = await http.Response.fromStream(streamed);
+    await _checkUnauthorized(res);
+    if (res.statusCode != 200) throw Exception(_errorMessage(res));
+  }
+
   // sendChat (AI 규정 도우미에게 질문 보내고 답 받기)
   static Future<Map<String, dynamic>> sendChat(String message) => _postJson('/chat', {'message': message});
 
@@ -272,6 +287,7 @@ class QuizAnswerResult {
   final int stage;
   final String status;
   final String message;
+  final int? noResponseEventId; // (11/26) 2번 실패로 저장된 '퀴즈 응답 없음' 경고 번호 — 사진을 붙일 곳
 
   QuizAnswerResult({
     required this.passed,
@@ -280,6 +296,7 @@ class QuizAnswerResult {
     required this.stage,
     required this.status,
     required this.message,
+    this.noResponseEventId,
   });
 
   factory QuizAnswerResult.fromJson(Map<String, dynamic> json) {
@@ -292,6 +309,7 @@ class QuizAnswerResult {
       stage: (json['stage'] as num?)?.toInt() ?? 0,
       status: json['status'] as String? ?? '',
       message: json['message'] as String? ?? '',
+      noResponseEventId: (json['no_response_event_id'] as num?)?.toInt(),
     );
   }
 }
