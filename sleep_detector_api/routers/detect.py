@@ -525,12 +525,13 @@ def drive_resume_handler(session: Session = Depends(get_session), user: User = D
 BG_SESSION = SessionLocal   # 뒤에서 기록을 채울 때 쓰는 DB 세션 (요청 세션은 답한 뒤 닫힘 · 시험 도구가 바꿔 끼움)
 
 
-def _fill_ai_report(event_id, user_id, photo_abs, eye_info, facts, rule_stage, location):
+def _fill_ai_report(event_id, user_id, eye_info, facts, rule_stage, location):
     """(11/16 팀장) 경고를 먼저 보낸 뒤 뒤에서 — LLM 상황 설명 → RAG 규정 → Agent 보고서 로 경고 기록 1건을 채운다.
-    단계는 바꾸지 않는다 (규칙 단계 그대로, AGENT_MAX_STEP_UP = 0). 실패해도 템플릿 기록이 이미 저장돼 있음."""
+    단계는 바꾸지 않는다 (규칙 단계 그대로, AGENT_MAX_STEP_UP = 0). 실패해도 템플릿 기록이 이미 저장돼 있음.
+    (11/26) 얼굴 사진은 관리자 확인용 — AI(Gemini) 에는 보내지 않는다. 경고 수치값 (eye_info · facts) 만 넘긴다."""
     t0 = time.perf_counter()
     try:
-        analysis = llm_service.interpret_situation(photo_abs if photo_abs and os.path.exists(photo_abs) else None, eye_info)
+        analysis = llm_service.interpret_situation(None, eye_info)
         t1 = time.perf_counter()
         regulations = rag_service.search_regulations(analysis.get("summary", ""))
         t2 = time.perf_counter()
@@ -744,8 +745,7 @@ async def detect_handler(
 
     # ⑨ 2단계부터 — 답한 뒤 뒤에서 LLM · RAG · Agent 로 이 기록의 요약 · 안내문 · 관리자 보고서를 채움 (단계는 그대로)
     if rule_stage >= 2 and background is not None:
-        photo_abs = os.path.join(config.UPLOAD_EVENT_DIR, os.path.basename(photo_path)) if photo_path else None
-        background.add_task(_fill_ai_report, event.id, user.id, photo_abs, eye_info, facts, rule_stage, location)
+        background.add_task(_fill_ai_report, event.id, user.id, eye_info, facts, rule_stage, location)   # 사진은 안 넘김 (11/26)
 
     t_end = time.perf_counter()
     print(f"[detect]   → 걸린 시간: 눈판정 {t_eye - t_start:.1f}초 · 저장 · 퀴즈 {t_end - t_agent:.1f}초 · "

@@ -1951,7 +1951,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         await refreshAll(true);
         focusTitle();                                     // 누른 버튼은 사라졌을 수 있어서 제목으로
         toast(status === '확인' ? '확인한 경고로 표시했어요.'
-          : res.stage_reset ? who + ' ' + (stageNum(e.stage) ? stageNum(e.stage) + '단계 ' + STAGE_WORD[stageNum(e.stage)] : '경고') + ' 해제됨 · 기사 앱은 약 30초 안에 정상 화면이 돼요'
+          : res.stage_reset ? who + ' ' + (stageNum(e.stage) ? stageNum(e.stage) + '단계 ' + STAGE_WORD[stageNum(e.stage)] : '경고') + ' 해제됨 · 기사 앱은 2초 안팎에 정상 화면이 돼요'
           : '조치완료로 바꿨어요.');
       } catch (err) { toastError(status + ' 실패: ' + err.message + (status === '조치완료' ? ' — 기사 앱의 경고가 풀리지 않았을 수 있어요.' : '')); }
       finally { busy = false; }
