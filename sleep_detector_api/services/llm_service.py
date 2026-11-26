@@ -5,12 +5,13 @@
 # 수업 원본: road_hazard_api/services/llm_service.py (🟡 수정, 딥러닝 20차시)
 #
 # [이 파일이 하는 일]
-#   - 입력: 사진 + 눈 뜸 확률 · 감김 시간 · PERCLOS · EAR · 졸음 종류
-#   - 출력: 관리자가 읽을 한두 문장 (사진과 숫자만 근거, 추측 금지)
+#   - 입력: 눈 뜸 확률 · 감김 시간 · PERCLOS · EAR · 졸음 종류 (숫자만 — 얼굴 사진은 AI 에 보내지 않음, 11/26)
+#   - 출력: 관리자가 읽을 한두 문장 (주어진 숫자만 근거, 추측 금지)
 #   - Gemini — 수업의 OpenAI 호환 방식 그대로, 주소와 모델 이름만 .env 값으로
 #
 # [만들 것 (이름 약속 — 다른 파일이 이 이름으로 부름)]
 #   - interpret_situation(image_path, eye) → {"summary": str, "model": str, "is_real": bool}
+#       image_path 는 받기만 하고 쓰지 않음 (11/26 — 사진을 AI 에 보내지 않는 약속, 부르는 쪽 모양은 그대로)
 #       eye = {"reason", "closed_sec", "perclos", "eye_open_prob", "ear", "sleep_count_10min"} (없는 칸은 빼도 됨)
 #       is_real = False 면 AI 가 아닌 템플릿 문장 (관리자 웹 · 로그에서 진짜 / 가짜 구분용)
 #
@@ -23,8 +24,6 @@
 # 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」 · 노션 「핵심 경로 테스트」
 # ═══════════════════════════════════════════════════════════════
 
-import base64
-import mimetypes
 import os
 import re
 from pathlib import Path
@@ -58,14 +57,13 @@ REASON_KO = {"microsleep": "미세수면", "perclos": "피로 누적"}
 ORDINAL_KO = {1: "첫", 2: "두", 3: "세", 4: "네", 5: "다섯"}
 
 SYSTEM_PROMPT = """너는 화물 · 버스 운수회사 졸음운전 관제 시스템의 상황 요약 담당이다.
-운전자 얼굴 사진 1장과 판정 숫자를 받아, 관리자가 한눈에 읽을 한국어 한두 문장으로 요약한다.
+졸음 판정 숫자를 받아, 관리자가 한눈에 읽을 한국어 한두 문장으로 요약한다.
 
 규칙:
-- 사진에 보이는 것과 주어진 숫자만 근거로 한다. 원인 · 건강 상태 · 감정은 추측하지 않는다.
+- 주어진 숫자만 근거로 한다. 원인 · 건강 상태 · 감정은 추측하지 않는다.
 - 숫자는 관리자에게 필요한 것만 자연스럽게 쓴다 (눈 감은 시간, 10분 안 몇 번째 졸음). 확률 · EAR 은 쓰지 않아도 된다.
 - 주어진 숫자를 바꾸거나 새 숫자를 만들지 않는다. 시간은 "약 2초"처럼 반올림해도 된다.
 - 영어 용어를 쓰지 않는다 (microsleep → 미세수면, PERCLOS → 눈 감은 비율).
-- 사진에서 눈이 잘 안 보이면 숫자만으로 요약한다.
 - 입력에 '단계 이유'가 있으면 몇 번째 졸음이라고 쓰지 말고 그 이유를 쓴다 (예: 주의 단계에서 다시 졸았어요).
 - 해요체로 쓴다 (~보여요, ~졸음이에요). 기사 앱 운행 기록과 관리자 웹에 같은 문장이 나온다 (11/16).
 - 요약 문장만 출력한다. 따옴표 · 머리말 · 사족 금지.
@@ -157,20 +155,10 @@ def _get_client():
     return _client
 
 
-def _image_part(image_path):
-    if not image_path or not Path(image_path).is_file():
-        return None
-    mime = mimetypes.guess_type(str(image_path))[0] or "image/jpeg"
-    data = base64.b64encode(Path(image_path).read_bytes()).decode()
-    return {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{data}"}}
-
-
-def _real_interpret(image_path, eye):
-    content = [{"type": "text", "text": f"입력: {_facts_text(eye)}"}]
-    image = _image_part(image_path)
-    if image:
-        content.append(image)
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": content}]
+def _real_interpret(eye):
+    # (11/26) 얼굴 사진은 AI(Gemini) 에 보내지 않는다 — 개인정보. 경고 수치값 글자만 보냄 (사진 첨부 코드를 없앰)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": f"입력: {_facts_text(eye)}"}]
 
     errors = []
     for model in dict.fromkeys([GEMINI_MODEL, LLM_FALLBACK_MODEL]):  # 같은 이름이면 1번만
@@ -206,16 +194,16 @@ def _normalize(text, eye):
 
 
 def interpret_situation(image_path, eye):
-    """졸음 확정 사진 + 판정 숫자 → 관리자용 상황 요약.
+    """판정 숫자 → 관리자용 상황 요약.
 
-    image_path : 졸음 의심 사진 경로 (없거나 못 읽으면 숫자만으로 요약)
+    image_path : 쓰지 않음 (11/26). 얼굴 사진은 개인정보라 AI 에 보내지 않는다 — 부르는 쪽 모양 (이름 약속) 만 그대로 둠
     eye        : 판정 숫자 dict (기획안 9-1 · 9-4 의 칸 이름)
     """
     eye = eye or {}
     if not USE_REAL_AI:
         return {"summary": _template(eye), "model": "mock", "is_real": False}
     try:
-        raw, model = _real_interpret(image_path, eye)
+        raw, model = _real_interpret(eye)
     except Exception as e:
         if not FALLBACK_ON_ERROR:
             raise
@@ -229,8 +217,7 @@ def interpret_situation(image_path, eye):
 
 
 if __name__ == "__main__":
-    # 직접 확인: (sleep_detector_api 폴더에서) python -m services.llm_service [사진 경로]
-    import sys
+    # 직접 확인: (sleep_detector_api 폴더에서) python -m services.llm_service  (숫자만 보냄 — 사진은 받지 않음)
     sample = {"reason": "microsleep", "closed_sec": 2.1, "perclos": 0.33, "eye_open_prob": 0.08, "ear": 0.16,
               "sleep_count_10min": 2}
-    print(interpret_situation(sys.argv[1] if len(sys.argv) > 1 else None, sample))
+    print(interpret_situation(None, sample))
