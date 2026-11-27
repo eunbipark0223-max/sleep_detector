@@ -23,6 +23,9 @@
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」 8-2
 // ═══════════════════════════════════════════════════════════════
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../models/sleep_response.dart';
@@ -31,7 +34,7 @@ import '../services/voice_service.dart';
 import '../design_tokens.dart';
 import '../theme.dart';
 import '../widgets/buddy.dart';
-import '../widgets/owl_says.dart' show keepWords, balancedLines;
+import '../widgets/owl_says.dart' show balancedLines;
 
 class QuizScreen extends StatefulWidget {
   final VoiceQuiz quiz;
@@ -39,11 +42,14 @@ class QuizScreen extends StatefulWidget {
   /// 퀴즈가 시작될 때의 단계 (배경 색)
   final int stage;
 
+  /// (11/26 팀장) 지금 카메라 사진 1장 (운행 화면이 줌) — 2번째 듣기가 끝난 순간 찍어 두고, 응답 없음으로 저장됐을 때만 보낸다
+  final Future<Uint8List?> Function()? takePhoto;
+
   /// 디자인 미리보기 전용 (tools/quiz_preview_main.dart) — 읽기 · 듣기를 하지 않고 이 글을 보여 준다. 앱에서는 쓰지 않음
   final String? previewGuide;
   final String? previewHeard;
 
-  const QuizScreen({super.key, required this.quiz, required this.stage, this.previewGuide, this.previewHeard});
+  const QuizScreen({super.key, required this.quiz, required this.stage, this.takePhoto, this.previewGuide, this.previewHeard});
 
   @override
   State<QuizScreen> createState() => _QuizScreenState();
@@ -68,6 +74,7 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 
   Future<void> _run() async {
+    var tries = 0;
     while (mounted) {
       setState(() {
         _guide = '';
@@ -89,8 +96,12 @@ class _QuizScreenState extends State<QuizScreen> {
       );
       if (!mounted) return;
       if (heard == null) break; // 마이크 권한 없음 · 인식기 없음 → 서버에 보내지 않음 (실패로 안 셈)
+      tries++;
+      final photo = tries >= 2 ? widget.takePhoto?.call() : null; // 2번째 퀴즈가 끝난 순간 (통과하면 버림)
       try {
         final r = await ApiService.submitAnswer(_quiz.quizId, heard, VoiceService.lastAnswerSec);
+        final eventId = r.noResponseEventId;
+        if (eventId != null && photo != null) unawaited(_sendPhoto(eventId, photo)); // 뒤에서 — 3단계가 늦지 않게
         if (!mounted) return;
         setState(() {
           _stage = r.stage;
@@ -111,6 +122,16 @@ class _QuizScreenState extends State<QuizScreen> {
     if (mounted) Navigator.of(context).pop(_stage);
   }
 
+  // 실패해도 조용히 — 서버에는 2단계 경고 사진이 그대로 남는다
+  static Future<void> _sendPhoto(int eventId, Future<Uint8List?> photo) async {
+    try {
+      final jpg = await photo;
+      if (jpg != null) await ApiService.sendNoResponsePhoto(eventId, jpg);
+    } catch (e) {
+      debugPrint('[quiz] 퀴즈 뒤 사진 보내기 실패: $e');
+    }
+  }
+
   @override
   void dispose() {
     VoiceService.stop();
@@ -121,7 +142,6 @@ class _QuizScreenState extends State<QuizScreen> {
   // (11/16 팀장) 운전 중에 뜨는 화면이라 운행 · 경고 화면과 같은 남색 (밤에 흰 화면이 눈부시지 않게)
   // (11/18 피드백 · 애플 토큰) 흰 바탕 · 검정 제목 · 회색 설명 · 남색은 마이크에만
   static const Color _bg = AppColors.background;
-  static const Color _sub = AppleGray.secondaryLabel;
 
   String get _typeLabel => switch (_quiz.type) {
         'add' => '간단 계산',

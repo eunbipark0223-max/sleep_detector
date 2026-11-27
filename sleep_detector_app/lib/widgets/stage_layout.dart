@@ -184,7 +184,7 @@ class StageMessage extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 14, 16, 14), // (11/24) 알약이 카드 맨 위에 붙게
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppRadius.card),
-        // (11/24 신한 슈퍼SOL) 흰 카드 · 테두리 없이 부드러운 그림자
+        // (11/24) 흰 카드 · 테두리 없이 부드러운 그림자
         color: Colors.white,
         boxShadow: AppShadow.card,
       ),
@@ -210,17 +210,18 @@ class StageMessage extends StatelessWidget {
                         FittedBox(
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerLeft,
-                          child: Text(line, maxLines: 1, softWrap: false, style: title),
+                          child: Text(line, maxLines: 1, softWrap: false, style: sub != null ? title.copyWith(fontSize: 20) : title), // (11/25) 쉼터 한 줄이 있으면 20
                         ),
                       ],
                     ]),
                   ),
                   const SizedBox(width: 12),
                   // 두 줄 높이 = 22 × 1.3 × 2 + 줄 사이 4 ≈ 61
-                  Buddy(stage: s, size: 61, breathe: s > 0, alert: true),
+                  //   (11/25 팀장) 2단계 쉼터 한 줄이 있으면 카드(132)를 2 ~ 3px 넘쳐 디버그 앱에 빨간 'OVERFLOWED' 글자 → 캐릭터 52 · 줄 사이 4
+                  Buddy(stage: s, size: sub != null ? 52 : 61, breathe: s > 0, alert: true),
                 ]),
                 if (sub != null) ...[
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Row(children: [
                     const Icon(Icons.location_on_rounded, size: 16, color: AppColors.navy),
                     const SizedBox(width: 4),
@@ -238,25 +239,6 @@ class StageMessage extends StatelessWidget {
           ]),
     );
   }
-}
-
-/// 카드 안 작은 알약 — 왼쪽 14 칸(아이콘 · 점) + 글. 두 알약의 글 시작선이 같음
-class _CardChip extends StatelessWidget {
-  final Widget lead;
-  final String text;
-  final Color bg;
-  final Color color;
-  const _CardChip({required this.lead, required this.text, required this.bg, required this.color});
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
-        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          SizedBox(width: 14, child: Center(child: lead)),
-          const SizedBox(width: 6),
-          Text(text, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, letterSpacing: -0.2, color: color)),
-        ]),
-      );
 }
 
 /// (11/25 사용자 요청) 2 · 3단계 [쉼터 안내 | 정차했어요] — 남는 자리를 써서 더 크게

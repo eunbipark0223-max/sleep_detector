@@ -2,7 +2,6 @@
 # config.py — 서버 기준 숫자 · 스위치를 한곳에 모은 파일
 # ═══════════════════════════════════════════════════════════════
 # 담당: 팀장   |   우선: P0
-# 수업 원본: (신규) 수업 각 서비스 맨 위 상수들을 모은 것
 #
 # [쓰는 법]
 #   from config import EAR_THRESHOLD, WINDOW_MIN
@@ -35,7 +34,7 @@ DEMO_MODE = _env_bool("DEMO_MODE", False)
 #   다시 켜려면 .env 에 PRE_WARN_ON=true (detect.py · sleep_state.try_pre_warn 은 그대로 남겨 둠)
 PRE_WARN_ON = _env_bool("PRE_WARN_ON", False)
 
-# ── AI 스위치 (수업 방식: 가짜 ↔ 진짜, 실패하면 가짜로) ──
+# ── AI 스위치 (가짜 ↔ 진짜, 실패하면 가짜로) ──
 USE_REAL_AI = True
 FALLBACK_ON_ERROR = True
 
@@ -70,14 +69,14 @@ STAGE3_REPEAT_SEC = 30        # 3단계 경고 반복 간격 (앱)
 # ── 운전 · 휴식 (drive_timer, /drive/*) ───────────────
 DRIVE_LIMIT_MIN = 2 if DEMO_MODE else 120   # 연속 운전 휴게 알림
 REST_MIN = 1 if DEMO_MODE else 15           # 휴식 인정 시간
-# [정차했어요] 뒤 기다리는 휴식 시간 (초) — 시연 모드는 10초 (11/12 팀장, 강사님 시연용). 안내 문구 · 연속 운전 계산은 REST_MIN 그대로
+# [정차했어요] 뒤 기다리는 휴식 시간 (초) — 시연 모드는 10초 (11/12 팀장, 시연용). 안내 문구 · 연속 운전 계산은 REST_MIN 그대로
 REST_WAIT_SEC = int(os.getenv("REST_WAIT_SEC") or (10 if DEMO_MODE else REST_MIN * 60))  # 환경 변수 REST_WAIT_SEC 로 휴식만 따로 줄일 수 있음 (11/12 시연)
 REST_WAIT_TEXT = f"{REST_WAIT_SEC}초" if REST_WAIT_SEC < 60 else f"{REST_WAIT_SEC // 60}분"
 REST_GRACE_MIN = 1 if DEMO_MODE else 15     # 휴게 알림 후 이 시간 안에 안 쉬면 rest_overdue
 PING_SEC = 30                 # 앱 /drive/ping 간격 (앱 config.dart 와 같은 값)
 
 # ── 로그인 (auth/jwt.py) ──────────────────────────────
-TOKEN_EXPIRE_MIN = 12 * 60    # 수업은 60분 → 운행(2시간 이상) 중에 토큰이 끝나면 /detect 가 401 이라 12시간
+TOKEN_EXPIRE_MIN = 12 * 60    # 60분이면 운행(2시간 이상) 중에 토큰이 끝나면 /detect 가 401 이라 12시간
 TOKEN_REFRESH_MIN = 6 * 60    # 운행 중 ping 때 남은 시간이 이 값보다 적으면 새 토큰을 내려 줌 (운행 중에 로그인이 끊기지 않게)
 
 # ── 기사 음성 보고 (agent_service) ────────────────────
@@ -104,6 +103,34 @@ FIREBASE_API_KEY = os.getenv("FIREBASE_API_KEY", "").strip()      # 웹 API 키 
 FIREBASE_APP_ID = os.getenv("FIREBASE_APP_ID", "").strip()
 FIREBASE_VERIFY = _env_bool("FIREBASE_VERIFY", False)               # True 면 기사 앱의 구글 로그인도 id_token 검증 (앱이 id_token 을 보내야 함)
 GEMINI_EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL") or "gemini-embedding-2"  # 11/04 001 → 2 (벡터 공간이 달라 색인 다시 만듦)
+
+# ── 메일 발송 (구글 SMTP) ← .env (11/19). 자세한 설명: services/mail_service.py ──
+#   🔴 구조는 [앱 → 우리 서버 → 구글 SMTP]. 구글 계정 · 앱 비밀번호는 서버 .env 에만 둔다 (앱 코드 · GitHub 에 절대 X)
+#   SMTP_USER · SMTP_PASSWORD 둘 다 있어야 켜짐. 없으면 시연용(인증번호를 응답 demo_code 로 줌)으로 동작
+SMTP_HOST = os.getenv("SMTP_HOST", "").strip() or "smtp.gmail.com"
+SMTP_PORT = int(os.getenv("SMTP_PORT") or 587)                        # 587 = STARTTLS · 465 = SSL
+SMTP_USER = os.getenv("SMTP_USER", "").strip()                        # 메일 전용 구글 계정 (개인 계정 X)
+SMTP_PASSWORD = "".join(os.getenv("SMTP_PASSWORD", "").split())       # 앱 비밀번호 — 구글이 'abcd efgh ijkl mnop' 처럼 띄어 써 줘서 공백 제거
+SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "").strip() or "졸음 가드"
+SMTP_TIMEOUT_SEC = 10
+MAIL_ENABLED = bool(SMTP_USER and SMTP_PASSWORD)
+
+# 메일 남용 막기 — 아무나 부르는 /users/email/send 가 스팸 발사대가 되면 구글이 계정을 정지한다 (메모리에만 기록, 서버 재시작하면 0)
+MAIL_COOLDOWN_SEC = 60        # 같은 이메일로 다시 보내기까지
+MAIL_PER_EMAIL_HOURLY = 5     # 같은 이메일로 1시간에 보낼 수 있는 최대 횟수
+MAIL_DAILY_LIMIT = int(os.getenv("MAIL_DAILY_LIMIT") or 100)   # 서버 전체 하루 최대 (개인 구글 계정은 하루 500통 — 넘으면 계정이 막히니 여유를 둠)
+
+# ── 관리자 가입 (관리자 웹 '사번으로 가입하기', 11/19) ← .env. 자세한 설명: routers/admin.py ──
+#   회사가 따로 정한 '인증된 사번'만 관리자 계정을 만들 수 있다 (기사 사번 employees 표와 별개). 한 사번 = 한 계정 (users.emp_no 에 기록)
+#   🔴 이 목록이 사실상 관리자 초대 코드 → 배포 서버는 순서대로 이어지는 번호(20240001, 20240002 …) 대신 알아맞히기 어려운 번호로
+#   비어 있으면 관리자 가입이 닫힘 (관리자는 tools/make_admin.py 로만 만듦)
+ADMIN_EMPLOYEE_NOS = frozenset(s.strip() for s in os.getenv("ADMIN_EMPLOYEE_NOS", "").split(",") if s.strip())
+ADMIN_SIGNUP_MAX_FAILS = 5        # 같은 접속 주소에서 사번을 이만큼 틀리면
+ADMIN_SIGNUP_LOCK_MIN = 10        # 이 시간 동안 막음 (사번 알아맞히기 방지)
+# 접속 주소를 X-Real-IP 헤더로 볼지 (11/19 팀장 지적). Railway 는 모든 요청이 중간 서버를 거쳐 같은 주소로 보이고,
+#   진짜 접속 주소는 Railway 가 X-Real-IP 에 넣어 준다 (공식 문서). Railway 가 자동으로 넣는 RAILWAY_ENVIRONMENT_ID 가 있으면 켜짐.
+#   PC 서버는 꺼 둠 — 헤더는 누구나 꾸며 보낼 수 있어서, 중간 서버가 없는 곳에서 믿으면 잠금을 피해 갈 수 있음. .env TRUST_X_REAL_IP 로 직접 정할 수도 있음
+TRUST_X_REAL_IP = _env_bool("TRUST_X_REAL_IP", bool(os.getenv("RAILWAY_ENVIRONMENT_ID")))
 
 # ── 경로 ──────────────────────────────────────────────
 FACE_LANDMARKER_PATH = os.path.join(BASE_DIR, "ml_models", "face_landmarker.task")

@@ -2,10 +2,8 @@
 # database/orm.py — SQLAlchemy Base · 세션 (get_db)
 # ═══════════════════════════════════════════════════════════════
 # 담당: -   |   우선: P0
-# 수업 원본: road_hazard_api/database/orm.py (🟢 그대로 복사)
 #
 # [이 파일이 하는 일]
-#   - 수업 파일을 그대로 복사해서 쓴다
 #   - DB 이름만 sleep_detector 로 (.env)
 #
 # [쓰는 곳]

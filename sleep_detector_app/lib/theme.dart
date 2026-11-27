@@ -2,13 +2,12 @@
 // theme.dart — 앱 색 · 글꼴
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P0
-// 수업 원본: road_hazard_app/lib/theme.dart (🟢 그대로 + 색 추가)
 //
 // [이 파일이 하는 일]
 //   - 단계 색: 0 정상 초록 · 1 주의 노랑 · 2 휴식 권고 주황(추가) · 3 긴급 빨강
 //   - 브랜드 남색 · AI 카드 보라 (앱 화면 구상 PPT 기준)
 //
-//   - 별명: primary = navy · danger = urgent (수업 코드 이름)
+//   - 별명: primary = navy · danger = urgent
 //   - 글자 · 테두리: textPrimary · textSecondary · textMuted · cardBorder
 //
 // [쓰는 법] AppColors.stage(stage) — 서버 응답의 stage(0~3)를 그대로 넣으면 화면 색이 나온다
@@ -51,7 +50,7 @@ class AppColors {
   static const List<Color> _stagePastel = [Color(0xFF82C59D), Color(0xFFF7D078), Color(0xFFF7BA7E), Color(0xFFE8837C)]; // (11/24 사용자 요청) 단계 원래 색에 투명도 40% (흰 바탕 위) — 파스텔 아님
   static Color stagePastel(int stage) => _stagePastel[stage.clamp(0, 3)];
 
-  // 수업 코드가 쓰는 이름 (수업 화면을 그대로 가져와도 컴파일되게 우리 색에 연결한 별명)
+  // 다른 화면이 쓰는 이름 (우리 색에 연결한 별명)
   static const Color primary = navy;
   static const Color danger = urgent;
 
@@ -75,7 +74,7 @@ class AppColors {
 ThemeData buildAppTheme() {
   return ThemeData(
     useMaterial3: true,
-    fontFamily: 'SpoqaHanSansNeo', // (11/24 사용자 요청) 신한 슈퍼SOL 느낌 글꼴 (예전: Pretendard — pubspec.yaml 에 그대로 있음)
+    fontFamily: 'SpoqaHanSansNeo', // (11/24 사용자 요청) 새 앱 글꼴 스포카 한 산스 Neo (예전: Pretendard — pubspec.yaml 에 그대로 있음)
     // (11/17 사용자 요청) 뒤로 가기 = 애플처럼 '<' 꺾쇠 (안드로이드 기본 ← 화살표 대신) — 앱 전체
     actionIconTheme: ActionIconThemeData(
       backButtonIconBuilder: (context) => const Icon(Icons.arrow_back_ios_new_rounded, size: 22),

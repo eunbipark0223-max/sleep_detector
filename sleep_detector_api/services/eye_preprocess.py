@@ -2,7 +2,6 @@
 # services/eye_preprocess.py — 눈 사진 전처리 (CNN 학습 노트북 · 서버 공통)
 # ═══════════════════════════════════════════════════════════════
 # 담당: prep_eye = B (CNN 학습)  |  crop_eye = A (눈 점 · face_service.py)   |   우선: P2 (CNN)
-# 수업 원본: (없음, 🔴 신규 — 팀장 제안 10.14)
 #
 # [이 파일이 하는 일]
 #   [학습]  MRL 눈 사진 ─────────────────→ prep_eye → CNN      (노트북 eye_cnn.ipynb)

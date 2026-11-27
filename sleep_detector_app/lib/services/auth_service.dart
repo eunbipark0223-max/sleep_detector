@@ -2,15 +2,14 @@
 // services/auth_service.dart — 회원가입 · 로그인 · 구글 로그인 · 토큰 저장
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P0
-// 수업 원본: road_hazard_app/lib/services/auth_service.dart (🟢 그대로 복사)
 //
 // [이 파일이 하는 일]
-//   - 수업 파일을 그대로 복사해서 쓴다 (토큰은 flutter_secure_storage)
+//   - 토큰은 flutter_secure_storage
 //
 // [서버 약속 — sleep_detector_api/routers/user.py]
 //   - POST /users/signup  {email, password, name, phone, vehicle_no, privacy_agreed} → 201 사용자 · 이미 있으면 409 · 비밀번호 · 전화 · 차량번호 · 동의 규칙 어기면 422(메시지 목록)
 //   - POST /users/login   {email, password}                      → {success, access_token, token_type, user}
-//   - POST /users/google  {email, name, firebase_uid}            → 로그인과 같은 응답 (구글 로그인 뒤 서버 JWT 로 통일)
+//   - POST /users/google  {email, name, firebase_uid, id_token}  → 로그인과 같은 응답 (구글 로그인 뒤 서버 JWT 로 통일)
 //   - GET  /users/me      Authorization: Bearer 토큰              → 내 정보 (토큰이 틀리면 401)
 //   - POST · GET · DELETE /users/me/photo                        → 프로필 사진 올리기(멀티파트 file) · 받기(토큰 필요) · 지우기
 //   - PATCH /users/me     {phone?, vehicle_no?}                  → 내 전화번호 · 차량번호 저장 (빠진 칸은 그대로, '' 면 지움, 형식이 틀리면 422)
@@ -215,7 +214,9 @@ class AuthService {
 
     final email = firebaseUser.email!;
     final name = (firebaseUser.displayName ?? '').trim().isNotEmpty ? firebaseUser.displayName!.trim() : email.split('@').first;
-    final res = await _send(() => http.post(_uri('/users/google'), headers: _json, body: jsonEncode({'email': email, 'name': name, 'firebase_uid': firebaseUser.uid})));
+    // (11/27 팀장) Firebase 가 준 확인증(id_token)도 같이 보냄 — 서버가 FIREBASE_VERIFY=true 면 이걸 검사해서, 앱 없이 이메일만 보내 남의 구글 계정으로 들어오는 것을 막음
+    final idToken = await firebaseUser.getIdToken();
+    final res = await _send(() => http.post(_uri('/users/google'), headers: _json, body: jsonEncode({'email': email, 'name': name, 'firebase_uid': firebaseUser.uid, 'id_token': idToken})));
     if (res.statusCode != 200) {
       await logout(); // 서버가 거절하면 Firebase 쪽 로그인도 풀어 둔다 (다음에 다시 고를 수 있게)
       throw _error(res);
@@ -245,11 +246,12 @@ class AuthService {
   /// 내 전화번호 · 차량번호 저장 (관리자가 경고를 보고 바로 연락할 때 쓴다).
   /// 넘기지 않은(null) 칸은 그대로 두고, 빈 글자('')를 넘기면 서버가 지운다. 돌려받는 것은 바뀐 내 정보.
   /// 형식이 틀리면(422) 서버 문구가 AuthException 으로 온다 (예: '전화번호 형식이 올바르지 않아요 (예: 010-1234-5678)').
-  static Future<Map<String, dynamic>> updateProfile({String? phone, String? vehicleNo, String? name}) async {
+  static Future<Map<String, dynamic>> updateProfile({String? phone, String? vehicleNo, String? name, String? empNo}) async {
     final body = <String, dynamic>{
       'name': ?name, // (11/18) 내 정보에서 이름 바꾸기
       'phone': ?phone,
       'vehicle_no': ?vehicleNo,
+      'emp_no': ?empNo, // (11/25 팀장) 구글로 처음 들어온 기사의 사번 (한 번만, 서버가 명단 확인)
     };
     final res = await _send(() async => http.patch(_uri('/users/me'), headers: await authHeaders(), body: jsonEncode(body)));
     if (res.statusCode != 200) throw _error(res);

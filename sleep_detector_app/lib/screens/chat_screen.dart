@@ -2,7 +2,6 @@
 // screens/chat_screen.dart — 규정 도우미 채팅
 // ═══════════════════════════════════════════════════════════════
 // 담당: B   |   우선: P2
-// 수업 원본: road_hazard_app/lib/screens/chat_screen.dart (🟡 인사말 · 예시 질문 + 아래 '수업과 다른 점')
 //
 // [이 파일이 하는 일]
 //   - 졸음운전 · 휴게 규정 Q&A — 첫 인사, 추천 질문, 질문 → 답 + 근거 규정
@@ -12,15 +11,14 @@
 //   - POST /chat (로그인 필요) {message, history: [{role: 'user'|'bot', text}]}
 //       → {"success", "answer", "sources": [{title, source, content, is_real}], "is_real"}
 //
-// [수업과 다른 점]
-//   - 응답 키: 수업 reply · suggestions → 우리 서버 message / answer · sources · is_real
+// [정한 것]
+//   - 응답 키: message / answer · sources · is_real
 //     추천 질문은 서버가 주지 않아서 _greetingSuggestions — 답이 올 때마다 아직 안 물어본 것만 다시 보여 줌
 //   - 답 아래에 근거 규정(sources) — regulation_screen.dart 의 RegulationCard (collapsible), 누르면 원문
 //   - is_real == false → "AI 답변 아님 — 규정 원문" 표시
 //   - MainScreen(D) 의 '규정 도우미' 탭 안에 들어가므로 AppBar 없음 (제목은 MainScreen 이 보여 줌)
-//   - 서버 호출: 수업은 ApiService.chatHello · sendChat 인데 api_service.dart(C) 에 아직 없어서 이 파일 아래 _chatHello · _sendChat.
+//   - 서버 호출: api_service.dart(C) 에 chatHello · sendChat 이 아직 없어서 이 파일 아래 _chatHello · _sendChat.
 //     C 가 api_service.dart 에 만들면 그쪽으로 바꾼다. 토큰은 AuthService.authHeaders() (D)
-//   - 색: 수업 primaryLight · primaryDark 가 팀 theme.dart 에 없어서 _chipBg · _chipText
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 // ═══════════════════════════════════════════════════════════════
@@ -233,7 +231,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // 봇 말풍선 — 흰 화면 위 연회색 (왼쪽 위만 덜 둥글게 = 말풍선 꼬리 느낌)
   static const BoxDecoration _botBox = BoxDecoration(
-    color: const Color(0x0F1F2A5C), // (11/24) 운행 기록 맨 위 바탕 파랑
+    color: Color(0x0F1F2A5C), // (11/24) 운행 기록 맨 위 바탕 파랑
     borderRadius: BorderRadius.only(
       topLeft: Radius.circular(6),
       topRight: Radius.circular(20),
@@ -245,7 +243,7 @@ class _ChatScreenState extends State<ChatScreen> {
   // 빠른 질문 알약 — 흰 바탕 · 옅은 회색 테두리 · 남색 글자
   // (11/18 피드백 · 애플 토큰) 테두리 · 남색 없이 연한 회색 칸(systemGray6) + 검정 글자 · 작게 (입력칸과 같은 톤)
   Widget _quickPill(String q, {VoidCallback? onTap}) => Press(child: Material(
-        color: const Color(0x0F1F2A5C), // (11/24) 운행 기록 맨 위 바탕 파랑
+        color: Color(0x0F1F2A5C), // (11/24) 운행 기록 맨 위 바탕 파랑
         shape: const StadiumBorder(),
         child: InkWell(
           customBorder: const StadiumBorder(),
@@ -474,7 +472,7 @@ class _SourceLineState extends State<_SourceLine> {
   }
 }
 
-// ── 서버 호출 (수업 api_service.dart 모양 — C 가 api_service 에 chatHello · sendChat 을 만들면 그쪽으로) ──
+// ── 서버 호출 (C 가 api_service 에 chatHello · sendChat 을 만들면 그쪽으로) ──
 class _LoginRequired implements Exception {}
 
 // 첫 인사 (GET /chat/hello)

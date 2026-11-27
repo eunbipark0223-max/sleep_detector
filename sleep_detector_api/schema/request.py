@@ -2,21 +2,18 @@
 # schema/request.py — 앱이 보내는 JSON 모양 (Pydantic)
 # ═══════════════════════════════════════════════════════════════
 # 담당: D   |   우선: P0
-# 수업 원본: road_hazard_api/schema/request.py (🟡 수정)
 #
 # [이 파일이 하는 일]
-#   - 로그인 · 회원가입 · 채팅 · StatusUpdate — 수업 그대로 (StatusUpdate 설명만 졸음용 상태로)
+#   - 로그인 · 회원가입 · 채팅 · StatusUpdate (StatusUpdate 는 졸음용 상태)
 #   - VoiceQuizAnswer — quiz_id · answer_text(STT 글자, 무응답이면 '') · answer_sec(무응답이면 null)
 #   - DrivePing — perclos (기록용)
 #   - ProfileUpdate — phone · vehicle_no (PATCH /users/me, 기사 연락용. 형식 검사 · 정리는 format_phone · format_vehicle_no)
 #
 # [주의]
-#   - 수업용 DirectReport · ReportSubmit 은 지운다
 #   - /detect 는 사진 업로드라 JSON 이 아니라 Form 으로 받음 (detect.py)
 #
-# [연결 약속 — 수업 파일이 이 저장소에 없어서 D 가 정한 것. user.py · chat.py 가 이 이름으로 부르는지 확인]
+# [연결 약속 — D 가 정한 것. user.py · chat.py 가 이 이름으로 부르는지 확인]
 #   - SignupRequest(email · password · name · phone? · vehicle_no? · privacy_agreed?) · LoginRequest(email · password) · GoogleLoginRequest(email · name · firebase_uid) · ChatRequest(message · history)
-#   - 10.14 팀장: 수업 앱이 보내는 모양에 맞춰 GoogleLoginRequest · 비밀번호 규칙 · ChatRequest.history 를 수업 그대로 되돌림
 #
 # 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
 # ═══════════════════════════════════════════════════════════════
@@ -29,7 +26,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 EventStatus = Literal["미확인", "확인", "조치완료", "휴식완료"]
 
 
-# 비밀번호 규칙 (수업 그대로): 회원가입 · 비밀번호 변경이 같이 쓴다
+# 비밀번호 규칙: 회원가입 · 비밀번호 변경이 같이 쓴다
 def check_password_rules(value: str) -> str:
     if len(value) < 8:
         raise ValueError("비밀번호는 8자리 이상이어야 해요")
@@ -44,7 +41,7 @@ def check_password_rules(value: str) -> str:
     return value
 
 
-# ── 로그인 · 회원가입 (수업 그대로 — 앱 auth_service.dart 가 이 모양으로 보냄, 10.14 팀장 확인) ──
+# ── 로그인 · 회원가입 (앱 auth_service.dart 가 이 모양으로 보냄, 10.14 팀장 확인) ──
 class SignupRequest(BaseModel):
     email   : EmailStr = Field(..., description="사용자 이메일 주소")
     password: str      = Field(..., min_length=8, description="비밀번호(평문 입력)")
@@ -74,7 +71,7 @@ class SignupRequest(BaseModel):
         return value
 
     @field_validator("password")
-    def validate_password(cls, value):  # 수업 규칙 그대로 (앱이 422 메시지를 화면에 보여 줌)
+    def validate_password(cls, value):  # 앱이 422 메시지를 화면에 보여 줌
         return check_password_rules(value)
 
 
@@ -136,15 +133,39 @@ class PasswordResetRequest(BaseModel):
 
 
 class EmailChangeRequest(BaseModel):
-    """(11/18 C) POST /users/me/email/request — 모의 서버(D, 11/17)와 같은 모양: 새 이메일 + 지금 비밀번호"""
-    new_email       : EmailStr
-    current_password: str = Field(..., min_length=1)
+    """(11/19) POST /users/me/email/request — 이메일 변경 인증번호 받기 (관리자 웹 '내 정보')"""
+    new_email       : EmailStr = Field(..., description="바꿀 새 이메일")
+    current_password: str      = Field(..., min_length=1, max_length=128, description="지금 비밀번호")
 
 
 class EmailChangeConfirm(BaseModel):
-    """(11/18 C) POST /users/me/email/confirm — 새 이메일로 받은 인증번호 확인"""
-    new_email: EmailStr
-    code     : str = Field(..., min_length=4, max_length=10)
+    """(11/19) POST /users/me/email/confirm — 인증번호 확인 → 이메일 바꾸기"""
+    new_email: EmailStr = Field(..., description="인증번호를 받은 새 이메일")
+    code     : str      = Field(..., min_length=4, max_length=10, description="메일로 받은 6자리")
+
+
+class AdminEmployeeCheck(BaseModel):
+    """(11/19) POST /admin/signup/check — 관리자 가입 사번 확인 (관리자 웹 admin_signup.html 이 보내는 모양 그대로)"""
+    employee_no: str = Field(..., max_length=30, description="관리자용 인증된 사번 (숫자 4~12자리)")
+
+
+class AdminSignupRequest(BaseModel):
+    """(11/19) POST /admin/signup — 관리자 가입. 비밀번호 규칙은 기사 가입과 같음"""
+    employee_no: str      = Field(..., max_length=30, description="관리자용 인증된 사번 (숫자 4~12자리)")
+    name       : str      = Field(..., min_length=1, max_length=50, description="이름")
+    email      : EmailStr = Field(..., description="로그인에 쓸 이메일")
+    password   : str      = Field(..., description="비밀번호 (가입 규칙 그대로)")
+
+    @field_validator("name")
+    def check_admin_name(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("이름을 입력해 주세요")
+        return value
+
+    @field_validator("password")
+    def validate_admin_password(cls, value):
+        return check_password_rules(value)
 
 
 class LoginRequest(BaseModel):
@@ -182,6 +203,8 @@ class ProfileUpdate(BaseModel):
     name      : Optional[str] = Field(None, max_length=50, description="이름 (관리자 설정 화면). 안 보내면 그대로, 빈 글자는 거절")
     phone     : Optional[str] = Field(None, max_length=30, description="전화번호 (예: 010-1234-5678). ''면 지움, 안 보내면 그대로")
     vehicle_no: Optional[str] = Field(None, max_length=30, description="차량번호 (예: 12가 3456). ''면 지움, 안 보내면 그대로")
+    # (11/25 팀장) 구글로 처음 들어온 기사의 사번 — 회사 명단에 있고 아직 안 쓰인 사번만, 한 번 넣으면 못 바꿈 (사번으로 가입한 계정은 이미 있음)
+    emp_no    : Optional[str] = Field(None, max_length=20, description="사번 (사번이 아직 없는 계정만 한 번). 안 보내면 그대로")
 
     @field_validator("name")
     def check_name(cls, value):
@@ -216,14 +239,15 @@ class PasswordChange(BaseModel):
 
 
 class GoogleLoginRequest(BaseModel):
-    # 수업 앱은 Firebase 로그인 뒤 email · name · firebase_uid 를 보낸다 (id_token 아님)
+    # 앱은 Firebase 로그인 뒤 email · name · firebase_uid · id_token 을 보낸다 (11/27 부터 id_token 도). FIREBASE_VERIFY=true 면 기사도 id_token 검증
     email       : EmailStr = Field(..., description="구글 계정 이메일")
     name        : str      = Field(..., min_length=1, max_length=50,  description="이름")
     firebase_uid: str      = Field(..., min_length=1, max_length=128, description="Firebase UID")
     id_token    : Optional[str] = Field(None, max_length=4096, description="Firebase ID 토큰 — 관리자 웹은 항상 보냄 (관리자 계정은 이 검증을 통과해야 로그인)")
+    admin_only  : bool = Field(False, description="(11/27) 관리자 웹이 보냄 — 계정을 새로 만들지 않고, 관리자 계정일 때만 로그인 (아니면 403)")
 
 
-# ── 채팅 (수업 그대로) ────────────────────────────────────────
+# ── 채팅 ────────────────────────────────────────
 class ChatMessage(BaseModel):
     role: str = Field(..., description="'user' 또는 'bot'")
     text: str = Field(..., max_length=2000, description="메시지 내용")
@@ -234,7 +258,7 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] | None = Field(None, description="이전 대화 (선택)")
 
 
-# ── 경고 처리 상태 변경 (수업 StatusUpdate 를 졸음용 상태로) ─────
+# ── 경고 처리 상태 변경 (졸음용 상태) ─────
 class StatusUpdate(BaseModel):
     status: EventStatus
 

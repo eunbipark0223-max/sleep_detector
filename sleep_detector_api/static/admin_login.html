@@ -2,14 +2,15 @@
 ═══════════════════════════════════════════════════════════════
 static/admin_login.html — 관리자 로그인 화면
 담당: D   |   우선: P0
-수업 원본: road_hazard_api/static/admin_login.html (🟢 그대로 복사, 제목 문구만 바꾸기)
 
 [이 파일이 하는 일]
   - 이메일 · 비밀번호로 POST /users/login → 관리자(role admin)면 토큰 저장 후 admin.html 로 이동
   - 기사 계정이면 "관리자 계정이 아닙니다"
-  - 로고: img/logo.png (졸음 가드 올빼미, 팀 확정 이미지) · 탭 아이콘 img/favicon.png
+  - 로고: img/logo.png (단계 표정 4개, 11/25 팀 확정 · 앱 아이콘과 같음) · 탭 아이콘 img/favicon.png — 주소 끝 ?v= 는 바꿀 때마다 올려서 브라우저가 새로 받게
   - 구글 계정 로그인 (11/16): [Google로 계속하기] → 서버 GET /users/google/config 의 Firebase 설정으로 구글 창 → id_token 을 POST /users/google 로 보냄.
     관리자 계정(role admin)만 들어올 수 있고 서버가 id_token 을 검증한다 (services/firebase_verify.py). 모의 서버(mock=true)는 구글 창 없이 시험용 관리자로 바로 로그인
+    (11/27 팀장) 사번으로 가입할 때 넣은 구글 메일이면 서버가 확인증을 검사하고 그 관리자 계정에 연결해 로그인.
+    관리자로 가입 안 된 구글 메일이면 계정을 만들지 않고 '사번으로 먼저 가입해 주세요' (admin_only)
   - 화면 모양 (11/16): 관리자 화면(admin.html)과 같은 Readdy 시안 값 — 연한 회색 바탕 · 흰 둥근 카드(22px) · 입력 칸 10px · 남색 알약 버튼.
     색 · 글자 · 모서리 값은 admin.html 맨 위 :root 와 같다 (글자 22 · 13 · 12 세 단계만, 굵기 400 · 500 · 600)
 ═══════════════════════════════════════════════════════════════
@@ -20,7 +21,7 @@ static/admin_login.html — 관리자 로그인 화면
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>로그인 | 졸음 가드 관리자</title>
-  <link rel="icon" type="image/png" href="img/favicon.png">
+  <link rel="icon" type="image/png" href="img/favicon.png?v=20261125">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <style>
@@ -61,7 +62,7 @@ static/admin_login.html — 관리자 로그인 화면
 </head>
 <body>
   <form id="loginForm">
-    <img class="logo" src="img/logo.png" alt="졸음 가드 로고 (올빼미)" width="48" height="48">
+    <img class="logo" src="img/logo.png?v=20261125" alt="졸음 가드 로고" width="48" height="48">
     <span class="pill">관리자 전용</span>
     <h1>졸음 가드 관리자</h1>
     <p class="sub">졸음 경고 확인 · 조치완료</p>
@@ -76,7 +77,7 @@ static/admin_login.html — 관리자 로그인 화면
     <p class="alt">관리자 계정이 없나요? <a href="admin_signup.html">사번으로 가입하기</a></p>
   </form>
 
-  <script src="js/api.js?v=20261117c"></script>
+  <script src="js/api.js?v=20261127"></script>
   <script>
     // 관리자 화면에서 '관리자만 사용할 수 있어요(403)'로 돌아온 경우 이유를 알려 준다 (api.js 가 ?denied=1 을 붙여 보냄)
     if (new URLSearchParams(location.search).has('denied')) {
@@ -108,7 +109,9 @@ static/admin_login.html — 관리자 로그인 화면
             import('https://www.gstatic.com/firebasejs/' + FIREBASE_SDK + '/firebase-app.js'),
             import('https://www.gstatic.com/firebasejs/' + FIREBASE_SDK + '/firebase-auth.js')]);
           const app = initializeApp({ apiKey: cfg.apiKey, authDomain: cfg.authDomain, projectId: cfg.projectId, appId: cfg.appId || undefined });
-          const cred = await signInWithPopup(getAuth(app), new GoogleAuthProvider());
+          const provider = new GoogleAuthProvider();
+          provider.setCustomParameters({ prompt: 'select_account' });   // 늘 구글 계정 선택 창을 띄움 — 브라우저에 구글 계정이 하나만 로그인돼 있어도 다른 계정을 고를 수 있게 (11/23)
+          const cred = await signInWithPopup(getAuth(app), provider);
           const u = cred.user;
           profile = { email: u.email, name: u.displayName || String(u.email).split('@')[0], firebase_uid: u.uid, id_token: await u.getIdToken() };
         }

@@ -2,7 +2,6 @@
 // screens/map_screen.dart — 가까운 졸음쉼터 지도
 // ═══════════════════════════════════════════════════════════════
 // 담당: B   |   우선: P2
-// 수업 원본: road_hazard_app/lib/screens/map_screen.dart (🟡 수정, 카카오맵 WebView)
 //
 // [이 파일이 하는 일]
 //   - 공공데이터 '전국 졸음쉼터 표준데이터' (assets/rest_areas.json) 에서 내 위치와 가까운 5곳

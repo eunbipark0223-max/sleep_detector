@@ -30,7 +30,7 @@ class MonthReport extends StatefulWidget {
 class _MonthReportState extends State<MonthReport> {
   late final Future<(List<SleepEvent>, List<DriveSpan>)> _data = _load();
   DateTime _sel = DateTime(DateTime.now().year, DateTime.now().month); // (11/19) 고른 달
-  bool _picking = false; // (11/24) 연도 · 달 바퀴를 펼쳤는지
+  final bool _picking = false; // (11/24) 연도 · 달 바퀴를 펼쳤는지
 
   static Future<(List<SleepEvent>, List<DriveSpan>)> _load() async {
     final ev = await ApiService.fetchMyEvents().catchError((_) => <SleepEvent>[]);
@@ -52,12 +52,6 @@ class _MonthReportState extends State<MonthReport> {
         final (events, spans) = snap.data!;
         final now = _sel; // (11/19 사용자 요청) 위에서 고른 달 기준
         bool inMonth(DateTime t, int y, int m) => t.year == y && t.month == m;
-        // 고를 수 있는 달 — 기록이 있는 달 + 이번 달 (최근 순)
-        final thisMonth = DateTime(DateTime.now().year, DateTime.now().month);
-        final months = <DateTime>{thisMonth, for (final e in events) DateTime(e.createdAt.toLocal().year, e.createdAt.toLocal().month)}
-            .where((m) => !m.isAfter(thisMonth))
-            .toList()
-          ..sort((a, b) => b.compareTo(a));
         final mine = events.where((e) => inMonth(e.createdAt.toLocal(), now.year, now.month)).toList();
         final prevM = now.month == 1 ? 12 : now.month - 1;
         final prevY = now.month == 1 ? now.year - 1 : now.year;

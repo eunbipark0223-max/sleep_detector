@@ -113,7 +113,7 @@ class WebCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
   final Color color;
-  final bool outline; // (11/24) 홈 카드만 예전처럼 얇은 테두리 — 나머지는 슈퍼SOL 처럼 테두리 없이 그림자만
+  final bool outline; // (11/24) 홈 카드만 예전처럼 얇은 테두리 — 나머지는 테두리 없이 그림자만
   const WebCard({super.key, required this.child, this.padding = const EdgeInsets.all(20), this.color = AppColors.card, this.outline = false});
 
   @override
@@ -302,7 +302,7 @@ class WebHeader extends StatelessWidget {
         const Text('LIVE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.live)),
       ],
       const Spacer(),
-      if (trailing != null) trailing!,
+      ?trailing,
     ]);
   }
 }

@@ -425,6 +425,37 @@ def bonus_photo_access():
             os.remove(os.path.join(config.UPLOAD_EVENT_DIR, f))
 
 
+def bonus_no_response_photo():
+    """(11/26) 2번째 퀴즈 뒤 사진 → 퀴즈 응답 없음 경고의 사진 (한 번만 · 본인만 · 2단계 경고 사진은 그대로)"""
+    before = set(os.listdir(config.UPLOAD_EVENT_DIR))
+    try:
+        h, uid = new_driver()
+        h2, _ = new_driver()
+        doze(h)
+        d2 = doze(h)
+
+        def post(qid):
+            return client.post("/quiz/answer", json={"quiz_id": qid, "answer_text": "", "answer_sec": None}, headers=h).json()
+
+        def send(ev, hh):
+            return client.post("/quiz/no-response-photo", data={"event_id": ev}, headers=hh,
+                               files={"file": ("quiz.jpg", b"QUIZPHOTO", "image/jpeg")}).status_code
+
+        r1 = post(d2["voice_quiz"]["quiz_id"])
+        r2 = post(r1["next_quiz"]["quiz_id"])
+        eid = r2["no_response_event_id"]
+        other, wrong = send(eid, h2), send(d2["event_id"], h)
+        ok, again = send(eid, h), send(eid, h)
+        mine = {e["id"]: e for e in client.get("/events/my", headers=h).json()}
+        got = client.get(mine[eid]["photo_url"], headers=h).content == b"QUIZPHOTO"
+        with TestSession() as s:
+            kept = s.get(SleepEvent, d2["event_id"]).photo_path != s.get(SleepEvent, eid).photo_path
+        return f"{r1['no_response_event_id']} · {other} · {wrong} · {ok} · {again} · 새 사진 {got} · 2단계 사진 그대로 {kept}"
+    finally:
+        for f in set(os.listdir(config.UPLOAD_EVENT_DIR)) - before:
+            os.remove(os.path.join(config.UPLOAD_EVENT_DIR, f))
+
+
 def bonus_half_check():
     """반쯤 감은 눈 확인 (11/10): 출발 전 측정이 뜬 눈 EAR 을 저장 · 4번 중 3번째 반쯤에 PERCLOS 로 확정 · 확정 전엔 조용히 · 기준 없으면 판정 안 함"""
     import json
@@ -542,6 +573,7 @@ BONUS = [("(보너스) 3단계는 휴식으로 안 풀림 → 3단계", 3, bonus
          ("(보너스) 2단계 뒤 계속 감음 → 퀴즈 없이 3단계", "2 → 3 · 퀴즈 False · 음성 True", bonus_stage2_still_asleep),
          ("(보너스) 2단계 들어갈 때마다 퀴즈 (2분 간격 없음)", "2 · 퀴즈 True → 2 · 퀴즈 True", bonus_quiz_every_stage2),
          ("(보너스) 1단계는 AI 없이 기록만", "첫 졸음 1단계 · AI 0·0 · 기록 1건 · 요약 True · 두 번째 AI 1·1", bonus_stage1_no_ai),
+         ("(보너스) 퀴즈 2번 실패 뒤 사진", "None · 404 · 404 · 200 · 409 · 새 사진 True · 2단계 사진 그대로 True", bonus_no_response_photo),
          ("(보너스) 경고 사진 권한", "401 · 200 · 404 · 200 · 404", bonus_photo_access),
          ("(보너스) 퀴즈 통과 음성: 2 · 3단계", "쉼터까지 조심히 가세요. / 안전한 곳에 정차해 주세요.", bonus_quiz_message),
          ("(보너스) [detect] 시간 기록 · 뒤에서 AI", "눈판정 · 합계 · AI 보고서 채움 · LLM · RAG · Agent", bonus_detect_timing),

@@ -2,7 +2,6 @@
 // screens/rest_screen.dart — 휴식 화면 (15분 → 운행 재개 → 1단계)
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P0
-// 수업 원본: road_hazard_app/lib/screens/splash_screen.dart (타이머 · 화면 이동 모양, 🔴 신규)
 //
 // [이 파일이 하는 일]
 //   - startRest() → 15분 카운트다운 (눈 판정 멈춤, ping 은 계속) 🔊 '15분 쉬고 출발하세요'
@@ -50,7 +49,7 @@ import 'regulation_screen.dart';
 import '../widgets/buddy.dart';
 import '../widgets/auth_ui.dart';
 import '../design_tokens.dart';
-import '../widgets/owl_says.dart' show keepWords, balancedLines;
+import '../widgets/owl_says.dart' show balancedLines;
 
 class RestScreen extends StatefulWidget {
   /// 휴식 시작 (POST /drive/rest). 서버 JSON 을 돌려준다.
@@ -210,7 +209,7 @@ class _RestScreenState extends State<RestScreen> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false, // 휴식 중에는 뒤로 가기로 나갈 수 없다 (나가는 길은 [운행 재개])
-      // (11/24 사용자 요청 · 신한 슈퍼SOL 느낌) 앱 바탕 그라데이션 · 다른 탭과 같은 자리의 큰 제목
+      // (11/24 사용자 요청) 앱 바탕 그라데이션 · 다른 탭과 같은 자리의 큰 제목
       child: DecoratedBox(
         decoration: const BoxDecoration(gradient: AppSol.pageGradient),
         child: Scaffold(
@@ -253,7 +252,7 @@ class _RestScreenState extends State<RestScreen> {
         final done = _left == Duration.zero;
         final busy = _phase == _Phase.resuming;
         final progress = _totalSec == 0 ? 0.0 : 1 - _left.inSeconds / _totalSec;
-        // (11/24 사용자 요청 · 신한 슈퍼SOL 느낌) 흰 카드 — 상태 알약 · '남은 휴식 시간' · 큰 숫자 · 둥근 막대 / 아래 상세 줄 카드 / 맨 아래 버튼
+        // (11/24 사용자 요청) 흰 카드 — 상태 알약 · '남은 휴식 시간' · 큰 숫자 · 둥근 막대 / 아래 상세 줄 카드 / 맨 아래 버튼
         String hm(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
         final started = _startedAt;
         final ready = started?.add(Duration(seconds: _totalSec));

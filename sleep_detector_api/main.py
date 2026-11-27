@@ -2,11 +2,10 @@
 # main.py — 서버 시작 파일 (FastAPI 앱 만들기 · 라우터 등록)
 # ═══════════════════════════════════════════════════════════════
 # 담당: 팀장   |   우선: P0
-# 수업 원본: road_hazard_api/main.py (🟡 수정)
 #
 # [이 파일이 하는 일]
 #   - FastAPI 앱을 만들고 routers/ 의 라우터를 등록한다 (user · detect · event · admin · chat · quiz)
-#   - 서버 시작 때 DB 테이블 자동 생성 (수업 코드 그대로)
+#   - 서버 시작 때 DB 테이블 자동 생성
 #   - 서버 시작 때 눈 판정 모델 미리 읽기 · 30일 지난 졸음 사진 정리 (그 뒤 24시간마다)
 #   - GET /health — 서버 상태 + CNN 이 실제로 쓰이는지 (mode · 모델 · 읽힘 · 판정 방식별 건수) · RAG 색인 준비 (rag_ready)
 #   - 서버 시작 때 RAG 색인을 백그라운드로 미리 읽기 (첫 경고가 색인 때문에 멈추지 않게, 문서 · 모델이 바뀌었으면 약 70초)
@@ -14,7 +13,6 @@
 #   - 실행: python main.py  →  http://127.0.0.1:8000/docs
 #
 # [주의]
-#   - hazard 라우터는 event 로 이름이 바뀜 (수업 /hazards → /events)
 #   - 라우터는 "있는 것만" 등록한다 — 아직 비어 있거나 오류가 난 파일은 건너뛰고 터미널에 ⚠️ 로 알려 줌
 #     (팀원 파일이 하나 덜 돼도 서버 전체가 멈추지 않게. 다 만들어지면 ⚠️ 가 사라진다)
 #   - 시연 폰(실기기)에서 접속하려면 .env 에 SERVER_HOST=0.0.0.0 → 앱은 PC 의 IP:8000 으로 접속
@@ -125,9 +123,24 @@ async def lifespan(app: FastAPI):   # ← app: FastAPI 매개변수 필수!
 
     for d in (config.UPLOAD_TMP_DIR, config.UPLOAD_EVENT_DIR):
         os.makedirs(d, exist_ok=True)
+    # (11/25) 임시 사진 폴더는 요청 하나 동안만 쓰는 곳 — 서버가 꺼졌을 때 남은 사진(얼굴)은 켤 때 지움
+    for name in os.listdir(config.UPLOAD_TMP_DIR):
+        if name != ".gitkeep":
+            try:
+                os.remove(os.path.join(config.UPLOAD_TMP_DIR, name))
+            except OSError:
+                pass
 
     print(f"ℹ️  DEMO_MODE={config.DEMO_MODE}  USE_REAL_AI={config.USE_REAL_AI}  USE_CNN={config.USE_CNN}  "
           f"GEMINI_MODEL={config.GEMINI_MODEL}")
+
+    # (11/19) 메일 — 켜졌는지 한눈에. 꺼져 있으면 인증번호가 응답(demo_code)에 실리니 배포 서버에서는 꼭 켜져 있어야 함
+    if config.MAIL_ENABLED:
+        print(f"✅ 메일: 구글 SMTP 켜짐 ({config.SMTP_HOST}:{config.SMTP_PORT}, 하루 {config.MAIL_DAILY_LIMIT}통 상한)")
+    elif config.SMTP_USER or config.SMTP_PASSWORD:
+        print("⚠️ 메일: SMTP_USER · SMTP_PASSWORD 중 하나만 있어서 꺼짐 — 둘 다 넣어야 켜짐 (지금은 시연용: 인증번호를 응답으로 줌)")
+    else:
+        print("ℹ️  메일: 꺼짐 — 시연용 (이메일 인증번호를 응답 demo_code 로 줌). 켜려면 .env 에 SMTP_USER · SMTP_PASSWORD")
 
     _warm_up_eye_models()
     threading.Thread(target=_warm_up_rag, name="rag-warm-up", daemon=True).start()
@@ -164,6 +177,19 @@ app.add_middleware(
 )
 
 os.makedirs(config.UPLOAD_EVENT_DIR, exist_ok=True)
+
+
+# (11/25 팀장) 관리자 웹 화면(HTML)은 브라우저가 저장해 두지 않고 매번 새로 받게 — 예전 화면 · 예전 로고가 계속 보이던 문제
+#   그림 · js 는 그대로 저장해도 됨 (바꿀 때는 HTML 에서 주소 끝 ?v= 를 올림)
+@app.middleware("http")
+async def no_cache_admin_html(request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/static/") and path.endswith(".html"):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
+
+
 app.mount("/static", StaticFiles(directory=os.path.join(config.BASE_DIR, "static")), name="static")
 # 졸음 사진(uploads/events/)은 얼굴 사진이라 폴더를 공개하지 않는다 → GET /events/{id}/photo (로그인 + 본인 또는 관리자, routers/event.py)
 

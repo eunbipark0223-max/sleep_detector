@@ -2,7 +2,6 @@
 // screens/login_screen.dart — 로그인 · 회원가입
 // ═══════════════════════════════════════════════════════════════
 // 담당: C (10/14 D → C)   |   우선: P0
-// 수업 원본: road_hazard_app/lib/screens/login_screen.dart (🟢 그대로)
 //
 // [이 파일이 하는 일]
 //   - 이메일 · 구글 로그인 (서버 JWT 로 통일)
@@ -202,7 +201,16 @@ class _LoginScreenState extends State<LoginScreen> { // 상태 클래스(알맹�
           AuthButton(text: '로그인', onPressed: _loginWithEmail),
           const SizedBox(height: 6),
           _findRow(), // 이메일 찾기 | 비밀번호 찾기
-          // (11/25 사용자 요청) 구글 로그인 뺌 — 회사 사번으로 가입하는 앱이라 맞지 않음
+          const SizedBox(height: 6),
+          // (11/25 팀장) 구글 로그인 다시 살림 — 구글로 처음 들어온 기사는 main_screen 에서 전화번호 · 차량번호 입력 창(contact_dialog)이 뜸
+          _divider(), // 또는
+          const SizedBox(height: 14),
+          AuthButton(
+            text: 'Google로 계속하기',
+            primary: false,
+            onPressed: _signInWithGoogle,
+            leading: const GoogleLogo(size: 20), // 구글 공식 G 로고 (관리자 웹과 같게)
+          ),
         ],
       ],
     );

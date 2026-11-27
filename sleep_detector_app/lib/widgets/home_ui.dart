@@ -18,7 +18,6 @@ import 'auth_ui.dart';
 import 'owl_says.dart' show keepWords;
 import 'web_ui.dart';
 import 'buddy.dart';
-import 'system_status.dart';
 import 'stage_layout.dart' show titleLines;
 
 /// 남색 '지금 상태' 카드 (시안 .current-state-card)
@@ -78,7 +77,7 @@ class HomeStateCard extends StatelessWidget {
         : s == 0
             ? ('운행 중', AppColors.navy)
             : (names[s], [AppStatus.normal, AppStatus.caution, AppStatus.warning, AppStatus.danger][s]);
-    final String? friendly = const [
+    final String friendly = const [
       '졸음은 제가 옆에서 지켜볼게요',
       '정신 차리고 앞을 봐 주세요',
       '15분 쉬면 다시 출발할 수 있어요',
@@ -123,10 +122,8 @@ class HomeStateCard extends StatelessWidget {
                           child: Text(line, maxLines: 1, softWrap: false, style: AppType.title2.copyWith(height: 1.25, color: AppColors.textPrimary)),
                         ),
                       ],
-                      if (friendly != null) ...[
-                        const SizedBox(height: 6),
-                        Text(friendly, style: AppType.subheadline.copyWith(color: AppColors.textSecondary)), // (11/23) 글자 키움
-                      ],
+                      const SizedBox(height: 6),
+                      Text(friendly, style: AppType.subheadline.copyWith(color: AppColors.textSecondary)), // (11/23) 글자 키움
                     ]),
                   ),
                 ]),
@@ -238,7 +235,7 @@ class HomeStateCard extends StatelessWidget {
                   child: Text.rich(
                     TextSpan(children: [
                       TextSpan(text: '안녕하세요\n', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: AppColors.navy)),
-                      TextSpan(text: '졸음을 지켜 주는 부엉이에요!', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: AppColors.textSecondary)),
+                      TextSpan(text: '오늘도 졸음은 제가 지켜 드릴게요!', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w400, color: AppColors.textSecondary)),
                     ]),
                     style: TextStyle(height: 1.45, letterSpacing: -0.3, color: AppColors.textPrimary),
                   ),

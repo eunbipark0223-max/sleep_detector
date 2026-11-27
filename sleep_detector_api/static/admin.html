@@ -2,7 +2,6 @@
 ═══════════════════════════════════════════════════════════════
 static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · 내 정보)
 담당: D   |   우선: P0
-수업 원본: road_hazard_api/static/admin.html (🟡 수정)
 
 [11/16 디자인 전면 교체 — Readdy 시안과 똑같이]
   시안: https://readdy.cc/preview/689ad06e-de96-4ef9-8262-036363d1377e/15959345/  (사용자 지시: 원래 디자인은 버리고 로직만 두고, 시안과 똑같이, 애플 느낌)
@@ -25,10 +24,10 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
   - 홈: 맨 위 '긴급' 카드(미처리 긴급 전부, 늘 펼쳐 둠) + 그 아래 3칸 요약(운행 중 기사 · 오늘 경고 · 휴게 미준수) + 칸을 누르면 아래에 이름 목록.
     (11/16 사용자 결정 — 기사 표는 기사 관리와 겹치고, 그래프는 통계로 뺌. 11/18 팀 의견 — 긴급은 바로 조치하게 4칸에서 빼서 맨 위 카드로)
   - 통계 #stats: 시간대별 경고 · 기사 상태 · 주간 경고 추이 · 경고 분석(단계별/종류별) 를 한 줄로. 이미 받은 경고 · 기사 목록 · 서버 /admin/stats/* 로 계산 (서버에 없는 값은 만들지 않음)
-  - 긴급 알림: 새 3단계 · "음성 응답 없음"이 생기면 알림음(삐 3번) + 탭 제목 깜빡임 + 알림 띠. 알림음은 프로필 메뉴의 스위치로 켜고 끔. 종 배지는 안 읽은 긴급 건수 (11/18: 같은 숫자를 띄우던 사이드바 '졸음 경고' 배지는 뺌)
+  - 긴급 알림: 새 3단계 · "퀴즈 응답 없음"이 생기면 알림음(삐 3번) + 탭 제목 깜빡임 + 알림 띠. 알림음은 프로필 메뉴의 스위치로 켜고 끔. 종 배지는 안 읽은 긴급 건수 (11/18: 같은 숫자를 띄우던 사이드바 '졸음 경고' 배지는 뺌)
     (브라우저는 화면을 한 번 누르기 전에는 소리를 막아서, 그때는 알림 띠에 안내가 나옴)
   - 졸음 경고: 둥근 탭(전체 · 미확인 · 1단계 | 주의 · 2단계 | 휴식 권고 · 3단계 | 위험(3단계 전부) · 긴급(그중 조치완료 안 한 것만), 11/17 단계로 나눔) + 표 + 검색. 미처리 긴급이 있으면 '긴급' 탭으로 열림. 좌우 화살표로 탭 이동
-    · 3단계 / "음성 응답 없음" 미처리 줄은 연한 빨강 + 그 줄에 [조치완료]. 줄을 누르면 경고 상세 패널
+    · 3단계 / "퀴즈 응답 없음" 미처리 줄은 연한 빨강 + 그 줄에 [조치완료]. 줄을 누르면 경고 상세 패널
     · 경고 상세 패널: 기사님 이름 · 단계 배지 → 종류 · 시각 · 위치 · 차량번호 · 연락처 · 처리 상태 → 지금 할 일 · AI 분석 결과 · 음성 퀴즈 기록 · 사진 → [전화 연결] [조치완료]
       (눈 측정값 · 좌표 숫자는 보여 주지 않음. LLM · RAG · Agent 같은 용어는 쓰지 않음. 모의 값 표시 · 안내 문구는 11/16 사용자 지시로 모두 뺌)
     · 상세를 열면 미확인 → 확인 으로 자동으로 바뀜 (화면이 보일 때만. 서버는 '확인'을 미확인일 때만 받음 → 조치완료를 되돌리지 않음)
@@ -60,7 +59,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>졸음 가드 관리자</title>
-  <link rel="icon" type="image/png" href="img/favicon.png">
+  <link rel="icon" type="image/png" href="img/favicon.png?v=20261125">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <style>
@@ -707,7 +706,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
   <div class="app" id="app">
     <aside class="sidebar" id="sidebar" aria-label="사이드바">
       <div class="brand-row">
-        <a class="brand" href="#dashboard"><span class="brand-box"><img src="img/logo.png" alt="" width="28" height="28"></span><span class="t">졸음가드</span></a>
+        <a class="brand" href="#dashboard"><span class="brand-box"><img src="img/logo.png?v=20261125" alt="" width="28" height="28"></span><span class="t">졸음가드</span></a>
         <button type="button" class="icon-btn" id="navClose" aria-label="사이드바 닫기" aria-controls="sidebar"><span data-icon="sidebar" data-size="20" aria-hidden="true"></span></button>
       </div>
       <nav class="menu" aria-label="주 메뉴">
@@ -862,9 +861,11 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
   </dialog>
 
   <div id="toast" aria-hidden="true"></div>
-  <script src="js/api.js?v=20261117c"></script>
+  <script src="js/api.js?v=20261127"></script>
   <script>
-    const REASON_LABEL = { microsleep: '미세수면', perclos: '피로 누적', rest_overdue: '휴게 미준수', no_response: '음성 응답 없음' };
+    // (11/23 팀장 용어표) 관리자 웹 이름 — 배지 · 목록 · 통계 · 알림은 괄호 없이 짧게. 풀이(REASON_PLAIN)는 상세 배지에 마우스를 올리면 (기사 앱은 sleep_event.dart reasonLabels)
+    const REASON_LABEL = { microsleep: '순간 졸음', perclos: '피로 누적', rest_overdue: '휴게 미준수', no_response: '퀴즈 응답 없음', pre_warning: '첫 졸음' };
+    const REASON_PLAIN = { microsleep: '눈을 한 번에 몇 초 이상 감음', perclos: '최근 30초 동안 눈을 자주 감음', rest_overdue: '연속 2시간 휴게 알림 뒤 15분 안에 쉬지 않음', no_response: '2단계 음성 퀴즈에 2번 답하지 못함', pre_warning: '운행 중 첫 졸음' };
     const QUIZ_LABEL = { repeat: '따라 말하기', add: '덧셈', reverse: '거꾸로 말하기' };
     const STAGE_WORD = ['정상 운행', '주의', '휴식 권고', '위험'];      // 단계 이름만 (문장 안에서 쓸 때): 1 = 주의 · 2 = 휴식 권고 · 3 = 위험 (11/17 1단계 이름 '경고' → '주의')
     const STAGE_NAME = ['정상 운행', '1단계 | 주의', '2단계 | 휴식 권고', '3단계 | 위험'];      // 배지 · 탭 · 그래프 글자 (11/17 사용자 요청: 'N단계 | 이름'). 여기 한 곳만 고치면 배지 · 탭 · 그래프 · 알림에 모두 반영됨. 종류가 붙는 배지는 'N단계 | 종류'
@@ -874,7 +875,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       ['s1', STAGE_NAME[1], (e) => e.stage === 1],
       ['s2', STAGE_NAME[2], (e) => e.stage === 2],
       ['s3', STAGE_NAME[3], (e) => e.stage === 3],      // 3단계 전부 (조치완료한 것도 포함). 긴급은 이 중 아직 [조치완료]를 안 누른 것만 (11/17 다시 나눔)
-      ['urgent', '긴급', (e) => isOpenUrgent(e)],      // 11/17 탭을 단계로 나눔: 긴급 = 3단계 (미처리만). 옛 '휴게 미준수' · '음성 응답 없음' · '위험 3단계' 탭은 뺌 (표의 종류 칸에는 그대로 보임, 조치완료된 3단계는 '전체' 에서)
+      ['urgent', '긴급', (e) => isOpenUrgent(e)],      // 11/17 탭을 단계로 나눔: 긴급 = 3단계 (미처리만). 옛 '휴게 미준수' · '퀴즈 응답 없음' · '위험 3단계' 탭은 뺌 (표의 종류 칸에는 그대로 보임, 조치완료된 3단계는 '전체' 에서)
     ];
     const VIEWS = ['dashboard', 'hazards', 'drivers', 'stats', 'profile', 'event', 'driver'];
 
@@ -1280,7 +1281,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       if (!n) return h('span', { class: 'badge gray' }, h('i', { class: 'bd' }), '표시 없음');
       return h('span', { class: 'badge s' + n }, h('i', { class: 'bd' }), STAGE_NAME[n]);
     }
-    // 종류 칸 알약 (11/16): '위험 | 음성 응답 없음' · '경고 | 미세수면'. 처리 안 된 긴급은 줄 왼쪽의 빨간 막대로 (CSS .tbl tr.alert)
+    // 종류 칸 알약 (11/16): '위험 | 퀴즈 응답 없음' · '주의 | 순간 졸음'. 처리 안 된 긴급은 줄 왼쪽의 빨간 막대로 (CSS .tbl tr.alert)
     function typePill(e) {
       const n = stageNum(e.stage), kind = REASON_LABEL[e.reason] || e.reason || '졸음';
       return n ? h('span', { class: 'badge s' + n }, h('i', { class: 'bd' }), n + '단계 | ' + kind) : h('span', { class: 'badge gray' }, h('i', { class: 'bd' }), kind);
@@ -1407,7 +1408,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         counts.map((c, i) => c ? h('i', { class: 'sb-' + (i + 1), style: 'width:' + (c / total) * 100 + '%' }) : null));
     }
     // 기사 상태 (시안과 같은 표현): 3단계 위험 · 2단계 퀴즈 · 1단계 경고 · 정상 운행.
-    //   3단계 = 미처리 긴급(3단계 · 음성 응답 없음)이 있음. 2 · 1단계 = 아직 열어 보지 않은(미확인) 경고 중 가장 높은 단계 (열어 본 경고는 세지 않음, 11/10)
+    //   3단계 = 미처리 긴급(3단계 · 퀴즈 응답 없음)이 있음. 2 · 1단계 = 아직 열어 보지 않은(미확인) 경고 중 가장 높은 단계 (열어 본 경고는 세지 않음, 11/10)
     function driverStage(u) {
       const mine = events.filter((e) => e.user_id === u.id);
       if (mine.some(isOpenUrgent)) return 3;
@@ -1499,7 +1500,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       renderUrgentBanner(openUrgent);
     }
 
-    // ── 긴급 알림: 새 3단계 · "음성 응답 없음" → 알림음 · 탭 제목 깜빡임 · 빨간 배너 ──────
+    // ── 긴급 알림: 새 3단계 · "퀴즈 응답 없음" → 알림음 · 탭 제목 깜빡임 · 빨간 배너 ──────
     const seenUrgent = new Set();
     let blinkTimer = null, blinkOn = false, soundOn = true, audioCtx = null;
     try { soundOn = localStorage.getItem('adminSound') !== 'off'; } catch (e) { /* 저장소를 못 쓰면 켜 둔다 */ }
@@ -1510,7 +1511,8 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     function startBlink() { if (blinkTimer) return; blinkOn = true; updateTitle(); blinkTimer = setInterval(() => { blinkOn = !blinkOn; updateTitle(); }, 1000); }
     // 새 긴급 경고 알림 띠 (11/16): 새 긴급이 막 왔을 때만 뜬다. 이미 알고 있는 긴급은 홈의 '긴급 경고' 카드 · 종 배지로 보이므로 띠는 두지 않는다. 전부 조치완료되면 깜빡임도 끝.
     //   alerting = 새 긴급이 막 와서 알림음 · 깜빡임 중 (띠에 "새 긴급 경고 …" 와 [바로 보기] [닫기]). [닫기] · [바로 보기] 는 알림음 · 깜빡임과 띠를 끈다
-    let alerting = false, alertTitle = '', alertMsg = '', alertAudible = true, bannerKey = '';
+    //   alertEventId = [바로 보기] 를 누르면 열 경고 (11/26) — 막 온 긴급 중 가장 급한 것
+    let alerting = false, alertTitle = '', alertMsg = '', alertAudible = true, bannerKey = '', alertEventId = null;
     function renderUrgentBanner(open) {
       const box = $('urgentBanner');
       if (!open.length) {                                              // 모두 처리됨 → 알림 띠 · 깜빡임 끝
@@ -1551,10 +1553,11 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
     function raiseAlert(fresh) {                       // 배너는 renderUrgentBanner 가 그린다. 여기서는 알림음 · 깜빡임 · 안내 글만
       const s3 = fresh.filter((e) => e.stage === 3).length, nr = fresh.filter((e) => e.reason === 'no_response').length;
       const names = [...new Set(fresh.map((e) => honor(e.user_name)))].slice(0, 3).join(' · ');
-      const kinds = [s3 ? '3단계 ' + STAGE_WORD[3] + ' ' + s3 + '건' : '', nr ? '음성 응답 없음 ' + nr + '건' : ''].filter(Boolean).join(' · ');
+      const kinds = [s3 ? '3단계 ' + STAGE_WORD[3] + ' ' + s3 + '건' : '', nr ? '퀴즈 응답 없음 ' + nr + '건' : ''].filter(Boolean).join(' · ');
       alertAudible = beep();
       alertTitle = '새 긴급 경고 ' + fresh.length + '건';
       alertMsg = names + ' · ' + kinds;
+      alertEventId = [...fresh].sort(byPriority)[0].id;
       alerting = true;
       sayLive(alertTitle + ', ' + alertMsg);
       startBlink();
@@ -1646,7 +1649,6 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
 
     // ── 상세 패널(드로어): 경고(#event/번호) · 기사(#driver/번호) ──────────
     // 시안처럼 오른쪽에서 밀려 나오는 패널. 주소가 있어서 뒤로 가기 · 새 탭으로 열기 · 주소 복사가 된다. 목록은 줄을 누르면 열리고, 이름은 진짜 링크.
-    const REASON_PLAIN = { microsleep: '순간 졸음 (눈 감김)', perclos: '피로 누적 (눈 감김 잦음)', rest_overdue: '휴게 미준수', no_response: '음성 응답 없음' };
     const digitsOf = (s) => String(s || '').replace(/\D/g, '');
 
     function reportRow(label, value, wide) {
@@ -1704,6 +1706,14 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         h('h3', { class: 'sheet-title', id: 'pageTitle', tabindex: '-1' }, nameKids),
         sub ? h('p', { class: 'sheet-sub' }, sub) : null);
     }
+    // (11/23 팀장) 사진이 없는 이유 — 30일 지나 지움 · 운전 시간 기록 · 퀴즈 기록 · 고개를 떨궈 얼굴이 안 찍힘
+    function noPhotoText(e) {
+      if (Date.now() - new Date(e.created_at).getTime() > 30 * 864e5) return '보관 기간(30일)이 지나 사진을 지웠어요';
+      if (e.reason === 'rest_overdue') return '운전 시간 기록이라 사진이 없어요';
+      if (e.reason === 'no_response') return '퀴즈 응답 기록이라 사진이 없어요';
+      if (e.reason === 'microsleep') return '고개를 떨궈 얼굴이 찍히지 않았어요';
+      return '캡처 사진이 없어요';
+    }
     // 사진 칸: 사진이 없어도 같은 크기의 네모를 보여 줌
     function photoSlot(url, cap, emptyText) {
       return h('div', { class: 'sheet-photo' },
@@ -1730,10 +1740,27 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         h('div', { class: 'info-top' },
           h('div', { class: 'info-line' },
             h('div', { class: 'info-when' }, h('b', null, clock || day), clock ? h('span', null, day) : null),
-            h('span', { class: n ? 'badge s' + n : 'badge gray' }, h('i', { class: 'bd' }), (n ? n + '단계 | ' : '') + (REASON_LABEL[e.reason] || e.reason || '졸음')))),
+            h('span', { class: n ? 'badge s' + n : 'badge gray', title: REASON_PLAIN[e.reason] || null }, h('i', { class: 'bd' }), (n ? n + '단계 | ' : '') + (REASON_LABEL[e.reason] || e.reason || '졸음')))),
         h('div', { class: 'info-row' }, icon('pin', 18), h('div', null, h('b', null, where(e)), mapLink)),
         h('div', { class: 'info-row' }, icon('car', 18), e.user_vehicle_no ? h('div', null, h('b', null, e.user_vehicle_no)) : unsetText()),      // 차량번호 (11/17): 위치와 연락처 사이
         h('div', { class: 'info-row' }, icon('phone', 18), digits ? copyable(e.user_phone, '번호') : unsetText()));
+    }
+    // (11/26 팀장) AI 보고서 '기사님이 한 일' — 퀴즈 결과 · [깨어 있어요] · [정차했어요] · 휴식을 일어난 순서대로 한 줄씩
+    function driverActions(e, r) {
+      const lines = [];
+      const hm = (t) => { const [hh, mm] = String(t || '').split(':'); return mm ? Number(hh) + '시 ' + mm + '분' : String(t || ''); };   // '01:45' → '1시 45분'
+      const quiz = Array.isArray(r.driving_quiz) ? r.driving_quiz : [];
+      const failed2 = '음성 퀴즈에 2번 답하지 못해 위험 | 3단계로 올라갔습니다.';
+      if (quiz.some((q) => q.passed)) lines.push('음성 퀴즈에 답해 깨어 있음을 확인했습니다.');
+      else if (quiz.length >= 2) lines.push(failed2);
+      if (e.reason === 'no_response') lines.push(failed2);
+      const w = r.wake;
+      if (w) lines.push(w.pressed ? '[깨어 있어요] 버튼을 눌러 깨어 있음을 ' + (w.sec != null ? Math.round(w.sec) + '초 만에 ' : '') + '알렸습니다.'
+                                  : '[깨어 있어요] 버튼을 누르지 않아 여전히 깨어 있지 않습니다. → 즉시 연락 조치가 필요합니다.');
+      const rest = r.rest;
+      if (r.stopped) lines.push('[정차했어요]를 눌러 ' + hm(r.stopped.at) + '에 정차했습니다.'
+        + (rest && rest.resumed ? ' → ' + rest.minutes + '분 휴식 후 → ' + hm(rest.resumed) + '부터 다시 운행을 시작했습니다.' : ' → 지금 휴식 중입니다.'));
+      return lines.length ? lines.map((t) => h('div', null, t)) : '';
     }
     function renderEventDrawer() {
       const e = events.find((x) => x.id === routeId);
@@ -1756,7 +1783,8 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         reportRow('왜 이 판단인가요?', personal(r.stage_reason, e.user_name)),
         reportRow('참고한 법규', r.regulation),
         reportRow(who + '께 전달한 안내', e.guidance),
-        reportRow('휴식 기록', restText),
+        reportRow(who + '이 한 일', driverActions(e, r)),
+        reportRow('휴식 기록', restText),   // (11/26 팀장) 휴식 기록 칸은 그대로, '기사님이 한 일' 에도 정차 · 운행 재개를 같이 적음
       ];
       const ai = rows.some(Boolean) ? h('div', { class: 'sheet-sec' }, h('div', { class: 'ai-card' }, h('h4', null, 'AI 분석 결과'), h('div', { class: 'r-grid' }, rows))) : null;
 
@@ -1769,7 +1797,8 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
           h('p', { class: 'q-line' }, icon('volume', 14), q.asked),
           h('p', { class: 'q-line' }, icon('mic', 14), q.heard ? q.heard : '무응답'))))) : null;
       // 졸음 순간 캡처 사진: 창 맨 위에 크게 (사진이 없는 경고에는 자리를 만들지 않음)
-      const photoSec = photoSlot(e.photo_url, '졸음 순간 캡처 · ' + fmtTime(e.created_at), '캡처 사진이 없어요');
+      const photoSec = photoSlot(e.photo_url,
+        (e.reason === 'no_response' ? (r.photo_at === 'after_quiz' ? '2번째 퀴즈가 끝난 뒤 사진 · ' : '퀴즈 직전 졸음 경고 사진 · ') : '졸음 순간 캡처 · ') + fmtTime(e.created_at), noPhotoText(e));
 
       // 아래 고정 버튼: [전화 연결](번호가 없으면 [이메일 보내기]) + [조치완료](미처리 긴급일 때) 아니면 [기사 상세]
       const foot = [
@@ -1922,7 +1951,7 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
         await refreshAll(true);
         focusTitle();                                     // 누른 버튼은 사라졌을 수 있어서 제목으로
         toast(status === '확인' ? '확인한 경고로 표시했어요.'
-          : res.stage_reset ? who + ' ' + (stageNum(e.stage) ? stageNum(e.stage) + '단계 ' + STAGE_WORD[stageNum(e.stage)] : '경고') + ' 해제됨 · 기사 앱은 약 30초 안에 정상 화면이 돼요'
+          : res.stage_reset ? who + ' ' + (stageNum(e.stage) ? stageNum(e.stage) + '단계 ' + STAGE_WORD[stageNum(e.stage)] : '경고') + ' 해제됨 · 기사 앱은 2초 안팎에 정상 화면이 돼요'
           : '조치완료로 바꿨어요.');
       } catch (err) { toastError(status + ' 실패: ' + err.message + (status === '조치완료' ? ' — 기사 앱의 경고가 풀리지 않았을 수 있어요.' : '')); }
       finally { busy = false; }
@@ -2331,9 +2360,9 @@ static/admin.html — 관리자 웹 (홈 · 졸음 경고 · 기사 관리 · �
       else if (!wideNav.matches && document.body.classList.contains('nav-open')) setNav(false);
     });
 
-    // 종 = 알림 목록 열기 (보러 갔으니 알림음 · 깜빡임은 끈다). 알림 배너 [바로 보기] 는 긴급 경고가 모여 있는 홈으로
+    // 종 = 알림 목록 열기 (보러 갔으니 알림음 · 깜빡임은 끈다). 알림 배너 [바로 보기] 는 그 경고의 상세(보고서) 패널을 바로 연다 (11/26 팀장 — 전에는 홈으로)
     $('bellBtn').addEventListener('click', () => { silenceAlert(); setNotif($('notifMenu').hidden); });
-    $('ubView').addEventListener('click', () => { silenceAlert(); go('dashboard'); });
+    $('ubView').addEventListener('click', () => { silenceAlert(); go(alertEventId ? 'event/' + alertEventId : 'dashboard'); });
     $('ubClose').addEventListener('click', () => { silenceAlert(); $('bellBtn').focus(); });
     $('soundSwitch').addEventListener('click', () => {
       soundOn = !soundOn;

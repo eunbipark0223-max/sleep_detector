@@ -2,7 +2,6 @@
 // screens/drive_screen.dart — 운행 화면 (카메라 · 눈 판정 · 의심 전송 · ping)  ⭐ 핵심
 // ═══════════════════════════════════════════════════════════════
 // 담당: C   |   우선: P0
-// 수업 원본: road_hazard_app/lib/screens/upload_screen.dart (전송) · report_screen.dart (위치), Flutter 9·10일차 (🔴 신규)
 //
 // [이 파일이 하는 일]
 //   - 전면 카메라 미리보기 + startImageStream → eye_monitor.processFrame
@@ -18,7 +17,8 @@
 //   - 나갈 때 스트림 정지 · eye_monitor.close()
 //
 // [주의]
-//   - 경고 알람 · 음성 · 퀴즈 · 휴식 중에는 졸음 판정을 쉰다 (pauseDetect, 11/03 팀장 확인)
+//   - 경고 알람 · 음성 · 휴식 중에는 졸음 판정을 쉰다 (pauseDetect, 11/03 팀장 확인)
+//     2단계 퀴즈 중에는 판정을 계속한다 (11/26 팀장) — 졸음이 확정되면 퀴즈를 닫고 바로 3단계
 //   - 위치(geolocator)는 경고 기록용만 — 속도 · 정차 판단에 쓰지 않음
 //
 // 자세한 내용: 「파일 구조」 문서 · 「파이널 프로젝트 최종 기획안 10.13」
@@ -26,7 +26,6 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/cupertino.dart';
@@ -41,9 +40,11 @@ import '../models/sleep_response.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/eye_monitor.dart';
+import '../services/rest_area_service.dart' show NearRestArea;
 import '../services/voice_service.dart';
 import '../stage_texts.dart';
 import '../theme.dart';
+import '../utils/camera_image_utils.dart';
 import '../widgets/stage_layout.dart';
 import 'drive_report_screen.dart';
 import 'rest_screen.dart';
@@ -53,7 +54,6 @@ import 'quiz_screen.dart';
 import '../widgets/system_status.dart';
 import '../design_tokens.dart';
 import 'package:flutter/services.dart';
-import '../widgets/owl_says.dart' show keepWords;
 
 class DriveScreen extends StatefulWidget {
   /// 측정 화면(D)이 돌려준 "내 눈 기준값". 측정을 건너뛰었으면 null → 기본 기준을 쓴다.
@@ -116,6 +116,8 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
 
   // 30초마다 서버에 "운전 중이에요" 알리기 (ping) → 지금 단계 · 휴게 알림 받기
   Timer? _pingTimer;
+  Timer? _releaseTimer; // (11/26) 3단계 동안만 2초마다 관리자 해제 확인
+  bool _releaseBusy = false;
   String _restMessage = ''; // 휴게 배너 글 (비어 있으면 배너 없음)
   Future<String?>? _restVoice; // 휴게 배너 — 가까운 졸음쉼터 안내 문장 (못 찾으면 null)
   String? _restLine; // (11/23 시나리오) 2단계 — 화면에 쉼터 한 줄
@@ -134,7 +136,6 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this); // 앱이 뒤로 가거나 화면이 잠기는 것을 알기 위해 (11/12)
-    _bgChannel.invokeMethod('start').ignore(); // (11/24 사용자 요청) 앱을 나가도 졸음 감지 — '운행 중' 알림 서비스
     _loadName();
 
     // 눈 감시 도구를 만들고, 알림이 오면 받을 함수를 연결한다
@@ -186,7 +187,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     if (state != null) {
       _setStage(state.stage);
       DriveClock.minutes.value = state.driveMin; // (11/18) 맨 위 '○분 운전 중'
-      // 2 · 3단계이거나 쉬던 중이면 경고 화면을 이어 연다 (3단계는 30초 반복 음성도 다시, 쉬던 중이면 남은 시간으로 휴식 화면)
+      // 2 · 3단계이거나 쉬던 중이면 경고 화면을 이어 연다 (3단계는 10초 반복 음성도 다시, 쉬던 중이면 남은 시간으로 휴식 화면)
       if (state.resting || state.stage >= 2) _showWarning(_restoredResponse(state), resumeRest: state.resting);
     }
     _ping();
@@ -242,6 +243,32 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     }
     _liveStage.value = stage;
     if (changed && stage >= 1) _flash();
+    _watchRelease();
+  }
+
+  // (11/26 팀장) 관리자 [조치완료] 를 바로 알아채기 — 전에는 다음 ping(최대 30초)까지 3단계로 남음
+  //   ping 은 연속 운전 시간 · 휴게 알림까지 다루므로 그대로 두고, 3단계 동안만 GET /drive/state (읽기만) 를 2초마다
+  void _watchRelease() {
+    if (_stage < 3) {
+      _releaseTimer?.cancel();
+      _releaseTimer = null;
+      return;
+    }
+    _releaseTimer ??= Timer.periodic(const Duration(seconds: 2), (_) => _checkRelease());
+  }
+
+  Future<void> _checkRelease() async {
+    if (!mounted || _releaseBusy || _sending) return; // 졸음 의심을 보내는 중이면 그 답이 우선 (ping 과 같음)
+    _releaseBusy = true;
+    try {
+      final state = await ApiService.fetchDriveState();
+      if (!mounted || _sending || _stage < 3) return;
+      if (state.stage < 3) _setStage(state.stage); // 내려간 것만 반영 (올리는 것은 /detect · 퀴즈 · ping 이 함)
+    } catch (_) {
+      // 실패하면 다음 2초 · ping 에 맡김 (연결 끊김 안내는 ping 이 함)
+    } finally {
+      _releaseBusy = false;
+    }
   }
 
   // (11/15) 단계가 바뀌면 카메라 테두리를 3초 깜빡인다 (0.4초마다 켜고 끔)
@@ -321,11 +348,12 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       // 휴게 알림은 서버가 한 번만 true 로 보내 줌 → 한 번만 읽기
       // (경고 음성 · 퀴즈 · 휴식 중이면 배너만 띄우고 소리는 내지 않음)
       if (status.restDue) {
-        _restVoice = nearRestVoice(_lat, _lng); // 가까운 졸음쉼터 문장 (휴게 띠 [가까운 졸음쉼터 듣기] 도 이걸 씀)
-        if (!_pauseDetect.value) _speakRestDue(status.restMessage);
+        final near = nearRestArea(_lat, _lng);
+        _restVoice = near.then((r) => r?.voice); // 가까운 졸음쉼터 문장 (휴게 띠 [가까운 졸음쉼터 안내] 도 이걸 씀)
+        _announceRestDue(status.restMessage, near);
       }
       // 경고 화면 없이 2 · 3단계 (앱을 껐다 켬) → 경고 화면을 다시 띄운다. 그래야 2단계는 쉴 수 있고 3단계는 반복 음성이 나옴
-      if (status.stage >= 2 && _warningRoute == null && !_sending && !_pauseDetect.value) {
+      if (status.stage >= 2 && _warningRoute == null && !_sending && !_pauseDetect.value && !_quizOpen) {
         _showWarning(SleepResponse(
           isSleep: true,
           stage: status.stage,
@@ -350,7 +378,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   void _markOffline({required bool speak}) {
     if (!mounted || _offline) return;
     _offline = true;
-    if (_pauseDetect.value) return;
+    if (_pauseDetect.value || _quizOpen) return;
     if (speak) VoiceService.speak('인터넷 연결이 끊겼어요. 와이파이나 데이터를 확인해 주세요');
     _showOfflineDialog();
   }
@@ -476,6 +504,11 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       // 프레임이 올 때마다 A님 눈 감시 도구에 넘긴다 (바쁘면 A님 코드가 알아서 버림)
       await controller.startImageStream((image) {
         _lastFrameAt = DateTime.now(); // 사진이 들어왔다고 지킴이에게 알림
+        final snap = _snap;
+        if (snap != null) {
+          _snap = null;
+          snap.complete(CameraImageUtils.toJpg(image, rotation: front.sensorOrientation));
+        }
         _eye.processFrame(image, front);
       });
     } catch (e) {
@@ -494,6 +527,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     // (11/24 사용자 요청) 앱이 켜져 있는 동안은 늘 화면 켜 두기 — 운행이 끝나도 끄지 않음
     WakelockPlus.enable();
     _pingTimer?.cancel(); // ping 끄기
+    _releaseTimer?.cancel();
     _stillAsleep?.cancel();
     _flashTimer?.cancel();
     _retryingNote.dispose();
@@ -508,17 +542,27 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     _checkingNote.dispose();
     _faceBoxNote.dispose();
     _controller?.dispose(); // 카메라 끄기
-    _bgChannel.invokeMethod('stop').ignore(); // (11/24) '운행 중' 알림 · 포그라운드 서비스 끔
     _eye.close(); // 눈 감시 도구 끄기
     super.dispose();
+  }
+
+  // (11/26 팀장) 다음 카메라 프레임 1장 → JPG (2번째 퀴즈가 끝난 순간의 사진). 카메라가 꺼져 2초 안에 못 받으면 null
+  Completer<Uint8List?>? _snap;
+  Future<Uint8List?> _takePhoto() {
+    final snap = _snap ??= Completer<Uint8List?>();
+    return snap.future.timeout(const Duration(seconds: 2), onTimeout: () {
+      if (identical(_snap, snap)) _snap = null;
+      return null;
+    });
   }
 
   // 졸음 의심 (눈을 오래 감음 / 최근 30초 중 많이 감음) → 서버에 보내서 확인받기
   Future<void> _onSuspect(String reason, double closedSec, double perclos,
       double eyeOpenProb, Uint8List? frame) async {
     if (!mounted || _pauseDetect.value) return;
-    if (_inBackground || shelterOpen.value) {
-      _backgroundAlarm(); // (11/24 사용자 요청) 앱 밖 · 가까운 쉼터 · 카카오맵 길찾기 — 단계에 맞는 경고음만 (서버 · 단계 올림 없음)
+    // (11/25 팀장) 앱 밖 감지('운행 중' 알림 서비스)는 뺌 — 쉼터 화면을 보는 동안만 경고음
+    if (shelterOpen.value) {
+      _backgroundAlarm(); // (11/24 사용자 요청) 가까운 쉼터 · 카카오맵 길찾기 — 단계에 맞는 경고음만 (서버 · 단계 올림 없음)
       return;
     }
     if (_sending) return;
@@ -567,7 +611,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       if (!res.isSleep) {
         // 얼굴이 보였는데 취소 = 눈 뜬 채 숙임 → 재전송은 숙임 시작부터 10초 + 안내 음성 한 번 (11/11 팀장, 단계 변화 없음)
         _eye.serverCancelled(faceFound: res.faceFound);
-        if (_eye.lastCancelHeadFace && !_pauseDetect.value) VoiceService.speak(StageTexts.headDownGuide);
+        if (_eye.lastCancelHeadFace && !_pauseDetect.value && !_quizOpen) VoiceService.speak(StageTexts.headDownGuide);
       }
       _saveRegs(res.regulations);
       _cancelClear?.cancel();
@@ -670,7 +714,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       if (!silent) _backgroundAlarm(); // (11/24 사용자 요청) 쉼터 화면에서는 경고음만 (음성 없음)
       return;
     }
-    if (_quizOpen && res.stage < 3) return; // (11/23 사용자 요청) 퀴즈 동안은 졸음 경고를 다시 띄우지 않음 (판정도 쉼)
+    if (_quizOpen && res.stage < 3) return; // (11/23 사용자 요청) 퀴즈 동안은 2단계 경고를 다시 띄우지 않음 (판정은 계속, 11/26)
     // (11/19 사용자 요청) 2단계는 경고 화면을 띄우지 않음 — 운행 화면 카드 + 알람 + 한 문장 + 아래 버튼
     if (res.stage < 3 && !resumeRest) {
       _setStage(res.stage);
@@ -684,20 +728,21 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       }
       // (11/19 사용자 요청) 2단계 음성 퀴즈는 다시 넣음 — 경고 화면 없이 운행 화면 위로 바로 (팀장 11/18: 2단계 퀴즈 필수)
       final quiz = res.voiceQuiz;
-      if (quiz != null && !_quizOpen) {
+      // (11/26) 위 알람 · 음성 사이에 3단계가 됐으면 퀴즈를 내지 않음 (3단계 화면 위로 퀴즈가 뜨지 않게)
+      if (quiz != null && !_quizOpen && _warningRoute == null) {
         _quizOpen = true;
         setState(() => _quizDone = false);
-        _pauseDetect.value = true; // 퀴즈 동안 졸음 판정 쉼
-        final newStage = await Navigator.of(context).push<int>(
-          MaterialPageRoute(builder: (_) => QuizScreen(quiz: quiz, stage: 2)),
-        );
+        // (11/26 팀장) 퀴즈 동안에도 졸음 판정을 계속한다 — 졸면 서버가 3단계로 올리고, 아래에서 퀴즈를 닫고 3단계 화면 (그때 newStage 는 null)
+        final quizRoute = MaterialPageRoute<int>(builder: (_) => QuizScreen(quiz: quiz, stage: 2, takePhoto: _takePhoto));
+        _quizRoute = quizRoute;
+        final newStage = await Navigator.of(context).push<int>(quizRoute);
+        _quizRoute = null;
         _quizOpen = false;
         if (!mounted) return;
         setState(() => _quizDone = true); // 퀴즈가 끝남 → 2단계 버튼 켜짐
-        _pauseDetect.value = false;
-        _eye.reset(); // 퀴즈 동안 쌓인 눈 감김으로 바로 의심이 나지 않게
         if (newStage != null && newStage >= 3) {
           // 2번 실패로 3단계 → 3단계 경고 화면
+          _setStage(newStage); // (11/26) 운행 화면 단계도 3으로 (안 하면 다음 ping 까지 2단계로 남음)
           _showWarning(SleepResponse(
             isSleep: true,
             stage: newStage,
@@ -722,6 +767,8 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       if (res.stage < 3) return;
       Navigator.of(context).popUntil((r) => r == old);
     }
+    // (11/26 팀장) 퀴즈 중에 졸아서 3단계 → 경고 화면을 위에 띄운 뒤 아래 퀴즈를 없앤다 (두면 퀴즈 음성 · 듣기가 경고와 겹침)
+    final closingQuiz = _quizRoute;
     final route = MaterialPageRoute<int>(
       builder: (_) => WarningScreen(
         response: res,
@@ -735,7 +782,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
         silent: silent,
         resumeRest: resumeRest,
         // 앞 경고 화면을 새 경고로 바꿀 때 — 앞 화면이 닫히며 부르는 VoiceService.stop() 이 새 알람을 끊지 않게 조금 늦게 말함
-        startDelayMs: old != null ? 500 : 0,
+        startDelayMs: old != null || closingQuiz != null ? 500 : 0, // 퀴즈도 닫히며 stop() 을 부름
         lat: _lat, // 2단계 가까운 졸음쉼터 음성 안내용
         lng: _lng,
       ),
@@ -747,7 +794,9 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       Navigator.of(context).replace(oldRoute: old, newRoute: route);
       restedStage = await route.popped;
     } else {
-      restedStage = await Navigator.of(context).push(route);
+      final popped = Navigator.of(context).push(route);
+      if (closingQuiz != null && closingQuiz.isActive) Navigator.of(context).removeRoute(closingQuiz);
+      restedStage = await popped;
     }
     if (!mounted) return;
     if (restedStage == -1) {
@@ -761,13 +810,16 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     }
   }
 
-  // 2시간 연속 운전 — 휴게 안내 → 가까운 졸음쉼터 한 번 읽기 (11/11 팀장: B 부품 문장 그대로)
-  Future<void> _speakRestDue(String message) async {
-    await VoiceService.speak(message);
-    final v = await _restVoice;
-    // 그 사이 경고가 떴거나(판정 쉬는 중) 기사가 띠를 닫았으면 읽지 않음
-    if (v == null || !mounted || _pauseDetect.value || _restMessage.isEmpty) return;
-    await VoiceService.speak(v);
+  // 2시간 연속 운전 — 배너 · 음성 같은 문장 한 번 (11/24 팀장)
+  //   "○○님, 2시간 연속 운전했어요. 15분 이상 쉬어 가세요. 태인 졸음쉼터 약 14킬로미터에 있습니다."
+  //   앞 두 문장은 서버 rest_message, 쉼터 문장은 앱이 붙임 (최대 5초 찾고, 못 찾으면 서버 문장만)
+  Future<void> _announceRestDue(String message, Future<NearRestArea?> near) async {
+    final line = restDueLine(await near);
+    if (!mounted || _restMessage.isEmpty) return; // 그 사이 기사가 배너를 닫음
+    final full = line == null ? message : '$message $line';
+    setState(() => _restMessage = full);
+    // 경고 음성 · 퀴즈 · 휴식 중이면 배너만 띄우고 소리는 내지 않음
+    if (!_pauseDetect.value && !_quizOpen) await VoiceService.speak(full);
   }
 
   // 휴게 배너의 [정차했어요] → 휴식 15분 → [운행 재개] (2시간 연속 운전 휴식 인정, 기획안 3-2)
@@ -809,7 +861,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   // "카메라를 확인하세요" — 얼굴이 다시 잡힐 때까지 배너를 띄워 두고, 음성은 10초마다
   void _warnCamera() {
     // 경고 음성 · 퀴즈 · 휴식 중에는 안내하지 않는다 (쉬는 기사에게 "카메라를 확인하세요"가 나오지 않게)
-    if (!mounted || _pauseDetect.value) return;
+    if (!mounted || _pauseDetect.value || _quizOpen) return;
     final now = DateTime.now();
     final spokeAt = _cameraSpokeAt;
     if (spokeAt != null && now.difference(spokeAt).inSeconds < _cameraRepeatSec) return;
@@ -835,12 +887,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   }
 
   // 프레임마다 오는 눈 뜸 확률 · PERCLOS (0단계 화면 표시용)
-  int _bgFrames = 0;
   void _onFrameResult(double? eyeOpenProb, double perclos, double? ear) {
-    if (_inBackground) {
-      _bgFrames++;
-      if (_bgFrames % 30 == 1) debugPrint('[bg] frames=$_bgFrames face=${eyeOpenProb != null}');
-    }
     if (!mounted) return;
     _updateFaceBox();
     if (eyeOpenProb != null) {
@@ -868,24 +915,21 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   // 운행 중 앱이 뒤로 가거나(다른 앱 · 홈 버튼) 화면이 잠기면 카메라가 멈춰 졸음을 못 본다 → 한 번 말해 준다 (11/12 팀장)
   //   안드로이드는 화면 밖 앱의 카메라를 막아서 계속 지켜볼 수는 없음 (발표 한계). 돌아오면 카메라 지킴이가 다시 켬
   bool _pausedSpoken = false;
-  bool _inBackground = false; // (11/24) 앱 밖에 있음 — 졸음 의심이면 경고음만
   DateTime _bgAlarmAt = DateTime(2000);
-  static const MethodChannel _bgChannel = MethodChannel('sleep_guard/bg');
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
-      _inBackground = true;
-      if (!_pausedSpoken) {
+      // (11/25 팀장) 쉼터 화면에서 카카오맵 등으로 넘어갈 때는 말하지 않음 (쉬러 가는 중이라 안내가 방해)
+      if (!_pausedSpoken && !shelterOpen.value) {
         _pausedSpoken = true;
-        VoiceService.speak('졸음 가드 앱으로 돌아와 주세요'); // (11/24 사용자 요청) 감지는 계속되니 이 말만
+        VoiceService.speak('졸음 감지가 멈췄어요. 졸음 가드 앱으로 돌아와 주세요'); // (11/25 팀장) 앱 밖 감지는 뺐으므로 예전 안내로
       }
     } else if (state == AppLifecycleState.resumed) {
-      _inBackground = false;
       _pausedSpoken = false;
     }
   }
 
-  // (11/24 사용자 요청) 앱 밖에서 졸음 의심 — 서버로 보내거나 단계를 올리지 않고, 지금 단계에 맞는 경고음만
+  // (11/24 사용자 요청) 쉼터 화면을 보는 중 졸음 의심 — 서버로 보내거나 단계를 올리지 않고, 지금 단계에 맞는 경고음만
   //   (1단계 이하 1번 · 2단계 2번 · 3단계 3번 울림 · 10초에 한 번만)
   Future<void> _backgroundAlarm() async {
     final now = DateTime.now();
@@ -1016,7 +1060,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
                           const Icon(Icons.local_cafe, color: AppColors.textPrimary),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: Text(_restMessage.replaceAll('.', ''), // 마침표 없음 (사용자 요청 6)
+                            child: Text(_restMessage.replaceAll('.', '').replaceAll('킬로미터', 'km'), // 마침표 없음 (사용자 요청 6) · 글은 km
                                 style: const TextStyle(
                                     color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w700)),
                           ),
@@ -1087,6 +1131,7 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
   }
 
   bool _quizOpen = false; // (11/19) 2단계 퀴즈 화면이 떠 있는지
+  MaterialPageRoute<int>? _quizRoute; // (11/26) 떠 있는 퀴즈 화면 — 퀴즈 중 3단계가 되면 닫으려고
   bool _quizDone = true; // (11/24 시나리오) 2단계 퀴즈가 끝나야 [쉼터 안내] · [정차했어요] 가 눌림
   bool _stage2Announced = false; // (11/19) 2단계 알람 · 문장을 이미 들려줬는지 (ping 마다 반복하지 않게)
 

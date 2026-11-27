@@ -10,7 +10,6 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_secure_storage_windows
   flutter_tts
   geolocator_windows
-  permission_handler_windows
   speech_to_text_windows
   url_launcher_windows
 )

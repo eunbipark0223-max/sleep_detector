@@ -4,7 +4,7 @@
 # 담당: B   |   우선: P2 (KPI ④, 선택)   |   서버 코드가 아니라 PC 에서 돌리는 시험 도구
 #
 # [설계 — 돌리기 전에 정해 둔 것 (11/02, 첫 시험의 편향을 고침)]
-#   1. 질문 (tools/kpi4_questions.csv): 자료(knowledge/)를 보고 만든 질문은 쓰지 않음 — RAG 에 유리해짐
+#   1. 질문 (tools/kpi4_questions.csv — GitHub 에 없음, 구글 드라이브에서 받아 tools/ 에 둠): 자료(knowledge/)를 보고 만든 질문은 쓰지 않음 — RAG 에 유리해짐
 #      · app  : 앱 규정 도우미 예시 질문 4개 (실제 사용자가 누르는 질문) — a3 는 11/04 지시문 조정에 써서 집계 제외 (exclude 칸)
 #      · team : 팀원이 knowledge/ 를 보지 않고 '기사라면 물어볼 질문' 을 쓴 것 (6개 이상)
 #      · 돌리기 전에 B 가 질문마다 answerable(yes / no) · gold(정답 법령 · 조항, law.go.kr 로 확인) · key_facts 를 채움

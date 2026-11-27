@@ -5,7 +5,7 @@
 //   그림 파일 없이 코드로 그려서 어떤 크기에서도 선명함
 //   0 정상 초록 = 편안하게 웃음 · 1 주의 노랑 = 졸린 눈 · 2 휴식 권고 주황 = 꾸벅 z · 3 긴급 빨강 = 깜짝 놀람
 //   색은 우리 단계 색에 투명도 85% (design_tokens.dart AppIllust.orb)
-// [쓰는 법] Buddy(stage: 2, size: 120)   — 부엉이 판은 보류 (owl_buddy.dart)
+// [쓰는 법] Buddy(stage: 2, size: 120)   (11/25 부엉이 캐릭터는 쓰지 않기로 해서 owl_buddy.dart 삭제)
 // ═══════════════════════════════════════════════════════════════
 import 'package:flutter/material.dart';
 
@@ -189,16 +189,6 @@ class _OrbPainter extends CustomPainter {
     } else {
       _restFace(canvas, ink, inkFill, l, r); // (11/23) 홈 · 운행 화면 같은 얼굴
     }
-  }
-
-  void _z(Canvas c, Offset o, double w, Paint p) {
-    c.drawPath(
-        Path()
-          ..moveTo(o.dx, o.dy)
-          ..lineTo(o.dx + w, o.dy)
-          ..lineTo(o.dx, o.dy + w)
-          ..lineTo(o.dx + w, o.dy + w),
-        p);
   }
 
   @override

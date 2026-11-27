@@ -2,7 +2,6 @@
 // screens/history_screen.dart — 운행 기록 (내 경고 목록)
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P2
-// 수업 원본: road_hazard_app/lib/screens/my_reports_screen.dart (🟡 이름 변경 + 수정)
 //
 // [이 파일이 하는 일]
 //   - GET /events/my 목록 · 단계 필터 칩 · 상태 배지 (미확인 · 확인 · 조치완료 · 휴식완료)
@@ -64,7 +63,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
   // (11/17 관리자 웹 '졸음 경고' 화면) 달력에서 보는 달 · 누른 날짜 (null = 그 달 전체)
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
   DateTime? _day;
-  bool _picking = false; // (11/24) 달력 제목을 눌러 연도 · 달 바퀴를 펼쳤는지
 
   @override
   Widget build(BuildContext context) {
@@ -96,10 +94,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ]);
                   }
                   final events = snapshot.data;
-                  if (events == null)
+                  if (events == null) {
                     return _scroll(const [_Hint(text: '운행 기록 불러오기는 준비 중이에요')]);
-                  if (events.isEmpty)
+                  }
+                  if (events.isEmpty) {
                     return _scroll(const [_Hint(text: '아직 경고 기록이 없어요')]);
+                  }
 
                   // 보고 있는 달의 경고만 (달력 · 도넛 · 목록 모두 같은 달)
                   bool inMonth(SleepEvent e) {
@@ -229,7 +229,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 110), // (11/19) 떠 있는 탭바 높이만큼
       children: [
-        // (11/24 사용자 요청 · 신한 슈퍼SOL) 남색 그라데이션 바탕이 목록과 함께 움직임
+        // (11/24 사용자 요청) 남색 그라데이션 바탕이 목록과 함께 움직임
         AppSol.header(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),

@@ -44,6 +44,21 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   SleepEvent get e => widget.event;
 
+  // (11/23 팀장) 사진이 없는 이유 — 관리자 웹 noPhotoText 와 같은 문구
+  String _noPhotoText() {
+    if (DateTime.now().difference(e.createdAt).inDays >= 30) return '보관 기간(30일)이 지나 사진을 지웠어요';
+    switch (e.reason) {
+      case 'rest_overdue':
+        return '운전 시간 기록이라 사진이 없어요';
+      case 'no_response':
+        return '퀴즈 응답 기록이라 사진이 없어요';
+      case 'microsleep':
+        return '고개를 떨궈 얼굴이 찍히지 않았어요';
+      default:
+        return '캡처 사진이 없어요';
+    }
+  }
+
   // (11/19 사용자 요청) 이 경고가 몇 번째 운행인지 — '운행 1 · 15:08 ~ 16:08'
   late final Future<String?> _drive = () async {
     try {
@@ -198,12 +213,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   }
                   final bytes = snap.data;
                   if (bytes == null) {
-                    return const ColoredBox(
+                    return ColoredBox(
                       color: AppleGray.fill,
                       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Icon(Icons.photo_camera_outlined, size: 30, color: AppColors.textMuted),
-                        SizedBox(height: 8),
-                        Text('캡처 사진이 없어요', style: TextStyle(fontSize: 13.5, color: AppColors.textMuted)),
+                        const Icon(Icons.photo_camera_outlined, size: 30, color: AppColors.textMuted),
+                        const SizedBox(height: 8),
+                        Text(_noPhotoText(), style: const TextStyle(fontSize: 13.5, color: AppColors.textMuted)),
                       ]),
                     );
                   }
@@ -343,8 +358,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       .replaceAllMapped(RegExp(r'PERCLOS\s*\(?([0-9.]+)\s*%\)?', caseSensitive: false), (m) => '눈을 감고 있던 시간 ${m[1]}%')
       .replaceAll(RegExp(r'PERCLOS', caseSensitive: false), '눈을 감고 있던 시간 비율')
       .replaceAll(RegExp(r'\bEAR\b'), '눈 뜬 정도')
-      .replaceAll(RegExp(r'microsleep', caseSensitive: false), '아주 짧은 졸음')
-      .replaceAll('미세수면', '아주 짧은 졸음(미세수면)');
+      .replaceAll(RegExp(r'microsleep', caseSensitive: false), '순간 졸음')
+      .replaceAll('미세수면', '순간 졸음'); // (11/23 팀장 용어표) 예전 기록 문장도 같은 말로
 
   // 남색 AI 카드 안 한 줄 (11/19 안 씀 · 되돌릴 때 참고)
   // ignore: unused_element

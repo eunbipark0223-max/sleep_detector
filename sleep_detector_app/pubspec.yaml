@@ -46,7 +46,7 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   camera: ^0.12.1           # 전면 카메라 영상(drive_screen) · 사진 5장(calibration_screen)
-  camera_android: any      # (11/24) 안드로이드 카메라를 Camera2 방식으로 — CameraX 는 앱이 화면 밖으로 나가면 스스로 꺼져서, 앱 밖 졸음 감지를 위해 바꿈
+  camera_android: ^0.10.13 # (11/24) 안드로이드 카메라를 Camera2 방식으로 (앱 밖 감지용이었음 · 11/25 앱 밖 감지는 뺐지만 Camera2 로 감지가 잘 돼서 그대로 둠)
   wakelock_plus: ^1.8.1     # 운행 중 화면 꺼짐 방지
   flutter_tts: ^4.2.5       # 음성 경고 · 기사 음성 보고 · 음성 퀴즈 질문 (voice_service)
   speech_to_text: ^7.5.0    # 운전 중 음성 퀴즈 답 듣기 (voice_service)
@@ -69,14 +69,14 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.1  # 앱 아이콘 만들기 (dart run flutter_launcher_icons)
 
-# 앱 아이콘 — 부엉이 + 종 (11/11 확정 그림). 듀오링고처럼 캐릭터를 가운데 안전 구역에 두고 바깥은 같은 파랑 → 어느 폰 모양으로 잘려도 같은 얼굴. 바꾸면 dart run flutter_launcher_icons 다시 실행
+# 앱 아이콘 — (11/25 팀장) 단계 표정 4개 (초록 · 노랑 · 주황 · 빨강). 바꾸면 dart run flutter_launcher_icons 다시 실행
 flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/icon/app_icon.png"
   remove_alpha_ios: true
-  # 안드로이드 적응형 아이콘 (폰마다 동그라미 · 네모로 잘림) — 배경 = 그림 바깥과 같은 파랑, 앞 그림 = 부엉이를 칸의 90% 로 가운데에 (가장자리는 부드럽게 흐려서 경계선 없음)
-  adaptive_icon_background: "#011396"
+  # 안드로이드 적응형 아이콘 (폰마다 동그라미 · 네모로 잘림) — 앞 그림 = 아이콘을 보이는 칸보다 조금 크게 넣고 바깥은 가장자리 색을 늘려 채움 → 폰마다 보이는 범위가 달라도 꽉 참
+  adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
 
 # For information on the generic Dart part of this file, see the
@@ -93,12 +93,11 @@ flutter:
   assets:
     - assets/rest_areas.json   # 졸음쉼터 (rest_area_service · map_screen, notebooks/rest_areas_json.py 로 만듦)
     - assets/sounds/alarm.wav  # 경고음 (voice_service.alarm, 코드로 직접 만든 소리)
-    - assets/owl/              # 부엉이 로고 · 단계별 부엉이 (시작 화면 · 운행 · 경고 화면)
 
   # (11/17 C) 앱 글꼴 Pretendard — 애플 글꼴(SF Pro · Apple SD Gothic Neo) 느낌의 무료 글꼴 (SIL OFL, assets/fonts/Pretendard-LICENSE.txt)
   #   theme.dart 의 fontFamily: 'Pretendard' 로 앱 전체에 씀
   fonts:
-    # (11/24 사용자 요청) 신한 슈퍼SOL 느낌 글꼴 — 스포카 한 산스 Neo (SIL OFL, assets/fonts/SpoqaHanSansNeo-LICENSE.txt)
+    # (11/24 사용자 요청) 새 앱 글꼴 — 스포카 한 산스 Neo (SIL OFL, assets/fonts/SpoqaHanSansNeo-LICENSE.txt)
     - family: SpoqaHanSansNeo
       fonts:
         - asset: assets/fonts/SpoqaHanSansNeo-Regular.otf

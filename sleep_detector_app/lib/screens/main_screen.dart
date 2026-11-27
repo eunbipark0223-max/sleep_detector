@@ -2,10 +2,9 @@
 // screens/main_screen.dart — 하단 탭 (홈 · 운행 기록 · 가까운 졸음쉼터 · 규정 도우미)
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P0
-// 수업 원본: road_hazard_app/lib/screens/main_screen.dart (🟡 탭 변경)
 //
 // [이 파일이 하는 일]
-//   - 수업: 홈 · 위험 지도 · 내 신고 → 홈 · 운행 기록 · 가까운 졸음쉼터 · 규정 도우미
+//   - 탭: 홈 · 운행 기록 · 가까운 졸음쉼터 · 규정 도우미
 //   - 가까운 졸음쉼터: 홈 화면 버튼에서 아래 탭으로 옮김 (11/10 팀장 의견, C 가 옮김)
 //       지도 화면(B)은 제목줄이 따로 있어서, 이 탭에서는 위 제목줄 · ≡ 메뉴를 숨긴다 (제목줄이 두 줄로 겹치지 않게)
 //   - ≡ 메뉴: 내 정보 · 로그아웃
@@ -121,6 +120,7 @@ class _MainScreenState extends State<MainScreen> {
         phone: text('phone'),
         vehicleNo: text('vehicle_no'),
         required: true,
+        askEmpNo: ContactRules.missingEmpNo(user), // (11/25 팀장) 구글 기사는 사번도
       ),
     );
     if (!mounted) return;
@@ -236,10 +236,10 @@ class _MainScreenState extends State<MainScreen> {
 
   // 제목줄 (11/16 R안 · readdy) — 홈은 제목 없이 오른쪽 ≡ 만 (위 로고 · 앱 이름 · 인사 없음),
   //   운행 기록 · 규정 도우미는 왼쪽 큰 제목 (애플 큰 제목)
-  bool get _solTab => false; // (11/24 사용자 요청) 남색 그라데이션 바탕 되돌림 — 슈퍼SOL 홈 바탕은 다시 정함
+  bool get _solTab => false; // (11/24 사용자 요청) 남색 그라데이션 바탕 되돌림 — 홈 바탕은 다시 정함
 
   PreferredSizeWidget _homeBar([String? title]) {
-    final sol = _solTab; // (11/24 사용자 요청 · 신한 슈퍼SOL) 운행 기록 · MY = 남색 제목줄 · 흰 글
+    final sol = _solTab; // (11/24 사용자 요청) 운행 기록 · MY = 남색 제목줄 · 흰 글
     return AppBar(
       toolbarHeight: 68,
       backgroundColor: sol ? AppSol.navyTop : Colors.transparent, // (11/24) 바탕 그라데이션이 비치게
@@ -313,7 +313,7 @@ class _MainScreenState extends State<MainScreen> {
       decoration: const BoxDecoration(color: Colors.transparent), // (11/24) 바탕 그라데이션이 비치게
       child: ListView(
       padding: const EdgeInsets.only(bottom: 110), // (11/19) 떠 있는 탭바 높이만큼
-      // (11/24 사용자 요청 · 신한 슈퍼SOL) 남색 그라데이션 바탕이 목록과 함께 움직임 (카드는 그대로)
+      // (11/24 사용자 요청) 남색 그라데이션 바탕이 목록과 함께 움직임 (카드는 그대로)
       children: [AppSol.header(child: Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 0), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // 내 프로필 — 누르면 내 정보 화면
         _myGroup([
@@ -465,8 +465,6 @@ class _TabBar extends StatelessWidget {
     (Icons.person_outline_rounded, Icons.person_rounded, 'MY'), // (11/17) ≡ 메뉴 대신
   ];
 
-  // (11/19 사용자 요청) 탭바 색은 남색 하나로 — 평소 연한 남색 · 누르면 진한 남색
-  static final Color _soft = AppColors.navy.withValues(alpha: 0.38);
 
   @override
   Widget build(BuildContext context) {

@@ -2,7 +2,7 @@
 # routers/rest_area.py — 졸음쉼터 실제 도로 거리 (POST /rest-areas/road-distance)
 # ═══════════════════════════════════════════════════════════════
 # 담당: B   |   우선: P2
-# 수업 원본: (없음, 🔴 신규 — chat.py 와 같은 모양: 로그인 필요 · 무거운 일은 run_in_threadpool)
+# 참고: chat.py 와 같은 모양 — 로그인 필요 · 무거운 일은 run_in_threadpool
 #
 # [이 파일이 하는 일]
 #   - 앱(lib/services/rest_area_service.dart)이 직선 거리로 고른 쉼터 몇 곳 + 내 위치 → 도로 거리 · 시간

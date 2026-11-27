@@ -13,10 +13,6 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <!-- 운행 중 화면 꺼짐 방지 (wakelock_plus) -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
-    <!-- (11/24) 앱을 나가도 졸음 감지 — '운행 중' 알림 + 카메라 포그라운드 서비스 -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/>
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
 
     <application
@@ -25,10 +21,6 @@
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"
         android:allowBackup="false">
-        <service
-            android:name=".DriveGuardService"
-            android:exported="false"
-            android:foregroundServiceType="camera" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

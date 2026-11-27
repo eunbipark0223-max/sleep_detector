@@ -2,7 +2,6 @@
 // screens/profile_screen.dart — 내 정보
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P0
-// 수업 원본: road_hazard_app/lib/screens/profile_screen.dart (🟢 그대로)
 //
 // [이 파일이 하는 일]
 //   - 신고 건수 → 경고 건수 (fetchMyEvents 로 센다, 못 받으면 '—'), 내 기준 표시만 추가
@@ -27,7 +26,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../design_tokens.dart';
 import '../theme.dart';
@@ -37,7 +35,6 @@ import 'account_edit_screens.dart';
 import 'login_screen.dart';
 import '../widgets/web_ui.dart';
 import 'calibration_screen.dart';
-import 'guide_screen.dart';
 import 'privacy_screen.dart';
 
 /// 고른 사진 한 장 (바이트 + 파일 이름 — 서버는 이름의 확장자를 검사한다)
@@ -131,8 +128,6 @@ class _BodyState extends State<_Body> {
   bool _busy = false; // 올리거나 지우는 중
   late Map<String, dynamic> _user = Map<String, dynamic>.of(widget.user); // 저장하면 이 복사본의 전화번호 · 차량번호를 바꾼다
 
-  int? _eventCount; // 내 경고 건수 (못 받으면 null → '—')
-  List<int> _byStage = const [0, 0, 0]; // (11/18) 1 · 2 · 3단계 각각 몇 건
 
   Map<String, dynamic> get user => _user;
 
@@ -141,19 +136,6 @@ class _BodyState extends State<_Body> {
     super.initState();
     final url = user['photo_url'];
     if (url is String && url.isNotEmpty) _loadPhoto();
-    _loadEventCount();
-  }
-
-  // 홈 · 운행 기록과 같은 fetchMyEvents 로 센다. 못 받아도 오류 안내 없이 '—' 로 둔다
-  Future<void> _loadEventCount() async {
-    try {
-      final events = await ApiService.fetchMyEvents();
-      if (!mounted) return;
-      setState(() {
-        _eventCount = events.length;
-        _byStage = [for (var s = 1; s <= 3; s++) events.where((e) => e.stage == s).length];
-      });
-    } catch (_) {/* '—' 그대로 */}
   }
 
   // 사진을 못 받아도(404 · 연결 오류) 화면은 이름 첫 글자로 보여 주면 되므로 오류 안내는 띄우지 않는다
@@ -380,24 +362,6 @@ class _BodyState extends State<_Body> {
   }
 }
 
-/// (11/25 · 슈퍼SOL 맨 아래 목록) 카드 없이 글자 + 꺾쇠 한 줄
-class _PlainRow extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-  const _PlainRow({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) => InkWell(
-        onTap: onTap,
-        child: SizedBox(
-          height: 60,
-          child: Row(children: [
-            Expanded(child: Text(label, style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w600, color: AppColors.textSecondary))),
-            const Icon(Icons.chevron_right_rounded, size: 24, color: AppleGray.chevron),
-          ]),
-        ),
-      );
-}
 
 /// 프로필 사진(없으면 이름 첫 글자) + 오른쪽 아래 카메라 표시. 누르면 사진 바꾸기 메뉴
 class _Avatar extends StatelessWidget {

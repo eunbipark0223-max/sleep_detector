@@ -2,10 +2,9 @@
 // static/js/api.js — 관리자 웹이 서버를 부르는 함수 모음
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P0
-// 수업 원본: road_hazard_api/static/js/api.js (🟡 수정)
 //
 // [이 파일이 하는 일]
-//   - /admin/hazards → /admin/events 등 주소 변경
+//   - 관리자 주소는 /admin/events 등
 //   - 조치완료 상태 변경 호출 (PATCH /events/{id}/status)
 //
 // [쓰는 곳] admin_login.html · admin.html  (둘 다 <script src="js/api.js"> 로 불러옴, 서버와 같은 주소라 주소 앞부분은 비움)
@@ -83,7 +82,7 @@ async function adminLogin(email, password) {
 // 구글 로그인 (11/16): 서버가 Firebase 웹 설정을 알려 주고(.env), 구글 창에서 받은 id_token 을 서버가 검증한다. 관리자 계정만 들어올 수 있음
 function fetchGoogleConfig() { return apiFetch('/users/google/config'); }
 async function adminGoogleLogin(profile) {
-  const data = await apiFetch('/users/google', { method: 'POST', body: profile });
+  const data = await apiFetch('/users/google', { method: 'POST', body: { ...profile, admin_only: true } });   // (11/27) 관리자 웹: 계정을 새로 만들지 않고 관리자만 (서버가 403)
   if (!data.user || data.user.role !== 'admin') throw new Error('관리자 계정이 아닙니다');
   setToken(data.access_token);
   return data.user;

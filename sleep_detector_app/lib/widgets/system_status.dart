@@ -142,7 +142,6 @@ class DriveStatusStrip extends StatelessWidget {
   final ValueListenable<bool>? faceLost; // (11/24 사용자 요청) 얼굴이 카메라 밖 · 감지 안 됨 → 눈 아이콘 빨강
   const DriveStatusStrip({super.key, this.online = true, this.stage = 0, this.reportedAt, this.faceLost});
 
-  static const _names = ['정상', '주의', '휴식 권고', '긴급'];
 
   Widget _value(String text, {Color? dot, Color? color}) => Row(mainAxisSize: MainAxisSize.min, children: [
         if (dot != null) ...[

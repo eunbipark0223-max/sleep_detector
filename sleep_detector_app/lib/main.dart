@@ -2,7 +2,6 @@
 // main.dart — 앱 시작 (Firebase 초기화 · 첫 화면 splash)
 // ═══════════════════════════════════════════════════════════════
 // 담당: D   |   우선: P0
-// 수업 원본: road_hazard_app/lib/main.dart (🟢 그대로, 앱 이름만 '졸음 가드')
 //
 // [이 파일이 하는 일]
 //   - Firebase 초기화 후 MaterialApp → splash_screen

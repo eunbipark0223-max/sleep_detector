@@ -2,7 +2,6 @@
 # services/rag_service.py — RAG 졸음운전 · 휴게시간 규정 검색
 # ═══════════════════════════════════════════════════════════════
 # 담당: B   |   우선: P0
-# 수업 원본: road_hazard_api/services/rag_service.py (🟡 수정, 딥러닝 21차시)
 #
 # [이 파일이 하는 일]
 #   - [처음 1번] knowledge/*.txt → 호 단위로 자르기 → Gemini 임베딩 → Chroma(chroma_db/)

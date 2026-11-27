@@ -2,10 +2,8 @@
 # database/db_connection.py — MySQL 연결 (.env 의 DB_* 값 사용, DB 이름 sleep_detector)
 # ═══════════════════════════════════════════════════════════════
 # 담당: -   |   우선: P0
-# 수업 원본: road_hazard_api/database/db_connection.py (🟢 그대로 복사)
 #
 # [이 파일이 하는 일]
-#   - 수업 파일을 그대로 복사해서 쓴다
 #   - DB 이름만 sleep_detector 로 (.env)
 #
 # [읽는 값 — .env.example 참고] DB_HOST · DB_PORT · DB_USER · DB_PASSWORD · DB_NAME(sleep_detector)
@@ -40,7 +38,7 @@ engine = create_engine(DATABASE_URL, pool_pre_ping=True, echo=os.getenv("DB_ECHO
 # autocommit · autoflush 를 꺼서 commit() 을 코드가 직접 부른다 (event.py 의 db.commit())
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# 수업 코드와 같은 이름 (user.py · chat.py · detect.py 를 수업 파일에서 복사하면 get_session · SessionFactory 를 부름)
+# 다른 이름으로도 부를 수 있게 (get_session · SessionFactory)
 SessionFactory = SessionLocal
 
 
