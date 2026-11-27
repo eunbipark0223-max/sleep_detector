@@ -269,15 +269,31 @@ def google_login_handler(
     user = session.scalar(stmt)
 
     # (11/16) 이 요청은 앱이 보낸 이메일 · uid 를 그대로 믿는다 → 관리자 계정(또는 FIREBASE_VERIFY=true)은 구글이 서명한 id_token 을 확인해야 함
-    if config.FIREBASE_VERIFY or (user is not None and user.role == "admin"):
+    # (11/27 팀장) 계정 연결: '가입하기'(이메일)로 만든 계정에 같은 Gmail 로 구글 로그인하면 막지 않고 그 계정으로 들어감
+    #   → 남의 이메일 계정에 들어가는 길이 되지 않도록, 이 경우는 FIREBASE_VERIFY 와 상관없이 언제나 id_token 을 검증한다
+    #     (id_token 이 없으면 예전처럼 409 "이메일 로그인을 이용해주세요")
+    link_email_account = user is not None and user.provider != "google"
+    if link_email_account and not body.id_token:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="이미 이메일로 가입된 계정입니다. 이메일 로그인을 이용해주세요",
+        )
+    if config.FIREBASE_VERIFY or link_email_account or body.admin_only or (user is not None and user.role == "admin"):
         try:
-            firebase_verify.verify_id_token(body.id_token or "", str(body.email), body.firebase_uid)
+            claims = firebase_verify.verify_id_token(body.id_token or "", str(body.email), body.firebase_uid)
+            if link_email_account and claims.get("email_verified") is not True:     # 구글이 확인한 메일 주소일 때만 연결
+                raise firebase_verify.FirebaseVerifyError("email_verified 가 아님")
         except firebase_verify.FirebaseNotConfigured:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                                 detail="서버에 구글 로그인 설정(FIREBASE_PROJECT_ID)이 없어요")
         except firebase_verify.FirebaseVerifyError as e:
             print(f"[google] 토큰 검증 실패 {body.email}: {e}")
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="구글 인증을 확인할 수 없어요")
+
+    # (11/27 팀장) 관리자 웹의 구글 로그인: 사번으로 가입한 관리자만. 처음 보는 구글 계정이어도 기사 계정을 만들지 않는다
+    if body.admin_only and (user is None or user.role != "admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="관리자로 가입된 계정이 아니에요. '사번으로 가입하기'에서 이 구글 메일로 먼저 가입해 주세요")
 
     if user is None:
         user = User(
@@ -293,13 +309,9 @@ def google_login_handler(
         session.refresh(user)
 
     else:
-        if user.provider != "google":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="이미 이메일로 가입된 계정입니다. 이메일 로그인을 이용해주세요",
-            )
-
-        if not user.firebase_uid:
+        # 이메일 계정은 위에서 id_token 검증을 통과했으므로 연결: provider 는 'email' 그대로 (비밀번호 로그인 · 비밀번호 변경도 계속 됨)
+        #   (토큰의 이메일 = 이 계정 이메일이 확인됐으니 uid 가 바뀌었어도 같은 주인 → 새 uid 로 맞춤)
+        if not user.firebase_uid or (link_email_account and user.firebase_uid != body.firebase_uid):
             user.firebase_uid = body.firebase_uid
             session.commit()
 

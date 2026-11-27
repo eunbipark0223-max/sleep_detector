@@ -82,7 +82,7 @@ async function adminLogin(email, password) {
 // 구글 로그인 (11/16): 서버가 Firebase 웹 설정을 알려 주고(.env), 구글 창에서 받은 id_token 을 서버가 검증한다. 관리자 계정만 들어올 수 있음
 function fetchGoogleConfig() { return apiFetch('/users/google/config'); }
 async function adminGoogleLogin(profile) {
-  const data = await apiFetch('/users/google', { method: 'POST', body: profile });
+  const data = await apiFetch('/users/google', { method: 'POST', body: { ...profile, admin_only: true } });   // (11/27) 관리자 웹: 계정을 새로 만들지 않고 관리자만 (서버가 403)
   if (!data.user || data.user.role !== 'admin') throw new Error('관리자 계정이 아닙니다');
   setToken(data.access_token);
   return data.user;

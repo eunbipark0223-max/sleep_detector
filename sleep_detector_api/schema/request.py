@@ -244,6 +244,7 @@ class GoogleLoginRequest(BaseModel):
     name        : str      = Field(..., min_length=1, max_length=50,  description="이름")
     firebase_uid: str      = Field(..., min_length=1, max_length=128, description="Firebase UID")
     id_token    : Optional[str] = Field(None, max_length=4096, description="Firebase ID 토큰 — 관리자 웹은 항상 보냄 (관리자 계정은 이 검증을 통과해야 로그인)")
+    admin_only  : bool = Field(False, description="(11/27) 관리자 웹이 보냄 — 계정을 새로 만들지 않고, 관리자 계정일 때만 로그인 (아니면 403)")
 
 
 # ── 채팅 ────────────────────────────────────────
