@@ -239,7 +239,7 @@ class PasswordChange(BaseModel):
 
 
 class GoogleLoginRequest(BaseModel):
-    # 앱은 Firebase 로그인 뒤 email · name · firebase_uid 를 보낸다 (id_token 아님)
+    # 앱은 Firebase 로그인 뒤 email · name · firebase_uid · id_token 을 보낸다 (11/27 부터 id_token 도). FIREBASE_VERIFY=true 면 기사도 id_token 검증
     email       : EmailStr = Field(..., description="구글 계정 이메일")
     name        : str      = Field(..., min_length=1, max_length=50,  description="이름")
     firebase_uid: str      = Field(..., min_length=1, max_length=128, description="Firebase UID")

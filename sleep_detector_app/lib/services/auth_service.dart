@@ -9,7 +9,7 @@
 // [서버 약속 — sleep_detector_api/routers/user.py]
 //   - POST /users/signup  {email, password, name, phone, vehicle_no, privacy_agreed} → 201 사용자 · 이미 있으면 409 · 비밀번호 · 전화 · 차량번호 · 동의 규칙 어기면 422(메시지 목록)
 //   - POST /users/login   {email, password}                      → {success, access_token, token_type, user}
-//   - POST /users/google  {email, name, firebase_uid}            → 로그인과 같은 응답 (구글 로그인 뒤 서버 JWT 로 통일)
+//   - POST /users/google  {email, name, firebase_uid, id_token}  → 로그인과 같은 응답 (구글 로그인 뒤 서버 JWT 로 통일)
 //   - GET  /users/me      Authorization: Bearer 토큰              → 내 정보 (토큰이 틀리면 401)
 //   - POST · GET · DELETE /users/me/photo                        → 프로필 사진 올리기(멀티파트 file) · 받기(토큰 필요) · 지우기
 //   - PATCH /users/me     {phone?, vehicle_no?}                  → 내 전화번호 · 차량번호 저장 (빠진 칸은 그대로, '' 면 지움, 형식이 틀리면 422)
@@ -214,7 +214,9 @@ class AuthService {
 
     final email = firebaseUser.email!;
     final name = (firebaseUser.displayName ?? '').trim().isNotEmpty ? firebaseUser.displayName!.trim() : email.split('@').first;
-    final res = await _send(() => http.post(_uri('/users/google'), headers: _json, body: jsonEncode({'email': email, 'name': name, 'firebase_uid': firebaseUser.uid})));
+    // (11/27 팀장) Firebase 가 준 확인증(id_token)도 같이 보냄 — 서버가 FIREBASE_VERIFY=true 면 이걸 검사해서, 앱 없이 이메일만 보내 남의 구글 계정으로 들어오는 것을 막음
+    final idToken = await firebaseUser.getIdToken();
+    final res = await _send(() => http.post(_uri('/users/google'), headers: _json, body: jsonEncode({'email': email, 'name': name, 'firebase_uid': firebaseUser.uid, 'id_token': idToken})));
     if (res.statusCode != 200) {
       await logout(); // 서버가 거절하면 Firebase 쪽 로그인도 풀어 둔다 (다음에 다시 고를 수 있게)
       throw _error(res);
