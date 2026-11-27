@@ -98,6 +98,7 @@ class ApiService {
   //   jpgBytes = 대표 사진 1장 ('file', 지금까지와 같음 — 마지막 장)
   //   frames   = 눈 감김일 때 감는 동안의 사진 여러 장 (처음 · 가운데 · 마지막, 찍은 순서, A eye_monitor.lastSuspectJpgs)
   //              2장 이상일 때만 detectFramesField 로 같이 보냄 (고개 숙임 · PERCLOS 는 1장, 재전송은 0장)
+  //              (11/23 팀장) 눈 감김도 1장으로 통일 → frames 는 늘 1장이라 지금은 보내지 않음
   static Future<SleepResponse> sendDetect(Uint8List? jpgBytes, {
     String reason = '',
     double? closedSec,

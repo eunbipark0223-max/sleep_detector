@@ -662,7 +662,7 @@ class EyeMonitor {
         _perclosTriggered = true;
         _lastSuspectAt = now;
         // 이번 감김 동안 찍은 프레임만 보냄 — 얼굴을 놓친 채 시작된 감김이면 몇 분 전 사진이 갈 수 있어서 (10/28 팀장 확인)
-        //   (11/09) 처음 · 가운데 · 마지막 3장 → 보낸 뒤 바로 비움
+        //   (11/09) 처음 · 가운데 · 마지막 3장 → 보낸 뒤 바로 비움  (11/23 팀장: microsleepPhotos = 1 → 지금은 마지막 1장만)
         final shots = _spread(_streakShots);
         _streakShots.clear();
         _send('microsleep', 'eye', currentClosedSec, perclos, avgProb ?? _lastEyeOpenProb, shots,

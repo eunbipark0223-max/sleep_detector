@@ -571,7 +571,8 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
     // 보내기 전 단계 — 서버 답을 기다리는 몇 초 사이에 ping 이 새 단계를 먼저 받아 와 _stage 가 바뀌면,
     //   "단계 그대로"로 잘못 보고 알람 · 경고를 건너뛸 수 있어서 보내기 전 값과 비교한다 (11/09 팀장)
     final stageBefore = _stage;
-    // 감는 동안의 사진 여러 장 (A eye_monitor, 11/09) — 눈 감김 3장 · 고개 숙임 · PERCLOS 1장 · 재전송 0장.
+    // 감는 동안의 사진 (A eye_monitor, 11/09) — 눈 감김 · 고개 숙임 · PERCLOS 1장 · 재전송 0장.
+    //   (11/23 팀장) 눈 감김도 3장 → 1장으로 통일 (AppConfig.microsleepPhotos = 1). 여러 장 코드는 꺼 둔 채 남김
     //   다음 의심 때 덮어써지므로 바로 복사해 둔다. frame(대표 1장)은 이 목록의 마지막 장과 같음
     final frames = List<Uint8List>.of(_eye.lastSuspectJpgs);
     // 서버 답을 못 받아도 기사를 깨운다 — 연결 실패는 바로, 답이 늦으면 10초 뒤 (응답은 계속 기다림).
