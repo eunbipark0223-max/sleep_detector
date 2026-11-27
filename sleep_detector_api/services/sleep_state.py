@@ -87,8 +87,6 @@ def start_drive(user_id: int) -> dict:
     다시 시작으로 경고를 끌 수 없게 (11/03 시연 폰 시험에서 재시작으로 3단계가 풀림, 팀장 결정):
       - 2단계는 쉬어야만, 3단계는 관리자만 해제
       - 10분 졸음 기록(sleep_times)도 지우지 않음 — 지우면 2단계에서 다시 졸아도 3단계로 안 올라감 (10분 지나면 저절로 빠짐)
-      - (11/27) 쉬는 중(rest_started_at)도 지우지 않음 — [운행 종료] 뒤 [새로운 운행 시작]으로 휴식을 건너뛰지 못하게.
-        휴식은 [운행 재개](resume_drive · finish_rest)나 관리자 [조치완료](reset)로만 끝난다 (mock_server 와 같은 규칙)
     """
     state = get_state(user_id)
     now = datetime.now()
@@ -96,6 +94,7 @@ def start_drive(user_id: int) -> dict:
     if state["stage"] < 2:
         _change_stage(state, 0)
     state["drive_started_at"] = now
+    state["rest_started_at"] = None
     state["quiz_fails"] = 0
     state["last_ping_at"] = now
     state["half_recent"] = []   # 반쯤 확인은 이번 운행부터 다시 셈 (평소 뜬 눈 EAR 은 출발 전 측정이 새로 덮어씀)

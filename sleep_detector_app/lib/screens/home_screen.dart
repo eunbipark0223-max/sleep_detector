@@ -324,9 +324,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? _ResumeInCard(
                           state: st!,
                           onResume: () => _resumeDrive(st),
-                          // (11/26 팀장) 새 운행도 눈 측정부터
-                          // (11/27) 단, 쉬는 중이면 [새로운 운행 시작]도 측정 없이 바로 휴식 화면으로 — 휴식을 건너뛰지 못하게
-                          onNew: st.resting ? () => _resumeDrive(st) : _startDrive,
+                          onNew: _startDrive, // (11/26 팀장) 새 운행도 눈 측정부터
                         )
                       : null,
                 );
