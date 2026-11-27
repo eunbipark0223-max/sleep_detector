@@ -251,7 +251,8 @@ def drive_start_handler(session: Session = Depends(get_session), user: User = De
         _session_start[user.id] = (datetime.now(), last_id)
         for p in _calib_photos.pop(user.id, []):
             _remove(p)
-        _rest_event.pop(user.id, None)
+        if sleep_state.rest_elapsed_min(user.id) is None:   # (11/27) 쉬는 중이면 휴식 경고 연결을 남겨 [운행 재개] 때 기록
+            _rest_event.pop(user.id, None)
     return {"success": True, "message": "운행을 시작합니다", "stage": stage, "status": _label(stage)}
 
 
