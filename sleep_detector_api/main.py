@@ -202,7 +202,9 @@ def root():
 @app.get("/health", tags=["기본"])
 def health():
     """서버 상태 + 눈 판정 상태. eye.mode 가 real · eye.loaded 가 true · judged 가 cnn 위주면 CNN 이 쓰이는 중"""
-    out = {"status": "ok", "demo_mode": config.DEMO_MODE, "eye": None, "judged": None}
+    # (11/28 팀장) firebase_verify: 기사 구글 로그인도 id_token 을 검증하는지 (켜짐 · 꺼짐만, 키 값은 내보내지 않음). 관리자는 항상 검증
+    out = {"status": "ok", "demo_mode": config.DEMO_MODE, "firebase_verify": bool(config.FIREBASE_VERIFY),
+           "eye": None, "judged": None}
     try:                                     # 라우터가 건너뛰어져도 /health 는 응답한다 (_include_routers)
         from routers import detect
         from services import face_service
