@@ -102,6 +102,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
   static const int _maxTries = 2;
   int _failures = 0;
   String _retryMessage = ''; // 다시 측정을 권하는 안내 (비어 있으면 처음 측정)
+  bool _computing = false; // (11/28) 5장을 다 찍고 결과를 기다리는 중 — 멈춘 것처럼 보이지 않게 안내를 바꿈
 
   bool get _usesCamera => widget.capture == null;
 
@@ -184,25 +185,65 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     });
     _say('정면을 보고 눈을 편하게 뜨세요');
 
+    // (11/28 팀장) 찍는 즉시 보내기 — 예전엔 5장을 다 찍은 뒤에야 서버로 1장씩 보내고 폰 분석을 시작해서
+    //   Railway 에서는 5/5 뒤 [운행 시작] 이 한참 늦게 떴음 → 1장 찍을 때마다 서버 전송 · 폰 분석을 바로 시작 (순서는 그대로 1장씩)
     final paths = <String>[];
+    final send = widget.sendServer ?? _defaultSendServer;
+    var serverOk = true;
+    Future<void> serverChain = Future<void>.value();
+    final monitor = widget.calibrateApp == null ? EyeMonitor() : null; // 기본(EyeMonitor)일 때만 찍는 즉시 분석
+    final probs = <double>[];
+    Future<void> appChain = Future<void>.value();
     try {
       for (var i = 0; i < widget.photoCount; i++) {
         if (i > 0) await Future<void>.delayed(widget.interval);
-        if (!mounted) return;
-        paths.add(await (widget.capture ?? _defaultCapture)());
-        if (!mounted) return;
+        if (!mounted) break;
+        final path = await (widget.capture ?? _defaultCapture)();
+        paths.add(path);
+        serverChain = serverChain.then((_) async {
+          if (!serverOk) return; // 하나라도 실패하면 나머지는 안 보냄 (서버는 기본값을 쓰므로 운행은 계속 된다)
+          try {
+            await send(path);
+          } catch (_) {
+            serverOk = false;
+          }
+        });
+        if (monitor != null) {
+          appChain = appChain.then((_) async {
+            try {
+              final prob = await monitor.analyzeFile(path);
+              if (prob != null) probs.add(prob);
+            } catch (_) {}
+          });
+        }
+        if (!mounted) break;
         setState(() => _shot = i + 1);
       }
     } catch (_) {
       // 찍은 데까지만 쓴다 (한 장도 없으면 아래에서 기본값)
     }
+    if (mounted) setState(() => _computing = true); // 5/5 뒤 — '측정 결과를 계산하는 중이에요'
 
-    final app = _measureApp(paths);
-    final server = _measureServer(paths);
-    final threshold = await app;
-    final serverOk = await server;
-    _deleteFiles(paths); // 얼굴 사진은 계산이 끝나면 지운다
+    double? threshold;
+    try {
+      if (monitor != null) {
+        await appChain;
+        try {
+          threshold = paths.isEmpty ? null : monitor.calibrateFromProbs(probs);
+        } catch (_) {
+          threshold = null; // 얼굴이 잡힌 사진이 모자람
+        }
+      } else {
+        threshold = await _measureApp(paths);
+      }
+    } finally {
+      await monitor?.close();
+    }
+    // (11/28 팀장) 서버 전송은 기다리지 않음 — 서버는 5장이 모이면 기준을 스스로 저장하고 운행 시작과 순서가 엮여 있지 않음
+    //   (Railway 왕복 + 서버 계산 때문에 5/5 뒤가 길었음). 얼굴 사진은 서버로 다 보낸 뒤에 지운다
+    serverChain.whenComplete(() => _deleteFiles(paths));
     if (!mounted) return;
+    _computing = false;
 
     // 얼굴을 못 찾음 → 아직 기회가 있으면 같은 화면으로 돌아가 다시 측정을 권한다 (기본 설정으로 바로 가지 않음, 11/11)
     if (threshold == null && _failures + 1 < _maxTries) {
@@ -220,7 +261,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     _value = value;
     setState(() {
       _result = threshold == null ? '얼굴을 확인하지 못해 기본 설정으로 시작해요' : '준비됐어요\n안전 운전하세요'; // 숫자 · 서버 용어는 기사에게 안 보임 (11/11)
-      _note = serverOk ? '' : '연결이 불안정해 기본 설정으로 시작해요';
+      _note = ''; // (11/28) 서버 전송을 기다리지 않으므로 연결 안내는 없음 (서버가 못 받으면 서버는 기본 기준)
       _phase = _Phase.finishing;
     });
     // (11/23 사용자 요청) 바로 운행으로 넘어가지 않음 — 아래 [운행 시작] 을 눌러야 운행 시작
@@ -235,19 +276,6 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
       return await (widget.calibrateApp ?? _defaultCalibrateApp)(paths);
     } catch (_) {
       return null;
-    }
-  }
-
-  // 서버 기준: 사진을 1장씩 순서대로 보낸다. 하나라도 실패하면 false (서버는 기본값을 쓰므로 운행은 계속 된다)
-  Future<bool> _measureServer(List<String> paths) async {
-    if (paths.isEmpty) return false;
-    try {
-      for (final path in paths) {
-        await (widget.sendServer ?? _defaultSendServer)(path);
-      }
-      return true;
-    } catch (_) {
-      return false;
     }
   }
 
@@ -366,7 +394,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
         ];
       case _Phase.measuring:
         return [
-          _calCard('그대로 정면을\n바라봐 주세요'), // (11/23 사용자 요청) 측정 전과 같은 카드 (진행은 위 단계 칸에)
+          _calCard(_computing ? '측정 결과를\n계산하는 중이에요' : '그대로 정면을\n바라봐 주세요'), // (11/23 사용자 요청) 측정 전과 같은 카드 (진행은 위 단계 칸에) · (11/28) 5/5 뒤엔 계산 중
         ];
       default:
         return [
@@ -432,7 +460,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
         return [
           _Preview(controller: _controller),
           const SizedBox(height: 20),
-          const Text('그대로 정면을 바라봐 주세요', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          Text(_computing ? '측정 결과를 계산하는 중이에요' : '그대로 정면을 바라봐 주세요', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
           const SizedBox(height: 16),
           ClipRRect(
             borderRadius: BorderRadius.circular(6),

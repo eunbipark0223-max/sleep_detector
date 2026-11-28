@@ -271,7 +271,9 @@ async def drive_calibrate_handler(file: UploadFile = File(...), user: User = Dep
         return {"success": True, "count": count, "needed": config.CALIB_FRAMES, "done": False, "ear_threshold": None}
 
     try:
-        threshold = face_service.calibrate(photos, user_id=user.id)   # user_id → 뜬 눈 EAR 중간값도 저장 (반쯤 감은 눈 기준, 11/10)
+        # (11/28 팀장) 5장 계산(MediaPipe)을 스레드에서 — async 함수 안에서 바로 돌리면 계산 동안 서버 전체가 멈춰
+        #   [운행 시작] 의 /drive/start 가 그 뒤에 줄을 섰음 (Railway 에서 측정 뒤 운행 시작이 한참 늦던 원인). /detect 와 같은 방식
+        threshold = await run_in_threadpool(face_service.calibrate, photos, user_id=user.id)   # user_id → 뜬 눈 EAR 중간값도 저장 (반쯤 감은 눈 기준, 11/10)
     finally:
         for p in photos:                     # 개인정보 — 측정이 끝나면 사진은 남기지 않음
             _remove(p)

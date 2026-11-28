@@ -772,7 +772,13 @@ class EyeMonitor {
       final prob = await analyzeFile(path);
       if (prob != null) probs.add(prob);
     }
+    return calibrateFromProbs(probs);
+  }
 
+  /// (11/28 팀장) 사진마다 analyzeFile 로 미리 구한 눈 뜸 확률들로 기준 계산 — calibration_screen 이 찍는 즉시 분석할 때 씀
+  ///   규칙은 calibrate 와 같음 (calibMinFaces 장 미만이면 기본값으로 되돌리고 StateError)
+  double calibrateFromProbs(List<double> probs) {
+    probs = List<double>.of(probs);
     if (probs.length < AppConfig.calibMinFaces) {
       threshold = AppConfig.eyeClosedProb;
       throw StateError('개인 기준 측정 실패: 얼굴이 잡힌 사진 ${probs.length}장 (${AppConfig.calibMinFaces}장 필요)');
