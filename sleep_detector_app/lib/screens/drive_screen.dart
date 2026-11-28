@@ -188,7 +188,10 @@ class _DriveScreenState extends State<DriveScreen> with WidgetsBindingObserver {
       _setStage(state.stage);
       DriveClock.minutes.value = state.driveMin; // (11/18) 맨 위 '○분 운전 중'
       // 2 · 3단계이거나 쉬던 중이면 경고 화면을 이어 연다 (3단계는 10초 반복 음성도 다시, 쉬던 중이면 남은 시간으로 휴식 화면)
-      if (state.resting || state.stage >= 2) _showWarning(_restoredResponse(state), resumeRest: state.resting);
+      // (11/28 팀장) 2단계를 이어 열 때는 경고음 · 음성 없이 화면만 (이미 들은 경고 · 퀴즈 없음). 3단계는 안전상 그대로 다시 울림
+      if (state.resting || state.stage >= 2) {
+        _showWarning(_restoredResponse(state), resumeRest: state.resting, silent: state.stage == 2 && !state.resting);
+      }
     }
     _ping();
   }

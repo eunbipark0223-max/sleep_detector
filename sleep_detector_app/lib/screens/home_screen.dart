@@ -223,7 +223,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 측정 화면이 돌려주는 값: 기준 값(double) / null = 시작 전에 뒤로 가기 (운행을 시작하지 않는다)
   // 기준 값은 DriveScreen(threshold: t) 로 넘긴다 (측정을 건너뛰었으면 기본 기준이 들어 있다)
-  Future<void> _startDrive() async {
+  // restFirst (11/28 팀장): 정차 뒤 15분 전에 [새로운 운행 시작] — 눈 측정 → 남은 휴식 화면 → 다 쉬면 새 운행 (0단계)
+  //   /drive/start 를 휴식이 끝난 뒤에 부른다 (먼저 부르면 서버가 휴식을 취소하고 2단계로 출발시킴)
+  Future<void> _startDrive({bool restFirst = false}) async {
     // 카메라 · 마이크 · 위치 권한이 아직 없으면 시안의 안내창 → [계속] → 휴대폰 권한 창 (11/12 팀장)
     //   이미 다 허용했으면 안내창 없이 바로 측정 화면. 안내창을 닫으면 운행을 시작하지 않음
     if (!await _askPermissions()) return;
@@ -233,10 +235,28 @@ class _HomeScreenState extends State<HomeScreen> {
     final t = await Navigator.of(context).push<double>(
       MaterialPageRoute(
         builder: (_) =>
-            (widget.calibrationBuilder ?? () => const CalibrationScreen())(),
+            (widget.calibrationBuilder ?? () => restFirst ? const CalibrationScreen(doneLabel: '휴식 이어 하기') : const CalibrationScreen())(),
       ),
     );
     if (t == null || !mounted) return;
+    if (restFirst) {
+      // 휴식 화면은 서버가 기억하는 정차 시각 그대로 남은 시간만 보여 줌 (/drive/rest 는 이미 쉬는 중이면 다시 시작하지 않음)
+      final result = await Navigator.of(context).push<Map<String, dynamic>>(
+        MaterialPageRoute(builder: (_) => const RestScreen()),
+      );
+      if (!mounted) return;
+      if (result == null || result['end'] == true) {
+        // 휴식 화면의 [운행 종료] → 종료만 알리고 홈에 남음 (15분이 지나면 서버가 휴식을 저절로 인정)
+        if (result != null) {
+          try {
+            await ApiService.endDrive().timeout(const Duration(seconds: 5));
+          } catch (_) {}
+        }
+        if (mounted) _reload();
+        return;
+      }
+      // [운행 재개] 성공 (2 → 1단계) → 아래 /drive/start 가 1단계를 0단계로 → 새 운행
+    }
     // 서버에 새 운행 시작을 알린다 — 연속 운전 시간 · 퀴즈 실패 수 · 반쯤 감은 눈 기록을 새로 세고, 0 · 1단계는 정상으로 (2 · 3단계는 서버가 유지).
     //   (11/12 팀장) 지금까지 앱이 /drive/start 를 한 번도 안 불러서 지난 운행의 1단계 · 기록이 이어졌음. 실패해도 운행은 시작 (ping 이 대신 시작함)
     if (widget.driveBuilder == null) {
@@ -257,27 +277,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     if (mounted) _reload(); // 운행 중 새로 생긴 경고가 '최근 경고'에 바로 보이게
-  }
-
-  // (11/28 팀장) 쉬는 중 [새로운 운행 시작] — 남은 휴식부터 마친 뒤 새 운행
-  //   휴식 화면은 서버가 기억하는 시작 시각 그대로 남은 시간만 보여 줌 (/drive/rest 는 이미 쉬는 중이면 다시 시작하지 않음)
-  //   [운행 재개] 성공(2 → 1단계) → _startDrive: 눈 측정 → /drive/start 가 1단계를 0단계로 → 새 운행
-  //   휴식 화면의 [운행 종료] → 운행 종료만 알리고 홈에 남음 (15분이 지나면 서버가 휴식을 저절로 인정)
-  Future<void> _newDriveAfterRest() async {
-    final result = await Navigator.of(context).push<Map<String, dynamic>>(
-      MaterialPageRoute(builder: (_) => const RestScreen()),
-    );
-    if (!mounted) return;
-    if (result == null || result['end'] == true) {
-      if (result != null) {
-        try {
-          await ApiService.endDrive().timeout(const Duration(seconds: 5));
-        } catch (_) {}
-      }
-      if (mounted) _reload();
-      return;
-    }
-    await _startDrive();
   }
 
   // [이어서 운행] — 측정 화면을 건너뛰고 운행 화면으로. 서버가 기억하는 단계 · 휴식을 그대로 이어받는다
@@ -347,8 +346,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           state: st!,
                           onResume: () => _resumeDrive(st),
                           // (11/26 팀장) 새 운행도 눈 측정부터
-                          // (11/28 팀장) 단, 정차 뒤 15분이 안 지났으면 먼저 같은 휴식 화면 → 다 쉬면 눈 측정 → 0단계 새 운행
-                          onNew: (st.resting && st.restLeftSec > 0) ? _newDriveAfterRest : _startDrive,
+                          // (11/28 팀장) 단, 정차 뒤 15분이 안 지났으면 눈 측정 → 같은 휴식 화면 → 다 쉬면 0단계 새 운행
+                          onNew: () => _startDrive(restFirst: st.resting && st.restLeftSec > 0),
                         )
                       : null,
                 );
