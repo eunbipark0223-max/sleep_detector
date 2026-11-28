@@ -31,6 +31,7 @@ import '../widgets/home_ui.dart';
 import 'calibration_screen.dart';
 import 'drive_screen.dart';
 import 'event_detail_screen.dart';
+import 'rest_screen.dart';
 import '../widgets/buddy.dart';
 import '../services/drive_log.dart';
 import 'history_screen.dart' show HistoryEventRow;
@@ -258,6 +259,27 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) _reload(); // 운행 중 새로 생긴 경고가 '최근 경고'에 바로 보이게
   }
 
+  // (11/28 팀장) 쉬는 중 [새로운 운행 시작] — 남은 휴식부터 마친 뒤 새 운행
+  //   휴식 화면은 서버가 기억하는 시작 시각 그대로 남은 시간만 보여 줌 (/drive/rest 는 이미 쉬는 중이면 다시 시작하지 않음)
+  //   [운행 재개] 성공(2 → 1단계) → _startDrive: 눈 측정 → /drive/start 가 1단계를 0단계로 → 새 운행
+  //   휴식 화면의 [운행 종료] → 운행 종료만 알리고 홈에 남음 (15분이 지나면 서버가 휴식을 저절로 인정)
+  Future<void> _newDriveAfterRest() async {
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(builder: (_) => const RestScreen()),
+    );
+    if (!mounted) return;
+    if (result == null || result['end'] == true) {
+      if (result != null) {
+        try {
+          await ApiService.endDrive().timeout(const Duration(seconds: 5));
+        } catch (_) {}
+      }
+      if (mounted) _reload();
+      return;
+    }
+    await _startDrive();
+  }
+
   // [이어서 운행] — 측정 화면을 건너뛰고 운행 화면으로. 서버가 기억하는 단계 · 휴식을 그대로 이어받는다
   Future<void> _resumeDrive(DriveState state) async {
     final saved =
@@ -324,7 +346,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? _ResumeInCard(
                           state: st!,
                           onResume: () => _resumeDrive(st),
-                          onNew: _startDrive, // (11/26 팀장) 새 운행도 눈 측정부터
+                          // (11/26 팀장) 새 운행도 눈 측정부터
+                          // (11/28 팀장) 단, 정차 뒤 15분이 안 지났으면 먼저 같은 휴식 화면 → 다 쉬면 눈 측정 → 0단계 새 운행
+                          onNew: (st.resting && st.restLeftSec > 0) ? _newDriveAfterRest : _startDrive,
                         )
                       : null,
                 );
