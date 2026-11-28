@@ -107,6 +107,13 @@ def end(user_id):
             d["ended"] = True
 
 
+def is_ended(user_id):
+    """[운행 종료] 를 누른 뒤 아직 ping 이 다시 오지 않음 (11/28 — 정차 뒤 운행 종료면 15분 지나 휴식 자동 인정)"""
+    with _lock:
+        d = _drives.get(user_id)
+        return bool(d is not None and d.get("ended"))
+
+
 def last_ping_age(user_id):
     """마지막 ping 으로부터 지난 초. 운행 기록이 없거나(서버가 다시 켜짐) 끝났으면(end) None"""
     with _lock:

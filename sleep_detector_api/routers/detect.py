@@ -242,6 +242,8 @@ def drive_wake_handler(body: dict, session: Session = Depends(get_session), user
 @router.post("/drive/start")
 def drive_start_handler(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
     # 2 · 3단계는 유지 — 다시 시작으로 경고를 끌 수 없게 (기획안 8장, 11/03 A start_drive)
+    # (11/28 팀장) 단, [정차했어요] 뒤 15분이 지났으면 먼저 휴식 인정 (2 → 1단계 → 새 운행이라 0단계). 15분 전이면 휴식은 취소 · 2단계 그대로
+    _auto_finish_rest(session, user.id, need_ended=False)
     stage = int(sleep_state.start_drive(user.id)["stage"])
     drive_timer.start(user.id)
     last_id = session.execute(select(SleepEvent.id).where(SleepEvent.user_id == user.id)
@@ -331,6 +333,7 @@ def drive_state_handler(session: Session = Depends(get_session), user: User = De
     resting : [정차했어요] 뒤 쉬는 중 (rest_left_sec = 남은 초, 0 이면 [운행 재개] 가능)
     summary · guidance : 지금 단계를 만든 가장 최근 경고의 글 (이어서 연 경고 화면에 보여 줌)
     """
+    _auto_finish_rest(session, user.id, need_ended=True)   # (11/28) 정차 → 운행 종료 → 15분 지났으면 휴식 인정
     stage = int(sleep_state.get_stage(user.id))
     elapsed = sleep_state.rest_elapsed_min(user.id)
     resting = elapsed is not None
@@ -488,13 +491,37 @@ def drive_resume_handler(session: Session = Depends(get_session), user: User = D
         left = max(1, int(round(config.REST_WAIT_SEC - elapsed * 60)))
         raise HTTPException(status.HTTP_409_CONFLICT, f"아직 휴식 시간이 지나지 않았습니다 ({left}초 남음)")
 
-    stage = int(sleep_state.get_stage(user.id))
+    stage = _complete_rest(session, user.id, elapsed)
+    message = {0: "운행을 재개합니다", 1: "주의 단계로 다시 출발합니다",
+               3: "긴급 단계는 관리자가 조치완료를 누르기 전까지 해제되지 않습니다"}.get(stage, "운행을 재개합니다")
+    return {"success": True, "stage": stage, "status": _label(stage), "message": message}
+
+
+def _auto_finish_rest(session: Session, user_id: int, need_ended: bool) -> None:
+    """(11/28 팀장) [정차했어요] → [운행 종료] 뒤 15분(REST_WAIT_SEC)이 지나면 [운행 재개] 없이도 휴식 인정 (2단계 → 1단계).
+    need_ended: /drive/state 는 [운행 종료] 를 누른 경우만 (휴식 화면이 열린 채 몰래 풀리면 [운행 재개] 가 400 이 됨).
+                /drive/start 는 홈에서 새 운행을 고른 것이라 종료 여부와 상관없이."""
+    elapsed = sleep_state.rest_elapsed_min(user_id)
+    if elapsed is None or elapsed * 60 < config.REST_WAIT_SEC:
+        return
+    if need_ended and not drive_timer.is_ended(user_id):
+        return
+    if int(sleep_state.get_stage(user_id)) != 2:   # 2단계만 (1단계는 10분 지나 저절로, 3단계는 관리자만)
+        return
+    stage = _complete_rest(session, user_id, elapsed)
+    drive_timer.end(user_id)                 # rest_done 이 운행을 다시 켠 것으로 만들므로 '끝남' 표시를 되돌림 (홈에 [운행 시작] 만)
+    print(f"[detect] {datetime.now():%H:%M:%S} u{user_id} 정차 뒤 운행 종료 · {int(elapsed)}분 지나 휴식 자동 인정 → 단계 {stage}")
+
+
+def _complete_rest(session: Session, user_id: int, elapsed: float) -> int:
+    """휴식 인정 — [운행 재개] 와 자동 인정이 같이 씀. 2단계 → 1단계 (3단계는 관리자만), 그 경고는 '휴식완료' + 휴식 기록"""
+    stage = int(sleep_state.get_stage(user_id))
     if stage == 2:                           # 2단계만 1단계로. 3단계는 관리자만 해제
-        stage = int(sleep_state.finish_rest(user.id))
-    drive_timer.rest_done(user.id)
+        stage = int(sleep_state.finish_rest(user_id))
+    drive_timer.rest_done(user_id)
 
     with _lock:
-        event_id = _rest_event.pop(user.id, None)
+        event_id = _rest_event.pop(user_id, None)
     event = session.get(SleepEvent, event_id) if event_id else None
     if event:
         report = json.loads(event.report) if event.report else {}
@@ -507,7 +534,7 @@ def drive_resume_handler(session: Session = Depends(get_session), user: User = D
         session.commit()
     # (11/26) 3단계 등 정차를 남긴 경고가 휴식완료 경고와 다르면 그쪽에도 휴식 기록 (단계 · 상태는 그대로)
     with _lock:
-        stop_id = _stop_event.pop(user.id, None)
+        stop_id = _stop_event.pop(user_id, None)
     stop_ev = session.get(SleepEvent, stop_id) if stop_id and stop_id != (event.id if event else None) else None
     if stop_ev is not None:
         now = datetime.now()
@@ -515,10 +542,7 @@ def drive_resume_handler(session: Session = Depends(get_session), user: User = D
         _add_report(stop_ev, "rest", {"started": started.strftime("%H:%M"), "resumed": now.strftime("%H:%M"),
                                       "minutes": int(elapsed)})
         session.commit()
-
-    message = {0: "운행을 재개합니다", 1: "주의 단계로 다시 출발합니다",
-               3: "긴급 단계는 관리자가 조치완료를 누르기 전까지 해제되지 않습니다"}.get(stage, "운행을 재개합니다")
-    return {"success": True, "stage": stage, "status": _label(stage), "message": message}
+    return stage
 
 
 # ───────────────────────────────────────────────
