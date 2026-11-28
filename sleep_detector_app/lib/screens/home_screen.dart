@@ -223,7 +223,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 측정 화면이 돌려주는 값: 기준 값(double) / null = 시작 전에 뒤로 가기 (운행을 시작하지 않는다)
   // 기준 값은 DriveScreen(threshold: t) 로 넘긴다 (측정을 건너뛰었으면 기본 기준이 들어 있다)
-  // restFirst (11/28 팀장): 정차 뒤 15분 전에 [새로운 운행 시작] — 눈 측정 → 남은 휴식 화면 → 다 쉬면 새 운행 (0단계)
+  // restFirst (11/28 팀장): 쉬는 중(정차 뒤)에 [새로운 운행 시작] — 눈 측정 → 휴식 화면(남은 시간, 15분이 지났으면 완료 상태) → [운행 재개] → 새 운행 (0단계)
   //   /drive/start 를 휴식이 끝난 뒤에 부른다 (먼저 부르면 서버가 휴식을 취소하고 2단계로 출발시킴)
   Future<void> _startDrive({bool restFirst = false}) async {
     // 카메라 · 마이크 · 위치 권한이 아직 없으면 시안의 안내창 → [계속] → 휴대폰 권한 창 (11/12 팀장)
@@ -347,7 +347,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           onResume: () => _resumeDrive(st),
                           // (11/26 팀장) 새 운행도 눈 측정부터
                           // (11/28 팀장) 단, 정차 뒤 15분이 안 지났으면 눈 측정 → 같은 휴식 화면 → 다 쉬면 0단계 새 운행
-                          onNew: () => _startDrive(restFirst: st.resting && st.restLeftSec > 0),
+                          onNew: () => _startDrive(restFirst: st.resting), // (11/28) 15분이 이미 지났어도 쉬던 중이면 휴식 화면(완료 상태)부터
                         )
                       : null,
                 );
